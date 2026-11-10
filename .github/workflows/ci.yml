@@ -1,0 +1,47 @@
+# The `code` tier: `just ci` (fmt, clippy, tests), no game data.
+# The `install` tier needs the game and is not run here (crates/README.md).
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The token reads the repo, nothing more.
+permissions:
+  contents: read
+
+# A newer push to the same branch or PR cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # A warning fails the run, as a test would.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  code:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Bevy's audio (ALSA) and window (Wayland, xkbcommon) headers; `just`.
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libasound2-dev libwayland-dev libxkbcommon-dev just
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      # Only main saves; a PR reads main's cache. A PR's own cache
+      # serves no one else and would push main's out of the quota.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - run: just ci

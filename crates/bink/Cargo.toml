@@ -1,0 +1,15 @@
+# Bink 1 decoding, vendored from NihAV: see README.md.
+[package]
+name = "bink"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Bink 1 video and audio decoder (revisions f to k), trimmed from NihAV"
+authors = ["Kostya Shishkov <kostya.shishkov@gmail.com>"]
+license = "AGPL-3.0-only"
+repository = "git://git.nihav.org/nihav.git"
+
+[dependencies]
+
+[lints]
+workspace = true

@@ -1,0 +1,3 @@
+[build]
+# Doc tests run with the toolchain's libstd found (`rustdoc.sh`).
+rustdoc = ".cargo/rustdoc.sh"

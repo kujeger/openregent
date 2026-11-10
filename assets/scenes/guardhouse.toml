@@ -1,0 +1,15 @@
+# A Palace and a level 2 Guardhouse. With the Adjust Guardhouse mod it
+# still posts one guard, as in HD: the second comes only on an upgrade
+# (guardhouse_upgrade.toml).
+#
+#   openregent --headless --scene assets/scenes/guardhouse.toml --mods {D666FCBE-9906-4582-A6A0-DC96F812441E}
+version = 1
+map = { flat = { side = 128 } }
+
+[[unit]]
+code = "ABJ1" # Palace1
+at = [64, 64]
+
+[[unit]]
+code = "ABE2" # Guardhouse2
+at = [72, 64]

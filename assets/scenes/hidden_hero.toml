@@ -1,0 +1,15 @@
+# A Palace and a warrior beside it, alone. Under Aura of Peace the warrior
+# is "hidden" and the gold paid near the Palace passes it by, unless the
+# built-in mod "Bug fixes" is on.
+#
+#   openregent --headless --scene assets/scenes/hidden_hero.toml --mods {07C66EB7-1379-4B7A-8328-CDA91B2AD5DB}
+version = 1
+map = { flat = { side = 128 } }
+
+[[unit]]
+code = "ABJ1" # Palace1
+at = [64, 64]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [68, 64]

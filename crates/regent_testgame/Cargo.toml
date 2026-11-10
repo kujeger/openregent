@@ -1,0 +1,15 @@
+# A small made-up game, all authored here, so tests with no game data can
+# run the real simulation. Every crate's tests take it as a dev-dependency.
+[package]
+name = "regent_testgame"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "A made-up game for tests that have no Majesty data"
+
+[dependencies]
+regent_core = { path = "../regent_core" }
+
+[lints]
+workspace = true

@@ -1,0 +1,96 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "AGPL-3.0-only"
+
+# Dependencies more than one member takes, one version and base feature
+# list each: `dep = { workspace = true }`, features added per member.
+[workspace.dependencies]
+# 2D only: the defaults' 3D, glTF, animation, UI, scene, picking and
+# gamepad plugins ran every frame unused. A wrong trimmed list can fail as
+# a blank window: compare shots (`tools/shot.sh`) after a change.
+# `dynamic_linking` is each Bevy crate's `dev` feature: `just` turns it on.
+bevy = { version = "0.20", default-features = false, features = [
+    # The app.
+    "async_executor",
+    "bevy_asset",
+    "bevy_log",
+    "bevy_state",
+    "multi_threaded",
+    "reflect_auto_register",
+    "std",
+    # The window.
+    "bevy_winit",
+    # Pulls in picking since 0.20; its plugins are off (`draw::defaults`).
+    "custom_cursor",
+    "wayland",
+    "x11",
+    # 2D drawing.
+    "bevy_core_pipeline",
+    "bevy_gizmos",
+    "bevy_gizmos_render",
+    "bevy_render",
+    "bevy_sprite",
+    "bevy_sprite_render",
+    "png",
+    # Model shadows (`regent_draw::sun`): a directional light's shadow map.
+    "bevy_pbr",
+    # Its soft shadows' size on the light, and the map's linear sampler:
+    # our own sampling reads both (`regent_draw::sun`, `shaders/lit.wesl`).
+    "experimental_pbr_pcss",
+    # Sound.
+    "audio",
+] }
+# No default features: without Bevy UI and picking.
+bevy_egui = { version = "0.43", default-features = false, features = [
+    "default_fonts",
+    "manage_clipboard",
+    "open_url",
+    "render",
+] }
+# No default features: skips the unused colour stack.
+clap = { version = "4", default-features = false, features = ["std", "derive"] }
+png = "0.18"
+serde = { version = "1.0.229", features = ["derive"] }
+# The libraries' log facade: Bevy's own, so openregent's subscriber shows
+# their lines. A library installs no subscriber.
+tracing = { version = "0.1", default-features = false, features = ["std"] }
+
+# Shared by every member, via `[lints] workspace = true`.
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+missing_const_for_fn = "deny"
+
+# Only in-workspace consumers; noise outweighs benefit.
+must_use_candidate = "allow"
+
+# The parser uses most of the AST; an explicit list would rot.
+wildcard_imports = "allow"
+
+# `cargo doc` honours these.
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+
+# Tests are heavy. Line tables keep backtraces' file:line; full debug info
+# made each test binary about 100 MB.
+[profile.test]
+opt-level = 2
+debug = "line-tables-only"
+
+# Bevy needs some optimization in dev.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

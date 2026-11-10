@@ -1,0 +1,16 @@
+# A Warriors Guild and a level 2 Guardhouse beside it, under the default
+# sun (φ 29°, elevation 50°): the Guardhouse's model shadow falls on the
+# Guild's right wall, a check that a model building takes another's
+# shadow and not its own (`regent_draw::sun::relief`).
+#
+#   tools/shot.sh target/debug/openregent out.png --scene assets/scenes/shadow_models_near.toml --look 61,61 --cast models
+version = 1
+map = { flat = { side = 128 } }
+
+[[unit]]
+code = "ABV1" # Warriors_Guild
+at = [60, 60]
+
+[[unit]]
+code = "ABE2" # Guardhouse2
+at = [64, 62]

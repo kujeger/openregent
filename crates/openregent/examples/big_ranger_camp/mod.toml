@@ -1,0 +1,12 @@
+version = 1
+id = "{56A39291-8971-4975-BB9A-C4F140535107}"
+name = "BigRangerCamp"
+display_name = "Big ranger camp"
+description = "The rangers' guild holds 8 heroes."
+details = "A rangers' guild takes 8 rangers instead of 4."
+base = "MajestyExpansion"
+
+# Rangers_Guild: the limit the engine recruits against.
+[[unit]]
+id = "ABW1"
+set = { MaxGuildMembers = 8 }

@@ -1,0 +1,45 @@
+# Trees in the wind (openregent's `[enhancements] wind`): which trees
+# sway, and how far. Drawing only; the game's play is untouched.
+#
+# A copy at $XDG_CONFIG_HOME/openregent/wind.toml is laid over this one:
+# a key it holds replaces that key alone; a tree it lists replaces that
+# tree's whole entry, or adds one; the rest stay as here. `factor = 0`
+# stills a tree listed here. A bad value warns and keeps this file's.
+#
+# reference  art pixels: a tree this tall, sprite top to foot, leans
+#            `wind_amplitude` pixels at its top; others in proportion.
+#            The median of the first 19 trees' sprites.
+# wave       art pixels between two trees swaying in step; a gust's
+#            wave is four of these.
+#
+# [trees]    by descriptor code; a code not listed does not sway.
+#   factor   scales the lean: 1 leafy, less for bare, 0 still.
+#            Judged from the art (Inferred).
+#   height   optional: art pixels in place of the sprite's height.
+
+reference = 94
+wave = 800
+
+[trees]
+CG07 = { factor = 0.3 } # scorch_trees_big: bare, dead
+CG08 = { factor = 0.3 } # scorch_trees_med: bare, dead
+FG01 = { factor = 1.0 } # ferns_trees_big: palm
+GG01 = { factor = 1.0 } # savannah_trees_big
+GG02 = { factor = 1.0 } # savannah_trees_med
+IG02 = { factor = 1.0 } # pine_trees_big
+IG08 = { factor = 1.0 } # pine_trees_med
+LG01 = { factor = 1.0 } # weepwillow_trees_med
+LG02 = { factor = 1.0 } # weepwillow_trees_big
+NGa1 = { factor = 1.0 } # SnowPine: snowy pines and leafy trees
+NGb1 = { factor = 1.0 } # SnowCypress
+NGh1 = { factor = 0.3 } # SnowBirch: small, bare
+NGi1 = { factor = 0.3 } # Snowdead: small, bare
+NGr1 = { factor = 0.3 } # SnowTreeGnarly: bare, white
+PG07 = { factor = 1.0 } # plains_trees_big
+PG08 = { factor = 1.0 } # plains_trees_med
+RG07 = { factor = 1.0 } # rocky_trees_big
+RG08 = { factor = 1.0 } # rocky_trees_med
+UG01 = { factor = 1.0 } # autumn_trees_med
+UG02 = { factor = 1.0 } # autumn_trees_big
+WG07 = { factor = 0.7 } # cypress_trees_big: moss, few leaves
+WG08 = { factor = 1.0 } # cypress_trees_med

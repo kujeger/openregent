@@ -1,0 +1,105 @@
+# The fixed perf runs (tools/perf/run.sh): one per line,
+#   <name> <kind> <openregent args...>
+# kinds:
+#   headless  openregent --headless <args>
+#   drawn     tools/shot.sh <args>: a hidden display, --running keeps play going
+#   startup   tools/shot.sh <args>, paused: the ms to the first drawn frame and the game's
+#   lan       two headless peers on this machine: --server <port> <args>, --client <args>
+# Leading NAME=value words: the run's environment (run.sh: CPUS, BUILD;
+# CPUS=one: one performance core, CPUS=eff<N>: N efficiency cores,
+# tools/perf/cores.sh);
+# $lavapipe is run.sh's.
+# `#= <group>`: the following cases' group (tools/perf/quiet.sh).
+#
+# Fixed seeds: --map-seed picks the generated map, --bot the scripted
+# player's presses; the shot's clock steps 1/60 s a drawn frame, so a
+# drawn run plays the same game frames every time.
+
+#= headless
+# The sim alone.
+h128-bot5     headless --map-seed 7 --side 128 --bot 5 --frames 6000
+h512-bot5     headless --map-seed 7 --side 512 --bot 5 --frames 20000
+h-bot3        headless --bot 3 --frames 20000
+h-bot5        headless --bot 5 --frames 20000
+
+#= replay
+# A recorded game replayed (assets/input_logs/), headless: a digest that
+# differs fails the run (headless::checked), so a change that alters the
+# game shows as FAILED, not as faster. One performance core: the sim
+# steps on one thread, and a cluster's clock follows its busy cores.
+r-forsaken    headless CPUS=one --replay assets/input_logs/the_forsaken_land.input --frames 16900
+r-urban       headless CPUS=one --replay assets/input_logs/urban_renewal.input --frames 54900
+r-siege       headless CPUS=one --replay assets/input_logs/the_siege.input --frames 54300
+
+#= drawn
+# Drawn frames, 1920x1200: 1800 drawn frames (30 s of a 60 Hz display).
+d128-early    drawn --map-seed 7 --side 128 --bot 5 --warm 600 --frames 1800 --running --select ABJ1
+d512-late-1x  drawn --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+d512-late-4x  drawn --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1 --speed 4
+# The palace's hero roster open: a row a hero, each named every frame.
+d512-heroes   drawn --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1 --page heroes
+# The same, as played: pipelined (sim_thread::Mode), game frames by the
+# wall clock, so not the same frames each run.
+p128-early    drawn MAJ_PERF_PIPELINED=1 --map-seed 7 --side 128 --bot 5 --warm 600 --frames 1800 --running --select ABJ1
+p512-late-4x  drawn MAJ_PERF_PIPELINED=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1 --speed 4
+
+#= camera
+# The view moving (--camera, shot::Camera): a drag of 720 points a
+# second round a square from --look, or a zoom step each half second;
+# held paused, so the frames are the drawing's alone. cw: Wild Expanse
+# (dliW, Huge: 512 cells), running pipelined, as played.
+c128-pan      drawn --map-seed 7 --side 128 --warm 600 --frames 1800 --look 64,64 --camera pan
+c512-pan      drawn --map-seed 7 --side 512 --warm 600 --frames 1800 --look 256,256 --camera pan
+c512-levels   drawn --map-seed 7 --side 512 --warm 600 --frames 1800 --look 256,256 --camera levels
+c512-wheel    drawn --map-seed 7 --side 512 --warm 600 --frames 1800 --look 256,256 --camera wheel
+cw-pan        drawn MAJ_PERF_PIPELINED=1 --map-seed 7 --scenario dliW --bot 5 --warm 600 --frames 1800 --running --look 256,256 --camera pan
+
+#= startup
+# Startup.
+s-menu        startup --menu main
+s-game        startup --map-seed 7 --side 128
+
+#= lan
+# LAN: deep digests every 100 frames.
+lan512        lan --players 2 --map-seed 7 --side 512 --bot 5 --frames 4000
+
+#= gpu
+# The renderer (openregent/src/perf/gpu.rs): no vsync, so the interval is
+# the frame's cost; GPU time per frame and pass, draw calls, GPU memory.
+# Asahi times no pass inside: gpu_frame, frag_ counts; lavapipe all.
+g-menu        drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --menu main --frames 1800
+# A video playing (`video`): full screen 640x480, and a briefing's 260x260.
+g-credits     drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --menu credits --frames 1800
+g-brief       drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --menu background:QU01 --frames 1800
+g128-early    drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 128 --bot 5 --warm 600 --frames 1800 --running --select ABJ1
+g512-late     drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+# The enhancements off by default: xBRZ pictures (memory art sized), FSR
+# for the view and the videos.
+g-menu-xbrz   drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --ui-upscale xbrz --menu main --frames 1800
+g128-xbrz     drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --ui-upscale xbrz --map-seed 7 --side 128 --bot 5 --warm 600 --frames 1800 --running --select ABJ1
+g512-fsr      drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --view-upscale fsr --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+g-credits-fsr drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --video-upscale fsr --menu credits --frames 1800
+g-brief-fsr   drawn MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --video-upscale fsr --menu background:QU01 --frames 1800
+
+#= weak
+# Weak machines. lvp: lavapipe, Mesa's CPU Vulkan, on every core
+# (CPUS=all).
+# e1, e2: one or two efficiency cores (CPUS=eff1, eff2: cores.sh eff),
+# lavapipe's threads too.
+lvp-menu      drawn CPUS=all VK_ICD_FILENAMES=$lavapipe MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --menu main --frames 1800
+lvp-credits   drawn CPUS=all VK_ICD_FILENAMES=$lavapipe MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --menu credits --frames 1800
+lvp-credits-fsr drawn CPUS=all VK_ICD_FILENAMES=$lavapipe MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --video-upscale fsr --menu credits --frames 1800
+lvp128-early  drawn CPUS=all VK_ICD_FILENAMES=$lavapipe MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 128 --bot 5 --warm 600 --frames 1800 --running --select ABJ1
+lvp512-late   drawn CPUS=all VK_ICD_FILENAMES=$lavapipe MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+lvp512-720    drawn CPUS=all VK_ICD_FILENAMES=$lavapipe MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1280x720 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+e2-512-late   drawn CPUS=eff2 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+e2-512-720    drawn CPUS=eff2 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1280x720 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+e2-512-768    drawn CPUS=eff2 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1024x768 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+e1-512-720    drawn CPUS=eff1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1280x720 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+e2-lvp128-720 drawn CPUS=eff2 VK_ICD_FILENAMES=$lavapipe MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1280x720 --map-seed 7 --side 128 --bot 5 --warm 600 --frames 1800 --running --select ABJ1
+
+#= trace
+# Timelines (build.sh trace): <case>/trace.json, for ui.perfetto.dev.
+# 300 drawn frames: a trace grows by megabytes a second.
+t128-early    drawn BUILD=trace MAJ_PERF_UNCAPPED=1 --map-seed 7 --side 128 --bot 5 --warm 600 --frames 300 --running --select ABJ1
+t512-late     drawn BUILD=trace MAJ_PERF_UNCAPPED=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 300 --running --select ABJ1

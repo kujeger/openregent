@@ -1,0 +1,27 @@
+# Bevy viewer. Separate crate so the library builds without Bevy.
+[package]
+name = "regent_viewer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "A Bevy viewer for Majesty's sprites and animations"
+
+# Bevy's features: see the workspace manifest.
+[dependencies]
+bevy = { workspace = true }
+bevy_egui = { workspace = true }
+clap = { workspace = true, features = ["help", "usage", "error-context"] }
+regent_draw = { path = "../regent_draw" }
+regent_core = { path = "../regent_core" }
+
+[[bin]]
+name = "regent_viewer"
+path = "src/main.rs"
+
+[features]
+# Links Bevy dynamically, for fast rebuilds; `just` turns it on.
+dev = ["bevy/dynamic_linking"]
+
+[lints]
+workspace = true

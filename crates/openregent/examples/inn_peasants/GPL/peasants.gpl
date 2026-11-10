@@ -1,0 +1,35 @@
+// Inns it takes for one more peasant.
+expression #inn_peasants_per 2
+
+// Replaces the game's peasant_spawner, the thread a palace or outpost
+// runs as "peasant_spawn": a peasant every #peasant_delay up to the
+// building's "max_peasants". A palace's limit grows by one for every
+// 2 inns its player owns.
+//
+// The thread runs on when full, so a new inn shows without a peasant's
+// death. A death finds it running and starts no second one.
+function peasant_spawner(agent thisagent)
+
+declare
+	list inns;
+	integer most;
+
+begin
+	most = thisagent's "max_peasants";
+
+	if (thisagent's "subtype" == "Palace")
+		begin
+			$ListObjects(thisagent, "building", -1, inns, #CheckTitles, "Inn", #MyPlayer);
+			most = most + $ListSize(inns) / #inn_peasants_per;
+		end
+
+	if (thisagent's "num_peasants" < most)
+		begin
+			if ($RandomNumber(2) == 0)
+				$SpawnUnit(thisagent, "Peasant");
+			else
+				$SpawnUnit(thisagent, "Peasant_Female");
+		end
+
+	$RunThread(thisagent's "peasant_spawn", #peasant_delay, thisagent);
+end

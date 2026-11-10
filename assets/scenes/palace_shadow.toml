@@ -1,0 +1,14 @@
+# A warrior west of the Palace on screen, in its shadow: a check of drawn
+# shadows.
+#
+#   tools/shot.sh target/debug/openregent out.png --scene assets/scenes/palace_shadow.toml --look 62,66
+version = 1
+map = { flat = { side = 128 } }
+
+[[unit]]
+code = "ABJ1" # Palace1
+at = [64, 64]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [57, 68]

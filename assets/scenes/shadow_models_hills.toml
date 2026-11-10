@@ -1,0 +1,18 @@
+# shadow_models.toml on a generated map, its hills under the shadows.
+#
+#   tools/shot.sh target/debug/openregent out.png --scene assets/scenes/shadow_models_hills.toml --look 40,40 --cast models
+version = 1
+map = { freestyle = { map_number = 7, side = 128 } }
+chart = "cleared"
+
+[[unit]]
+code = "ABV1" # Warriors_Guild
+at = [40, 40]
+
+[[unit]]
+code = "ABE2" # Guardhouse2
+at = [47, 43]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [36, 41]

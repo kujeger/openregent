@@ -1,0 +1,66 @@
+# A new game run by the library's world, drawn with regent_draw.
+[package]
+name = "openregent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Runs a new Majesty game and draws it, the player's input taken"
+repository = "https://github.com/kujeger/openregent"
+
+[package.metadata.dist]
+dist = true
+
+# Bevy's features: see the workspace manifest. `mp3`: HD's music is MP3.
+[dependencies]
+bevy = { workspace = true, features = ["mp3"] }
+bevy_egui = { workspace = true }
+# The menus' `PICT` videos (`video`).
+bink = { path = "../bink" }
+clap = { workspace = true, features = ["help", "usage", "error-context"] }
+dirs = "7.0.0"
+# LAN discovery's broadcast addresses, one an interface (`net::discover`).
+if-addrs = "0.15"
+iroh = "1.4.1"
+# Save dates by the local clock (`save::offset`).
+jiff = "0.2"
+regent_draw = { path = "../regent_draw", features = ["clap"] }
+regent_core = { path = "../regent_core" }
+# The save file (`save`): a tar of RON and a PNG, one zstd stream.
+png = { workspace = true }
+ron = "0.12"
+serde = { workspace = true }
+# LAN discovery's port, shared by every host on a machine (`net::discover`).
+socket2 = { version = "0.6", features = ["all"] }
+tokio = { version = "1", features = ["rt", "net", "sync", "time", "macros"] }
+bytes = "1"
+tar = "0.4"
+toml = "1.2.0"
+# The settings file rewritten in place, its comments kept.
+toml_edit = "0.25"
+# The timeline (`trace`): Bevy's own version.
+tracing-chrome = { version = "0.7", optional = true }
+# The perf runs' frame timestamps (`perf::gpu`): Bevy's wgpu.
+wgpu = { version = "30.0.1", default-features = false }
+zstd = "0.14"
+
+# A modded HD save spliced for the load test (`regent_corpus::with_mods`).
+[dev-dependencies]
+regent_corpus = { path = "../regent_corpus" }
+# The made-up game (`game::test_game`).
+regent_testgame = { path = "../regent_testgame" }
+tempfile = "3.27.0"
+
+[features]
+# Links Bevy dynamically, for fast rebuilds; `just` turns it on.
+dev = ["bevy/dynamic_linking"]
+# Test tier: `install` needs the game's files. Without it `cargo test`
+# needs no game data.
+install = []
+
+# A Chrome/Perfetto timeline of a run (`log`, `tools/perf/`): Bevy's
+# system and render spans. Off: spans cost even unrecorded.
+trace = ["bevy/trace_chrome", "dep:tracing-chrome"]
+
+[lints]
+workspace = true

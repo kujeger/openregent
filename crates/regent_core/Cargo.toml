@@ -1,0 +1,269 @@
+# The library: readers for the data files, the GPL language and VM, the
+# simulation, and what the screen shows of it, in acyclic layers (src/lib.rs).
+#
+# Four dependencies, readable off this one file — which is the reason the
+# binaries are separate crates rather than extra targets here.
+[package]
+name = "regent_core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Readers for Majesty: The Fantasy Kingdom Sim (2000), its GPL compiler and VM, and its simulation"
+
+[dependencies]
+ariadne = "0.6.0"
+logos = "0.16.1"
+# The save model only (`save`).
+serde = { workspace = true }
+toml = "1.2.0"
+
+# Only the tests read XML (the SDK's descriptor files, the oracle the
+# offsets are solved against) and PNG captures.
+[dev-dependencies]
+# The `PICT` videos decode (`tests/video.rs`).
+bink = { path = "../bink" }
+# The corpus lookup (`tests/common`).
+regent_corpus = { path = "../regent_corpus" }
+# The made-up game (`tests/test_game.rs`).
+regent_testgame = { path = "../regent_testgame" }
+# The address check (`tests/addresses.rs`).
+regex = "1"
+roxmltree = "0.21"
+png = { workspace = true }
+# The save tests: a snapshot as RON, packed as openregent packs it.
+ron = "0.12"
+zstd = "0.14"
+tempfile = "3.27.0"
+
+[lib]
+name = "regent_core"
+path = "src/lib.rs"
+
+[features]
+# Test tier: `install` needs the game's files. Without it `cargo test`
+# needs no game data.
+install = []
+
+[[test]]
+name = "animate"
+required-features = ["install"]
+
+[[test]]
+name = "art"
+required-features = ["install"]
+
+[[test]]
+name = "autosave"
+required-features = ["install"]
+
+[[test]]
+name = "barren"
+required-features = ["install"]
+
+[[test]]
+name = "blend"
+required-features = ["install"]
+
+[[test]]
+name = "build_tree"
+required-features = ["install"]
+
+[[test]]
+name = "chart"
+required-features = ["install"]
+
+[[test]]
+name = "chat"
+required-features = ["install"]
+
+[[test]]
+name = "cheat"
+required-features = ["install"]
+
+[[test]]
+name = "combat"
+required-features = ["install"]
+
+[[test]]
+name = "corpus"
+required-features = ["install"]
+
+[[test]]
+name = "cursor"
+required-features = ["install"]
+
+[[test]]
+name = "day"
+required-features = ["install"]
+
+[[test]]
+name = "desc_xml"
+required-features = ["install"]
+
+[[test]]
+name = "economy"
+required-features = ["install"]
+
+[[test]]
+name = "editions"
+required-features = ["install"]
+
+[[test]]
+name = "flag_patch"
+required-features = ["install"]
+
+[[test]]
+name = "freestyle"
+required-features = ["install"]
+
+[[test]]
+name = "fresh"
+required-features = ["install"]
+
+[[test]]
+name = "fresh_generated"
+required-features = ["install"]
+
+[[test]]
+name = "game_files"
+required-features = ["install"]
+
+[[test]]
+name = "hotkey"
+required-features = ["install"]
+
+[[test]]
+name = "icons"
+required-features = ["install"]
+
+[[test]]
+name = "inventory"
+required-features = ["install"]
+
+[[test]]
+name = "label"
+required-features = ["install"]
+
+[[test]]
+name = "load"
+required-features = ["install"]
+
+[[test]]
+name = "marks"
+required-features = ["install"]
+
+[[test]]
+name = "mausoleum"
+required-features = ["install"]
+
+[[test]]
+name = "menu"
+required-features = ["install"]
+
+[[test]]
+name = "message"
+required-features = ["install"]
+
+[[test]]
+name = "missile"
+required-features = ["install"]
+
+[[test]]
+name = "mod_library"
+required-features = ["install"]
+
+[[test]]
+name = "mods"
+required-features = ["install"]
+
+[[test]]
+name = "movement"
+required-features = ["install"]
+
+[[test]]
+name = "particles"
+required-features = ["install"]
+
+[[test]]
+name = "patch"
+required-features = ["install"]
+
+[[test]]
+name = "placement"
+required-features = ["install"]
+
+[[test]]
+name = "play_budget"
+required-features = ["install"]
+
+[[test]]
+name = "portrait"
+required-features = ["install"]
+
+[[test]]
+name = "quest_start"
+required-features = ["install"]
+
+[[test]]
+name = "recipe"
+required-features = ["install"]
+
+[[test]]
+name = "resume"
+required-features = ["install"]
+
+[[test]]
+name = "ruin"
+required-features = ["install"]
+
+[[test]]
+name = "scores"
+required-features = ["install"]
+
+[[test]]
+name = "scroll"
+required-features = ["install"]
+
+[[test]]
+name = "smnu"
+required-features = ["install"]
+
+[[test]]
+name = "terrain"
+required-features = ["install"]
+
+[[test]]
+name = "text_markup"
+required-features = ["install"]
+
+[[test]]
+name = "the_corpus"
+required-features = ["install"]
+
+[[test]]
+name = "tip"
+required-features = ["install"]
+
+[[test]]
+name = "upkeep"
+required-features = ["install"]
+
+[[test]]
+name = "framed"
+required-features = ["install"]
+
+[[test]]
+name = "victory_play"
+required-features = ["install"]
+
+[[test]]
+name = "video"
+required-features = ["install"]
+
+[[test]]
+name = "view"
+required-features = ["install"]
+
+[lints]
+workspace = true

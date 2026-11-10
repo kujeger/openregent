@@ -1,0 +1,11 @@
+version = 1
+id = "{4F78A1F4-E83F-4A84-A374-2F0DD097FED1}"
+name = "InnPeasants"
+display_name = "Inn peasants"
+description = "Inns draw peasants to the palace."
+details = "The palace keeps one more peasant for every 2 inns its player owns."
+base = "Any"
+
+[[script]]
+name = "inn_peasants"
+sources = ["GPL/peasants.gpl"]

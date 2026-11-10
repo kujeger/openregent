@@ -1,0 +1,8 @@
+# A Warriors' Guild and no palace: the Veteran recruits example mod's
+# hire for a player without one (crates/openregent/examples/veteran_recruits).
+version = 1
+map = { flat = { side = 128 } }
+
+[[unit]]
+code = "ABV1" # Warriors_Guild
+at = [72, 64]

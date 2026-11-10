@@ -1,0 +1,13 @@
+version = 1
+id = "{9C7D9A63-E6F7-4AC7-A7A5-A9CE7B05B3DC}"
+name = "GuardhousePair"
+display_name = "Guardhouse pair"
+description = "A level 2 guardhouse posts two guards."
+details = "A guardhouse upgraded to level 2 posts two guards instead of one."
+base = "Any"
+
+# GuardHouse2, the .dat instance a level 2 guardhouse is made from: its
+# guard count.
+[[prototype]]
+instance = "GuardHouse2"
+set = { Max_Guards = 2 }

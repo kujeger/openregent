@@ -1,0 +1,12 @@
+version = 1
+id = "{A2A48A02-2BCE-42B5-8D2F-22B59DB3B720}"
+name = "HouseMend"
+display_name = "Peasant houses mend themselves"
+description = "Damaged peasant houses slowly regain hit points."
+details = "A damaged house regains 1 hit point every 5 seconds of game time, similar to Heroes"
+base = "Any"
+
+[[unit]]
+id = "ABe1"
+field = "building"
+add = ["Heals"] # this is the Flag the engine uses to apply the self-heal

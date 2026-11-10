@@ -1,0 +1,166 @@
+// The test game's rules, all invented. Huts rise and pay. Walkers walk east
+// and hit back. Biters hunt walkers, then huts, then the keep. A full
+// treasury wins; a fallen keep loses.
+
+// `ListObjects` modifier 0: search the whole map, not what its owner sees.
+expression #WholeMap 0
+
+expression #TickMs 250
+expression #HutRiseHP 20
+expression #HutIncome 5
+expression #WalkCells 20
+expression #CellUnits 32
+expression #SearchRange 1000
+expression #BiteBase 3
+expression #BiteRoll 6
+expression #HitBase 1
+expression #HitRoll 6
+expression #Bounty 50
+expression #HoardGoal 50000
+
+// What every agent holds: the engine's searches read `type`.
+prototype Thing()
+declare
+    string type;
+    function brain;
+    coordinate goal;
+    // Its one-off is done: a walker's set off, a hut's risen.
+    integer left;
+begin
+end
+
+function InitializeGpl()
+begin
+    $CreateAgent("TestRoot", "TestRoot");
+end
+
+function think(agent me, function brain)
+begin
+    me's "brain" = brain;
+    $NewThread(me's "brain", #TickMs, me);
+end
+
+// Every new unit: its kind's thread. Walks start there: no walk is followed
+// before the setup ends.
+function NewUnitInit(agent unit)
+declare
+    coordinate here;
+begin
+    if (unit's "type" == "hut") $think(unit, $hut_brain);
+    if (unit's "type" == "biter") $think(unit, $biter_brain);
+
+    if (unit's "type" == "walker")
+    begin
+        here = $LocationOf(unit);
+        unit's "goal" = $MakeCoord($GetX(here) + #WalkCells * #CellUnits, $GetY(here));
+        $think(unit, $walker_brain);
+    end
+end
+
+function Palace_Pre_Birth(agent palace)
+begin
+    $think(palace, $keep_brain);
+end
+
+// A recruit: its stats come from its descriptor, so nothing to roll.
+function Generate_Character_Attributes(agent unit)
+begin
+end
+
+function UnitDelete(integer unit)
+begin
+end
+
+// Hit points under 1. A biter pays its bounty; a keep ends the game.
+function Unit_Call_Deathscript(agent unit)
+declare
+    list palaces;
+begin
+    if (unit's "type" == "biter")
+    begin
+        palaces = $ListPalaces();
+
+        if ($ListSize(palaces) > 0)
+            $AdjustPlayerData($ListMember(palaces, 1), "gold", #Bounty);
+    end
+
+    if (unit's "type" == "keep")
+        $DeclareLoss(unit);
+
+    $DeleteGamePiece(unit);
+end
+
+function keep_brain(agent me)
+begin
+    if ($GetPlayerData(me, "gold") >= #HoardGoal)
+        $DeclareVictory(me);
+end
+
+// Up to full health once, then an income, hurt or not.
+function hut_brain(agent me)
+declare
+    integer risen;
+begin
+    if (me's "left" == 1)
+        $AdjustPlayerData(me, "gold", #HutIncome);
+    else
+    begin
+        risen = $GetAttribute(me, #ATTRIB_HP) + #HutRiseHP;
+
+        if (risen < $GetAttribute(me, #ATTRIB_MaxHP))
+            $SetAttribute(me, #ATTRIB_HP, risen);
+        else
+        begin
+            $SetAttribute(me, #ATTRIB_HP, $GetAttribute(me, #ATTRIB_MaxHP));
+            me's "left" = 1;
+        end
+    end
+end
+
+// To the goal once; a biter beside it takes a hit.
+function walker_brain(agent me)
+declare
+    list found;
+    agent foe;
+begin
+    $ListObjects(me, "biter", #SearchRange, found, #WholeMap);
+
+    if ($ListSize(found) > 0)
+    begin
+        foe = $ListMember(found, 1);
+
+        if ($IsAdjacent(me, foe))
+            $AdjustAttribute(foe, #ATTRIB_HP, 0 - #HitBase - $RandomNumber(#HitRoll));
+    end
+
+    if (me's "left" == 0)
+    begin
+        me's "left" = 1;
+        $Move(me, me's "goal");
+    end
+end
+
+// The first thing in reach of the kinds it hunts, bitten or walked to.
+function biter_brain(agent me)
+declare
+    list found;
+    agent prey;
+begin
+    $ListObjects(me, "walker", #SearchRange, found, #WholeMap);
+
+    if ($ListSize(found) == 0)
+        $ListObjects(me, "hut", #SearchRange, found, #WholeMap);
+
+    if ($ListSize(found) == 0)
+        $ListObjects(me, "keep", #SearchRange, found, #WholeMap);
+
+    if ($ListSize(found) > 0)
+    begin
+        prey = $ListMember(found, 1);
+
+        if ($IsAdjacent(me, prey))
+            $AdjustAttribute(prey, #ATTRIB_HP, 0 - #BiteBase - $RandomNumber(#BiteRoll));
+        else
+            $Move(me, prey);
+    end
+end

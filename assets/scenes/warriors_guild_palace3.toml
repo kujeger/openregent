@@ -1,0 +1,12 @@
+# A level 3 Palace and a Warriors' Guild: the Veteran recruits example
+# mod's hire (crates/openregent/examples/veteran_recruits).
+version = 1
+map = { flat = { side = 128 } }
+
+[[unit]]
+code = "ABJ3" # Palace3
+at = [64, 64]
+
+[[unit]]
+code = "ABV1" # Warriors_Guild
+at = [72, 64]

@@ -1,0 +1,446 @@
+# openregent session: setup, then inputs by frame
+setup (seed:190881324,cheats:None,scene:None,quest:Some("XQ10"),map_seed:Some(-955806531),side:None,land:None,settlement:None,scenario:None,monsters:None,events:("NONE","NONE"),gold:30000,players:1,victory:eliminate,goal:None,limits:None,mods:[])
+input 26 p0 read 558
+input 26 p0 unpreview ABS1
+input 26 p0 build ABS1 1824 928 0
+digest 100 cea45eec01f327a2
+input 115 p0 unpreview ABS1
+input 115 p0 build ABS1 2496 1088 0
+input 136 p0 research 4 5041 0
+digest 200 771e1a6efd4ca7ba
+digest 300 9b6a87c5d1cb5099
+input 346 p0 research 4 5040 0
+digest 400 8713b37d980cff98
+digest 500 c8f92990a2b08a86
+digest 600 897ad41d5db54377
+input 634 p0 unpreview ABC1
+input 634 p0 build ABC1 2560 1344 0
+digest 700 c8d274f69918353e
+digest 800 209800d5b80a2154
+input 840 p0 alter 0 48 APV:49 25 0 1000
+input 840 p0 alter 0 48 APV:49 25 0 1000
+input 840 p0 alter 0 48 APV:49 25 0 1000
+input 840 p0 alter 0 48 APV:49 25 0 1000
+input 843 p0 alter 0 48 APV:49 25 0 1000
+input 843 p0 alter 0 48 APV:49 25 0 1000
+input 843 p0 alter 0 48 APV:49 25 0 1000
+input 843 p0 alter 0 48 APV:49 25 0 1000
+input 857 p0 alter 0 48 APV:49 25 0 1000
+input 860 p0 alter 0 48 APV:49 25 0 1000
+digest 900 c75ea931f61ea5d2
+digest 1000 901c2059be2306f6
+digest 1100 8e2b4cea13d2626b
+digest 1200 a7ed5af38ac418cb
+digest 1300 89d09d15be0c4b95
+digest 1400 0df60e45b9301992
+digest 1500 0534296d5f775e6e
+input 1573 p0 alter 0 44 APV:49 25 0 1000
+input 1573 p0 alter 0 44 APV:49 25 0 1000
+input 1573 p0 alter 0 44 APV:49 25 0 1000
+input 1573 p0 alter 0 44 APV:49 25 0 1000
+input 1576 p0 alter 0 44 APV:49 25 0 1000
+input 1576 p0 alter 0 44 APV:49 25 0 1000
+input 1576 p0 alter 0 44 APV:49 25 0 1000
+input 1576 p0 alter 0 44 APV:49 25 0 1000
+input 1582 p0 alter 0 44 APV:49 25 0 1000
+input 1585 p0 alter 0 44 APV:49 25 0 1000
+digest 1600 786e962ea37f4858
+digest 1700 8f43179ba676d864
+digest 1800 3632adc61893aab4
+input 1816 p0 upgrade 4
+digest 1900 4508277aeec6bcdf
+digest 2000 03e8a9b61e69d605
+digest 2100 e29e4ad7d2361d36
+input 2176 p0 recruit 40 AVB1
+input 2189 p0 recruit 42 AVB1
+digest 2200 efd8a19973a64eaa
+input 2213 p0 flag ARA4 1312 1504 0 0 0
+input 2230 p0 alter 0 59 APR:1 100 0 0
+input 2233 p0 alter 0 59 APR:1 100 0 0
+digest 2300 f686c5ed5925db2f
+digest 2400 342a048d51c39649
+digest 2500 e0ce63f368e0c313
+digest 2600 4560602e75799e1e
+input 2664 p0 flag ARA4 1408 1696 0 0 0
+input 2684 p0 alter 0 74 APR:1 100 0 0
+input 2687 p0 alter 0 74 APR:1 100 0 0
+digest 2700 1994e9177fc8e7ad
+digest 2800 33d2567260d3a054
+digest 2900 4f63bd66a4b8edde
+input 2941 p0 recruit 40 AVB1
+input 2957 p0 recruit 42 AVB1
+input 2983 p0 research 4 5042 0
+digest 3000 75e7ce86bf85948a
+digest 3100 c23c93aa55b725ab
+digest 3200 d87c9dc984349b68
+digest 3300 533c2284b0908a65
+digest 3400 ec2730b3a7814d14
+input 3402 p0 unpreview ABE1
+input 3402 p0 build ABE1 2528 864 0
+input 3449 p0 upgrade 4
+digest 3500 917c35d6307b6f0d
+digest 3600 7e814216bcb8f076
+digest 3700 6f0d955edd4d589b
+digest 3800 a07440c7167076a2
+digest 3900 258428fd7122fadf
+digest 4000 6311927964d13b9f
+input 4040 p0 unpreview ABH1
+input 4040 p0 build ABH1 2368 608 0
+digest 4100 70205c3d56698c6c
+digest 4200 300cd346075882ba
+digest 4300 fe2922c5ce344ca1
+input 4376 p0 research 84 5020 0
+digest 4400 6bb92ab4ceebc3bc
+input 4496 p0 research 88 5041 0
+digest 4500 6e9acf80112f3c1c
+digest 4600 1c99ee72f5cd6e0c
+digest 4700 0128406e785553b9
+input 4731 p0 research 88 5040 0
+digest 4800 b0cef38bd9d35d2a
+input 4843 p0 upgrade 84
+digest 4900 19887813061b151f
+digest 5000 f6025de10d718280
+digest 5100 801e701f72f87d01
+digest 5200 403924c9d5e9e2c4
+input 5247 p0 upgrade 88
+digest 5300 f436314237d54420
+digest 5400 2d76146065b0bcd9
+digest 5500 887144d6cacd54ce
+digest 5600 7fe3330bfabddc57
+digest 5700 4f528b17a6bcbc11
+digest 5800 792506600ae5df88
+digest 5900 f8040519362e3483
+input 5993 p0 research 88 5042 0
+digest 6000 cb3a245945b4da8f
+digest 6100 253549e66c664d2b
+digest 6200 06aaeb22d21297e3
+digest 6300 c50ee6624351f88c
+digest 6400 96b595fc8e7cbf19
+digest 6500 7d8cea062a68475a
+input 6567 p0 upgrade 88
+digest 6600 915601bf8ca8cb37
+digest 6700 c53ce64eb18803b9
+digest 6800 52cd26c4d7d3910e
+digest 6900 7b96d50793524652
+digest 7000 7bc20cc5bfab6fc9
+input 7069 p0 unpreview ABF1
+input 7069 p0 build ABF1 2688 544 0
+digest 7100 ad62d0397a1388b6
+digest 7200 fedf65b245167c1b
+input 7275 p0 unpreview ABF1
+input 7275 p0 build ABF1 2816 736 0
+digest 7300 c8c49e9ede57c38b
+input 7351 p0 unpreview ABF1
+input 7351 p0 build ABF1 2816 960 0
+digest 7400 a0aa3e8c0b71b8e2
+digest 7500 b3fcdf3f851418d1
+input 7592 p0 research 84 5021 0
+digest 7600 10f0cec153799673
+digest 7700 52fb4620b3721572
+digest 7800 091052717b7c0bd5
+input 7820 p0 recruit 42 AVB1
+input 7835 p0 recruit 40 AVB1
+digest 7900 ccef0df8f0006964
+digest 8000 1e8b5e33983eafc5
+digest 8100 e91ea6603c9ced74
+digest 8200 3669874da591a84b
+input 8271 p0 recruit 40 AVB1
+digest 8300 86f8956d35e43907
+digest 8400 832cf05052d4e792
+input 8427 p0 recruit 40 AVB1
+digest 8500 0582cf7614751c7a
+digest 8600 411edf646c4b80e3
+input 8627 p0 recruit 40 AVB1
+digest 8700 b581935d6dbc4b53
+input 8719 p0 recruit 42 AVB1
+digest 8800 f3712f16c7e331de
+input 8879 p0 recruit 42 AVB1
+digest 8900 2111aca664da8a9e
+digest 9000 618f6bc3a652b675
+input 9003 p0 recruit 40 AVB1
+digest 9100 7bba5d5459d35235
+input 9118 p0 recruit 42 AVB1
+input 9155 p0 recruit 42 AVB1
+input 9196 p0 recruit 42 AVB1
+digest 9200 6d156c1c08f32b1b
+input 9229 p0 recruit 42 AVB1
+input 9250 p0 recruit 42 AVB1
+input 9272 p0 recruit 42 AVB1
+input 9297 p0 recruit 42 AVB1
+digest 9300 6f25cd4efde09c5b
+input 9326 p0 recruit 42 AVB1
+input 9362 p0 recruit 42 AVB1
+input 9387 p0 recruit 42 AVB1
+digest 9400 b172f28d3d68251b
+input 9499 p0 recruit 40 AVB1
+digest 9500 2642d617cfb21026
+digest 9600 f857feedd59b2ee6
+input 9628 p0 recruit 42 AVB1
+digest 9700 0324b4bf579e13ff
+digest 9800 d97ce273573e6fe5
+digest 9900 d435da7696549e28
+digest 10000 bbe45a833a3a33ab
+digest 10100 5734218d9fa0b4ef
+digest 10200 38fc0fc7c0e48be9
+digest 10300 3bb4501ef3ee12cc
+digest 10400 dfda97c7624bb9ee
+digest 10500 781631d6d2a1247e
+digest 10600 53ab704c07d3ff97
+digest 10700 fdb14b7dc0074f53
+digest 10800 7cb88e2ab16bfe4d
+digest 10900 68411e98fb9ed424
+digest 11000 699592490c65cdd3
+digest 11100 c991b2668d6dcf63
+digest 11200 2334f987d4621abf
+digest 11300 181f8ee55550fa1e
+digest 11400 91514e713a8d894c
+digest 11500 f8a268f2aab861d9
+digest 11600 d93c162d743056de
+input 11634 p0 upgrade 31
+digest 11700 fa854b4742a54518
+digest 11800 13b12b016f58decc
+digest 11900 18798c3f0981a4fb
+digest 12000 5a87edfe25a69eab
+digest 12100 d82ad76341088594
+digest 12200 2086d89e898e97d3
+digest 12300 46f6957507607b75
+digest 12400 4d2ab8352bb7f488
+digest 12500 d5dde795fe8adf54
+digest 12600 47bdf5b7d8df26a5
+digest 12700 103967b3c817f9bf
+digest 12800 14ba52ea75520337
+digest 12900 bf1c155f45457032
+digest 13000 7e1d306b9b67551c
+digest 13100 8476fd8bb67648e1
+digest 13200 9586df13e03deac2
+digest 13300 aed37651a10c618d
+digest 13400 0e2068bb695c22b1
+input 13441 p0 alter 0 219 APV:49 25 0 1000
+input 13441 p0 alter 0 219 APV:49 25 0 1000
+input 13441 p0 alter 0 219 APV:49 25 0 1000
+input 13441 p0 alter 0 219 APV:49 25 0 1000
+input 13444 p0 alter 0 219 APV:49 25 0 1000
+input 13444 p0 alter 0 219 APV:49 25 0 1000
+input 13444 p0 alter 0 219 APV:49 25 0 1000
+input 13444 p0 alter 0 219 APV:49 25 0 1000
+input 13450 p0 alter 0 219 APV:49 25 0 1000
+input 13453 p0 alter 0 219 APV:49 25 0 1000
+digest 13500 6aeb2bf217cae0fe
+digest 13600 8177fa9453ced0ff
+digest 13700 24067eacf52db3a2
+digest 13800 2adf391acd18a07b
+input 13886 p0 unpreview ABH1
+input 13886 p0 build ABH1 2944 1184 0
+digest 13900 72df85fa1e0fd192
+input 13946 p0 unpreview ABE1
+input 13946 p0 build ABE1 3264 1216 0
+digest 14000 64c37558108eaf23
+digest 14100 fe4970bdb3e38787
+input 14146 p0 alter 0 208 APV:49 25 0 1000
+input 14146 p0 alter 0 208 APV:49 25 0 1000
+input 14146 p0 alter 0 208 APV:49 25 0 1000
+input 14146 p0 alter 0 208 APV:49 25 0 1000
+input 14165 p0 alter 0 208 APV:49 25 0 1000
+input 14165 p0 alter 0 208 APV:49 25 0 1000
+input 14165 p0 alter 0 208 APV:49 25 0 1000
+input 14165 p0 alter 0 208 APV:49 25 0 1000
+input 14172 p0 alter 0 208 APV:49 25 0 1000
+input 14175 p0 alter 0 208 APV:49 25 0 1000
+digest 14200 d454a4dd4925fce7
+digest 14300 b34429eeb8c1455b
+digest 14400 b92c590af2b01f9d
+digest 14500 01ef83144cfa4a58
+input 14573 p0 unpreview ABF1
+input 14573 p0 build ABF1 3168 1376 0
+digest 14600 09cf727d62903f7c
+digest 14700 853ada77d7fb51a4
+digest 14800 dbf9c95ed9b4b724
+input 14806 p0 unpreview ABF1
+input 14806 p0 build ABF1 3488 1344 0
+digest 14900 26febc234a092e63
+digest 15000 4c28ec6946242e18
+input 15014 p0 unpreview ABF1
+input 15014 p0 build ABF1 3584 1120 0
+digest 15100 6fca14f46faa1d39
+digest 15200 645a6f827c592ea1
+digest 15300 b0ffb598d0512636
+input 15352 p0 unpreview ABF1
+input 15352 p0 build ABF1 3104 896 0
+digest 15400 7209f5f374fad336
+digest 15500 3fed32327b45c40e
+input 15570 p0 unpreview ABF1
+input 15570 p0 build ABF1 3424 896 0
+digest 15600 c592a43085941a76
+input 15648 p0 research 232 5020 0
+digest 15700 a70d47dda3675e2d
+digest 15800 bddeee832cb66cc2
+input 15876 p0 upgrade 232
+digest 15900 25189c29eb14eafc
+digest 16000 c6f7fbfc704c4066
+digest 16100 dcd707438d01f504
+input 16189 p0 research 232 5021 0
+digest 16200 fbef415491d219d6
+digest 16300 b8318f64ba05dde2
+digest 16400 6199f67b9957f3d8
+digest 16500 c8a9d75dfa4bdafa
+digest 16600 2871e00df2ca906d
+input 16670 p0 research 229 5041 0
+digest 16700 6c04c484e822bded
+digest 16800 2cee3faa886fb293
+input 16894 p0 research 229 5040 0
+digest 16900 aca20c1a03898c97
+digest 17000 0f30b33890303eb7
+digest 17100 95e8362408c603f5
+input 17189 p0 upgrade 229
+digest 17200 cfc45ea99506171b
+digest 17300 4e2f0bef874f07a7
+digest 17400 39e1938dfb4b86f5
+input 17442 p0 research 229 5042 0
+digest 17500 b063c705e51dec3e
+digest 17600 20d174fdfa850568
+digest 17700 af62162901e2d25a
+input 17769 p0 upgrade 229
+digest 17800 7919bd8abd108e61
+digest 17900 814d842931f4138f
+digest 18000 f1597333e1e6ce62
+digest 18100 2d0fcae4c7ee35b2
+input 18162 p0 unpreview ABS1
+input 18162 p0 build ABS1 1760 608 0
+digest 18200 846b38a23ea8b157
+digest 18300 9d9fdfeb6d1500b2
+input 18311 p0 unpreview ABV1
+input 18311 p0 build ABV1 3296 640 0
+input 18374 p0 unpreview ABS1
+input 18374 p0 build ABS1 2080 352 0
+digest 18400 bd2173a0871b549d
+digest 18500 2e28df110e806d43
+digest 18600 2903a18785354b65
+digest 18700 e7d5ed7b92dc3a10
+digest 18800 eecca2b93569dc6b
+digest 18900 b5a7f5651767c659
+digest 19000 21189171c4426590
+digest 19100 bab85e91e17e748c
+digest 19200 d6fa96b14f59a109
+digest 19300 8c01049406bc25df
+digest 19400 06cc4580cadcaa02
+digest 19500 a4bf6e79b44b68c7
+digest 19600 aa4669a97d173dc6
+input 19681 p0 recruit 287 AVL1
+digest 19700 d619f89235dacc2d
+digest 19800 3e0989fd5f4d9881
+digest 19900 5102d5f5447661d2
+input 19907 p0 recruit 287 AVL1
+input 19997 p0 recruit 286 AVB1
+digest 20000 f28bc9f5115a354f
+digest 20100 b9536048b9b8d8ba
+input 20179 p0 recruit 286 AVB1
+digest 20200 f4037d104b2ac291
+input 20213 p0 recruit 288 AVB1
+input 20292 p0 recruit 287 AVL1
+digest 20300 7e3f863aac652018
+input 20397 p0 recruit 286 AVB1
+digest 20400 3ceda8714d93ab28
+input 20446 p0 recruit 288 AVB1
+digest 20500 ef6b810e44580efe
+input 20551 p0 recruit 287 AVL1
+digest 20600 7e38e0907e43d736
+input 20622 p0 recruit 286 AVB1
+input 20665 p0 recruit 288 AVB1
+digest 20700 a6fbfe68441b24f2
+input 20798 p0 recruit 286 AVB1
+digest 20800 990376d15c3bb16c
+input 20850 p0 recruit 288 AVB1
+digest 20900 3c7ae4979b72ac74
+digest 21000 5a3f3233c0aa1a5b
+input 21026 p0 recruit 288 AVB1
+input 21054 p0 recruit 286 AVB1
+digest 21100 d417a118b6731bf2
+digest 21200 86e9f84341a5d702
+input 21205 p0 recruit 288 AVB1
+digest 21300 b193bc80d667d89b
+digest 21400 8d3052926ea01e2f
+digest 21500 fea1d6373bee5ebd
+input 21555 p0 flag ARA2 1760 1600 0 0 20
+input 21575 p0 alter 0 314 APR:1 100 0 0
+input 21575 p0 alter 0 314 APR:1 100 0 0
+input 21575 p0 alter 0 314 APR:1 100 0 0
+input 21575 p0 alter 0 314 APR:1 100 0 0
+input 21575 p0 alter 0 314 APR:1 100 0 0
+input 21599 p0 resource 0 1500 spend
+input 21599 p0 rage 40
+digest 21600 594d2ff767f3ab40
+digest 21700 017bc38f63eb8928
+digest 21800 d9559d76574980ea
+digest 21900 cc718b6edc393bd5
+digest 22000 19f875871fd4709e
+digest 22100 2c6c4020e245978c
+input 22128 p0 resource 0 1500 spend
+input 22128 p0 rage 40
+input 22161 p0 recruit 287 AVL1
+digest 22200 449fc17a769453d8
+digest 22300 b2d8aba6a3ec2d54
+input 22376 p0 recruit 287 AVL1
+digest 22400 fa86fd4ad6a095d3
+digest 22500 b71204e82c33d262
+digest 22600 1922b2ed9e521290
+input 22635 p0 research 46 5000 0
+input 22656 p0 resource 0 1500 spend
+input 22656 p0 rage 40
+input 22694 p0 recruit 287 AVL1
+digest 22700 a1cf8e8ee9a2d60b
+digest 22800 2df69935b063e85f
+digest 22900 0ffed999df8006d3
+input 22983 p0 research 46 5001 0
+digest 23000 5b7f56dad7d02054
+input 23036 p0 recruit 288 AVB1
+digest 23100 337bf4b3eb1d8748
+digest 23200 ba4b580e5330b562
+input 23299 p0 upgrade 46
+digest 23300 f95c5b5233479367
+input 23319 p0 resource 0 1500 spend
+input 23319 p0 rage 40
+digest 23400 50628e58fe35408e
+digest 23500 d870c5b085049e9d
+input 23531 p0 read 13349
+input 23558 p0 research 46 5002 0
+digest 23600 c9131ba9d2b3a798
+digest 23700 a8503095cc87aefc
+digest 23800 ff9569188a951260
+input 23860 p0 read 13627
+digest 23900 f6d262699fa51068
+input 23984 p0 research 46 5003 0
+digest 24000 23f338dc7a7c9f1c
+input 24006 p0 resource 0 1500 spend
+input 24006 p0 rage 40
+digest 24100 b47c9191e04f9925
+input 24164 p0 recruit 40 AVB1
+digest 24200 1b1e6928d1587eb2
+digest 24300 3ef8f8e4a11e544b
+input 24393 p0 upgrade 46
+digest 24400 079319503f9610e7
+input 24427 p0 recruit 288 AVB1
+digest 24500 3255a4b179f114f3
+input 24542 p0 resource 0 1500 spend
+input 24542 p0 rage 40
+input 24580 p0 recruit 287 AVL1
+digest 24600 f265400a3cf40a40
+digest 24700 df299ca0b4f8c6d9
+digest 24800 a0744db8c0aaf759
+input 24849 p0 recruit 286 AVB1
+digest 24900 2c22ec340095fc7c
+digest 25000 7f8e9beaec529de5
+input 25089 p0 recruit 287 AVL1
+digest 25100 d52ef7feee44a9c1
+input 25109 p0 research 46 5005 0
+input 25135 p0 resource 0 1500 spend
+input 25135 p0 rage 40
+digest 25200 101a98ad056961c8
+digest 25300 2d852d8f233c16fa
+digest 25400 a4f0408ffd5c1d58
+digest 25500 bdb403055d83a97e
+digest 25600 012ae609cc4bff02
+input 25665 p0 resource 0 1500 spend
+input 25665 p0 rage 40
+digest 25700 2782fe91d03874ba
+digest 25800 aa6ccba6adf44f7b
+digest 25900 898e17ae7cabd9df

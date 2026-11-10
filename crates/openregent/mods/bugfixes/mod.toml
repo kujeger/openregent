@@ -1,0 +1,11 @@
+version = 1
+id = "{07C66EB7-1379-4B7A-8328-CDA91B2AD5DB}"
+name = "Bugfixes"
+display_name = "Bug fixes"
+description = "Fixes for faults in the shipped scripts."
+details = "Heroes under Aura of Peace share an explore flag's reward."
+base = "MajestyExpansion"
+
+[[script]]
+name = "bugfixes"
+sources = ["GPL/gold.gpl"]

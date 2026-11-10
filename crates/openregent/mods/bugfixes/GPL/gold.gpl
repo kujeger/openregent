@@ -1,0 +1,43 @@
+// The expansion's DropGoldInRadius_SamePlayer (mx_Monster_Deaths.gpl),
+// fixed. A spell can change a hero's "type": Invisibility makes it
+// "invisible", camouflage "Camouflaged", Aura of Peace "hidden". The
+// original searched for the first two only, so a healer under the aura
+// went unpaid.
+function dropgoldinradius_sameplayer(agent thisagent, integer amount)
+
+declare
+	list heroes;
+	agent hero;
+	integer share;
+
+begin
+	heroes = $bugfixes_mine_near(thisagent, "hero");
+	heroes = $addlists(heroes, $bugfixes_mine_near(thisagent, "invisible"));
+	heroes = $addlists(heroes, $bugfixes_mine_near(thisagent, "Camouflaged"));
+	heroes = $addlists(heroes, $bugfixes_mine_near(thisagent, "Hidden"));
+
+	// A hero's type changes: "hidden" under Aura of Peace or while a Ranger
+	// is off the map, "Invisible", "camouflaged". Its subtype stays "Hero",
+	// so this keeps those and drops others sharing the types: captive
+	// peasants, charmed monsters.
+	heroes = $ListSubtypes(heroes, "Hero");
+
+	if ($listsize(heroes) > 0)
+		begin
+			share = amount / $listsize(heroes);
+			foreach hero in heroes do
+				$give_gold(hero, share);
+		end
+end
+
+// The units of a type within #gold_drop_radius of an agent, owned by its
+// owner, nearest first. The caller's list is grouped by type.
+function bugfixes_mine_near(agent thisagent, string kind) is list
+
+declare
+	list found;
+
+begin
+	$ListObjects(thisagent, kind, #gold_drop_radius, found, #MyPlayer);
+	return found;
+end

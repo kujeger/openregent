@@ -1,0 +1,77 @@
+version = 1
+id = "{3D01DE84-08A6-4C30-8459-EA2BF0530103}"
+name = "VeteranRecruits"
+display_name = "Veteran recruits"
+description = "Heroes join at the palace's level."
+details = "A hero hired from a guild starts at its player's palace level: 1, 2 or 3."
+base = "MajestyExpansion"
+
+[[script]]
+name = "veteran_recruits"
+sources = ["GPL/veteran.gpl"]
+
+# Each hero's birth script: the game's, then the palace's level.
+
+[[prototype]]
+instance = "Barbarian"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Cultist"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Dwarf"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Elf"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Gnome"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Healer"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Monk"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Paladin"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Priestess"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Ranger"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Rogue"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Solarus"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Warrior"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Warrior_of_Discord"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Wizard"
+set = { birthScript = "veteran_birth" }
+
+[[prototype]]
+instance = "Adept"
+set = { birthScript = "veteran_adept_birth" }

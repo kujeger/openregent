@@ -1,0 +1,17 @@
+# Where the tests' corpora are: installs, saves, traces. Every crate's
+# tests take it as a dev-dependency.
+[package]
+name = "regent_corpus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Locates the Majesty corpora the tests read"
+
+[dependencies]
+# `.env` (`env`).
+dotenvy = "0.15.7"
+regent_core = { path = "../regent_core" }
+
+[lints]
+workspace = true

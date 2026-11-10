@@ -1,0 +1,67 @@
+# The drawing layer openregent and regent_viewer share: archives as a corpus,
+# the map, the stage, materials, shaders and the art service.
+[package]
+name = "regent_draw"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Draws Majesty's ground, sprites and interface pictures with Bevy"
+
+# Bevy's features: see the workspace manifest.
+[dependencies]
+bevy = { workspace = true }
+bevy_egui = { workspace = true }
+# The shadow proxies' models (`sun::model`): glTF, read whole at start;
+# no image or URI loading.
+gltf = { version = "1.4", default-features = false, features = ["utils"] }
+# egui's pixels as bytes (`art::disk`); already under bevy_egui.
+bytemuck = "1.25"
+# openregent's command line reads the settings' values (`art::Upscale`, ...);
+# the viewer needs none.
+clap = { workspace = true, optional = true }
+# The art disk cache (`art::disk`): LZ4 blocks; bad input checked.
+lz4_flex = { version = "0.14.0", default-features = false, features = [
+    "std",
+    "checked-decode",
+] }
+regent_core = { path = "../regent_core" }
+# The override folder's pictures (`art::over`); the shadow test's capture.
+png = { workspace = true }
+# `art::Upscale` is a settings value.
+serde = { workspace = true }
+# The wind's tree table (`wind::Trees`), already under regent_core.
+toml = "1.2.0"
+# Warnings, to the program's subscriber.
+tracing = { workspace = true }
+# The art service's shrink on the GPU (`art::gpu`), drawn with the
+# renderer's own wgpu: Bevy's version and features.
+wgpu = { version = "30.0.1", default-features = false }
+# `art::Upscale::Xbrz`: xBRZ, GPL-3.0-only.
+xbrz-rs = "0.1"
+
+# The map tests' saves.
+[dev-dependencies]
+regent_corpus = { path = "../regent_corpus" }
+
+[features]
+# Links Bevy dynamically, for fast rebuilds; `just` turns it on.
+dev = ["bevy/dynamic_linking"]
+# Test tier: `install` needs the game's files. Without it `cargo test`
+# needs no game data.
+install = []
+
+[[test]]
+name = "cursor"
+required-features = ["install"]
+
+[[test]]
+name = "glow"
+required-features = ["install"]
+
+[[test]]
+name = "lie"
+required-features = ["install"]
+
+[lints]
+workspace = true

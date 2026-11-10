@@ -1,0 +1,35 @@
+// A hero's birth script, set by the manifest: the game's birth, then
+// the hiring level.
+function veteran_birth(agent hero)
+
+declare
+
+begin
+	$hero_birth(hero);
+	$veteran_level(hero);
+end
+
+// The adept's: the expansion gives it its own birth script.
+function veteran_adept_birth(agent hero)
+
+declare
+
+begin
+	$adept_birth(hero);
+	$veteran_level(hero);
+end
+
+// A hero hired from a guild rises to its palace's level, 1 to 3, as
+// heroes the game raises at birth do. hero_birth keeps "home" only for
+// a building with members; a player without a palace stays at 1.
+function veteran_level(agent hero)
+
+declare
+	agent palace;
+
+begin
+	palace = $GetTruePalace(hero);
+
+	if ($IsValidGamePiece(hero's "home") && $IsValidGamePiece(palace))
+		$advance_to_level(hero, $GetBuildingLevel(palace));
+end

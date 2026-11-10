@@ -1,0 +1,80 @@
+<!-- The test game's units, in the XML a mod writes (regent_core::data::desc::xml). -->
+<Majesty>
+  <!-- The engine knows a palace by the first three letters of its code. -->
+  <Description type="Unit" subType="Building" ID="ABJZ" Name="Keep">
+    <Engine>
+      <Info value="ModifyTerrainTextureOnPlacement"/>
+      <Info value="ModifyTerrainHeightOnPlacement"/>
+      <Info value="BlockGround"/>
+      <ImageIDBase value="ZIB1"/>
+    </Engine>
+    <Game>
+      <MaxHP value="500"/>
+      <SightRange value="12"/>
+      <Flags value="NotBuildable"/>
+    </Game>
+  </Description>
+
+  <Description type="Unit" subType="Building" ID="ZTH1" Name="Hut">
+    <Engine>
+      <Info value="ModifyTerrainTextureOnPlacement"/>
+      <Info value="ModifyTerrainHeightOnPlacement"/>
+      <Info value="BlockGround"/>
+      <CanUse value="HumanPlayer"/>
+      <ImageIDBase value="ZIB1"/>
+    </Engine>
+    <Game>
+      <Cost value="120"/>
+      <MaxHP value="80"/>
+      <SightRange value="6"/>
+    </Game>
+  </Description>
+
+  <Description type="Unit" subType="Building" ID="ZTL1" Name="Lodge">
+    <Engine>
+      <Info value="ModifyTerrainTextureOnPlacement"/>
+      <Info value="ModifyTerrainHeightOnPlacement"/>
+      <Info value="BlockGround"/>
+      <CanUse value="HumanPlayer"/>
+      <ImageIDBase value="ZIB1"/>
+    </Engine>
+    <Game>
+      <Cost value="200"/>
+      <MaxHP value="120"/>
+      <MaxGuildMembers value="2"/>
+      <SightRange value="6"/>
+      <Flags value="IsGuild"/>
+      <Produces>
+        <Unit ID="Walker"/>
+      </Produces>
+    </Game>
+  </Description>
+
+  <Description type="Unit" subType="Character" ID="ZTW1" Name="Walker">
+    <Engine>
+      <Info value="BlockGround"/>
+      <CanUse value="HumanPlayer"/>
+      <ImageIDBase value="ZIC1"/>
+      <Attachment kind="Movement" type="Walk" ID="Trot"/>
+    </Engine>
+    <Game>
+      <Cost value="40"/>
+      <MaxHP value="30"/>
+      <SightRange value="8"/>
+      <RecruitDelay value="1000"/>
+    </Game>
+  </Description>
+
+  <Description type="Unit" subType="Character" ID="ZTB1" Name="Biter">
+    <Engine>
+      <Info value="BlockGround"/>
+      <CanUse value="Monster"/>
+      <ImageIDBase value="ZIC1"/>
+      <Attachment kind="Movement" type="Walk" ID="Trot"/>
+    </Engine>
+    <Game>
+      <MaxHP value="40"/>
+      <SightRange value="8"/>
+    </Game>
+  </Description>
+</Majesty>

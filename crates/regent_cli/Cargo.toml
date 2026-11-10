@@ -1,0 +1,29 @@
+# Inspection CLI over the library's readers. Separate crate keeps its
+# dependencies out of the library build.
+[package]
+name = "regent_cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Inspection tools for Majesty's data files and GPL sources"
+
+[dependencies]
+clap = { workspace = true, features = [
+    "help",
+    "usage",
+    "error-context",
+    "suggestions",
+] }
+regent_core = { path = "../regent_core" }
+# `.env` (`env`).
+regent_corpus = { path = "../regent_corpus" }
+png = { workspace = true }
+
+[features]
+# Test tier: `install` needs the game's files. Without it `cargo test`
+# needs no game data.
+install = []
+
+[lints]
+workspace = true

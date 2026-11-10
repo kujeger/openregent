@@ -1,0 +1,18 @@
+[Keep]
+{ Thing (type keep) }
+[end]
+[Hut]
+{ Thing (type hut) }
+[end]
+[Lodge]
+{ Thing (type lodge) }
+[end]
+[Walker]
+{ Thing (type walker) }
+[end]
+[Biter]
+{ Thing (type biter) }
+[end]
+[TestRoot]
+{ Thing (type root) }
+[end]

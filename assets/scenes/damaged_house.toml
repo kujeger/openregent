@@ -1,0 +1,16 @@
+# A Palace and a peasant house at 20 of its 75 hit points, its fires
+# lit. Peasants never repair a house; with the built-in mod "Peasant
+# houses mend themselves" it regains 1 hit point every 2 game seconds.
+#
+#   openregent --headless --scene assets/scenes/damaged_house.toml --mods {A2A48A02-2BCE-42B5-8D2F-22B59DB3B720}
+version = 1
+map = { flat = { side = 128 } }
+
+[[unit]]
+code = "ABJ1" # Palace1
+at = [64, 64]
+
+[[unit]]
+code = "ABe1" # General_Housing
+at = [72, 64]
+attributes = { HP = 20 }

@@ -1,0 +1,359 @@
+//! The buildings that cast from a model (`[enhancements] cast =
+//! "models"`, `regent_draw::sun`): each finished one with a model, shown,
+//! handed to the bake; its painted shadow dropped, and its bodies kept
+//! from its own model's shadow.
+//!
+//! ```text
+//!  O   a debug key ([enhancements] debug_keys; a cheat), while models cast: their
+//!      buildings' sprites hidden, their models drawn plain in their place
+//!      (`regent_draw::sun::bare`), or the sprites drawn again
+//! ```
+
+use bevy::camera::visibility::RenderLayers;
+use bevy::prelude::*;
+
+use regent_draw::lie::Footing;
+use regent_draw::map::Maps;
+use regent_draw::material::{Band, Body, Painted};
+use regent_draw::sun::bare::Sprites;
+use regent_draw::sun::model::Proxies;
+use regent_draw::sun::{Casters, Casting, Casts, Sun};
+
+use regent_core::sim::world::cheat::Cheats;
+
+use crate::files::config::Settings;
+use crate::game::seen::Watch;
+use crate::map::pieces::{Keyed, Piece};
+
+/// On a body [`casting`] hid: on no render layer, so no camera draws it,
+/// its frame cycle left alone.
+#[derive(Component)]
+pub(crate) struct Unshown;
+
+/// On a band [`casting`] replaced by a copy without its darkening: the
+/// tile's own band, to go back to. Bands are cached by tile and the placing
+/// preview draws a finished building's tile with no model behind it, so a
+/// piece cannot change the band itself.
+#[derive(Component)]
+pub(crate) struct Shared(Handle<Band>);
+
+/// On a band whose tile holds a part's darkening: the tile without its
+/// ground shadow, to draw while a model casts
+/// ([`Cel::aloft`](regent_draw::map::cel::Cel::aloft)).
+#[derive(Component)]
+pub(crate) struct Aloft(pub(crate) Handle<Image>);
+
+/// O hides the sprites of the buildings casting from a model, or draws
+/// them again, with `[enhancements] debug_keys`, while models cast: a
+/// cheat, as every debug key (it shows what stands behind them).
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+pub(crate) fn key(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut live: crate::input::map_keys::Live,
+    (settings, sun): (Res<Settings>, Res<Sun>),
+    seen: Watch,
+    mut sprites: ResMut<Sprites>,
+) {
+    if keys.just_pressed(KeyCode::KeyO)
+        && settings.enhancements.debug_keys
+        && seen.world().cheats() == Cheats::Allowed
+        && sun.models()
+        && live.keys()
+    {
+        *sprites = sprites.toggled();
+    }
+}
+
+/// What [`casting`] reads of a piece.
+type Drawn = (
+    Entity,
+    &'static Keyed,
+    &'static Footing,
+    &'static Transform,
+    &'static Visibility,
+    Option<&'static Children>,
+    Has<Casts>,
+);
+
+/// A piece's parts [`casting`] reads: its bands, copied or not, and its
+/// bodies, hidden or not.
+type Parts<'w, 's> = (
+    Query<
+        'w,
+        's,
+        (
+            &'static MeshMaterial3d<Band>,
+            Option<&'static Shared>,
+            Option<&'static Aloft>,
+        ),
+    >,
+    Query<'w, 's, Has<Unshown>, With<MeshMaterial3d<Body>>>,
+);
+
+/// The casters, once a frame, after the pieces are placed.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+pub(crate) fn casting(
+    mut commands: Commands,
+    (sun, proxies, maps): (Res<Sun>, Res<Proxies>, Res<Maps>),
+    pieces: Query<Drawn, With<Piece>>,
+    (bands, bodies): Parts,
+    sprites: Res<Sprites>,
+    mut materials: ResMut<Assets<Band>>,
+    mut casters: ResMut<Casters>,
+) {
+    let mut now = Vec::new();
+
+    for (entity, keyed, footing, put, seen, children, had) in &pieces {
+        let (code, set, _) = keyed.0;
+        let casts = sun.models() && *seen != Visibility::Hidden && proxies.of(code, set).is_some();
+
+        if casts {
+            let flat = maps.flat_y(footing.row);
+
+            now.push(Casting {
+                piece: entity,
+                code,
+                set,
+                at: Vec2::new(put.translation.x, flat),
+                lift: footing.ground - flat,
+                depth: put.translation.z,
+            });
+        }
+
+        match (casts, had) {
+            (true, false) => {
+                commands.entity(entity).insert(Casts);
+            }
+            (false, true) => {
+                commands.entity(entity).remove::<Casts>();
+            }
+            _ => {}
+        }
+
+        // Its bands' darkening drawn, or dropped for the model's.
+        for child in children.into_iter().flatten() {
+            match (casts, bands.get(*child)) {
+                (true, Ok((band, None, aloft))) => {
+                    if let Some(copy) = materials.get(&band.0).cloned() {
+                        // A part's darkening stays; the ground's goes.
+                        let copy = materials.add(match aloft {
+                            Some(aloft) => Band {
+                                indices: aloft.0.clone(),
+                                ..copy
+                            },
+                            None => Band {
+                                painted: Painted::Dropped,
+                                ..copy
+                            },
+                        });
+
+                        commands
+                            .entity(*child)
+                            .insert((MeshMaterial3d(copy), Shared(band.0.clone())));
+                    }
+                }
+                (false, Ok((_, Some(shared), _))) => {
+                    commands
+                        .entity(*child)
+                        .insert(MeshMaterial3d(shared.0.clone()))
+                        .remove::<Shared>();
+                }
+                _ => {}
+            }
+        }
+
+        // Its sprite hidden by the debug key, or drawn.
+        let hide = casts && *sprites == Sprites::Hidden;
+
+        for child in children.into_iter().flatten() {
+            match (hide, bodies.get(*child)) {
+                (true, Ok(false)) => {
+                    commands
+                        .entity(*child)
+                        .insert((Unshown, RenderLayers::none()));
+                }
+                (false, Ok(true)) => {
+                    commands.entity(*child).remove::<(Unshown, RenderLayers)>();
+                }
+                _ => {}
+            }
+        }
+    }
+
+    casters.set_if_neq(Casters(now));
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+
+    use regent_core::data::imag::SetKind;
+    use regent_core::data::tile::Mode;
+    use regent_draw::lie;
+    use regent_draw::shadow::Shadows;
+    use regent_draw::smooth::Sampling;
+    use regent_draw::soft::Ramps;
+    use regent_draw::sun::Cast;
+    use regent_draw::wind::{Gust, Sway};
+
+    use super::*;
+
+    use crate::testdata::{GUARDHOUSE, proxies};
+
+    /// A piece of the guardhouse drawing `set`, with `band` as its one band.
+    fn piece(world: &mut World, agent: u32, set: SetKind, band: Handle<Band>) -> Entity {
+        let set = set.id().try_into().expect("small");
+
+        world
+            .spawn((
+                Piece(agent),
+                Keyed((GUARDHOUSE, set, 0)),
+                Footing {
+                    row: 0.0,
+                    ground: 0.0,
+                },
+                Transform::default(),
+                Visibility::Inherited,
+            ))
+            .with_child(MeshMaterial3d(band))
+            .id()
+    }
+
+    /// A band of the guardhouse, its tile drawn from `indices`.
+    fn band(indices: Handle<Image>) -> Band {
+        Band {
+            indices,
+            rows: lie::ROWS,
+            shadows: Shadows::default(),
+            ramps: Ramps::of(Mode::Band),
+            sway: Sway::Still,
+            gust: Gust::STILL,
+            sampling: Sampling::Nearest,
+            painted: Painted::Kept,
+        }
+    }
+
+    /// What `piece`'s band draws.
+    fn painted(world: &World, piece: Entity) -> Painted {
+        let child = world.get::<Children>(piece).expect("a band")[0];
+        let band = world.get::<MeshMaterial3d<Band>>(child).expect("a band");
+
+        world
+            .resource::<Assets<Band>>()
+            .get(&band.0)
+            .expect("made")
+            .painted
+    }
+
+    /// Two buildings share a tile's band, one in a set that does not cast.
+    /// It keeps its painted shadow, whichever the query reaches last.
+    #[test]
+    fn a_building_not_casting_keeps_its_painted_shadow_beside_one_casting() {
+        for damaged_first in [true, false] {
+            let mut app = App::new();
+
+            app.insert_resource(Sun {
+                cast: Cast::Models,
+                ..Sun::default()
+            })
+            .insert_resource(Maps::with(Vec::new()))
+            .insert_resource(proxies())
+            .init_resource::<Sprites>()
+            .init_resource::<Casters>()
+            .init_resource::<Assets<Band>>();
+
+            let band = app.world_mut().resource_mut::<Assets<Band>>().add(Band {
+                indices: Handle::default(),
+                rows: lie::ROWS,
+                shadows: Shadows::default(),
+                ramps: Ramps::of(Mode::Band),
+                sway: Sway::Still,
+                gust: Gust::STILL,
+                sampling: Sampling::Nearest,
+                painted: Painted::Kept,
+            });
+            let world = app.world_mut();
+
+            let (damaged, finished) = if damaged_first {
+                let damaged = piece(world, 1, SetKind::Build, band.clone());
+
+                (damaged, piece(world, 2, SetKind::Inactive, band))
+            } else {
+                let finished = piece(world, 1, SetKind::Inactive, band.clone());
+
+                (piece(world, 2, SetKind::Build, band), finished)
+            };
+
+            world.run_system_once(casting).expect("ran");
+            world.flush();
+
+            assert_eq!(painted(world, damaged), Painted::Kept, "{damaged_first}");
+            assert_eq!(
+                painted(world, finished),
+                Painted::Dropped,
+                "{damaged_first}"
+            );
+
+            // No longer casting, it goes back to the tile's band.
+            *world.get_mut::<Visibility>(finished).expect("placed") = Visibility::Hidden;
+            world.run_system_once(casting).expect("ran");
+            world.flush();
+
+            assert_eq!(painted(world, finished), Painted::Kept, "{damaged_first}");
+        }
+    }
+
+    /// A flag lies in the tile with the ground shadow (the level 2
+    /// Guardhouse's). While a model casts its band draws the tile without
+    /// the shadow, darkening kept, not nothing; then its own again.
+    #[test]
+    fn a_casting_band_keeps_its_parts_darkening() {
+        let mut app = App::new();
+
+        app.insert_resource(Sun {
+            cast: Cast::Models,
+            ..Sun::default()
+        })
+        .insert_resource(Maps::with(Vec::new()))
+        .insert_resource(proxies())
+        .init_resource::<Sprites>()
+        .init_resource::<Casters>()
+        .init_resource::<Assets<Band>>();
+
+        let mut images = Assets::<Image>::default();
+        let tile = images.add(Image::default());
+        let flag = images.add(Image::default());
+        let shared = app
+            .world_mut()
+            .resource_mut::<Assets<Band>>()
+            .add(band(tile.clone()));
+        let world = app.world_mut();
+        let building = piece(world, 1, SetKind::Inactive, shared);
+        let child = world.get::<Children>(building).expect("a band")[0];
+
+        world.entity_mut(child).insert(Aloft(flag.clone()));
+        world.run_system_once(casting).expect("ran");
+        world.flush();
+
+        let drawn = |world: &World| {
+            let handle = &world.get::<MeshMaterial3d<Band>>(child).expect("a band").0;
+            let band = world.resource::<Assets<Band>>().get(handle).expect("made");
+
+            (band.indices.clone(), band.painted)
+        };
+
+        assert_eq!(drawn(world), (flag, Painted::Kept));
+
+        *world.get_mut::<Visibility>(building).expect("placed") = Visibility::Hidden;
+        world.run_system_once(casting).expect("ran");
+        world.flush();
+
+        assert_eq!(drawn(world), (tile, Painted::Kept));
+    }
+}
