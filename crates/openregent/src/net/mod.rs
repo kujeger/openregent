@@ -85,7 +85,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bevy::log::{debug, error, info};
+use bevy::log::{debug, error, info, warn};
 use regent_core::data::text::{Text, printf};
 use regent_core::save::Snapshot;
 use regent_core::sim::freestyle::MOST_PLAYERS;
@@ -604,6 +604,14 @@ impl Peer {
                 && self.nicks.get(s as usize) == Some(&hello.nick)
         });
         let refused = |why: &str| vec![(from, Packet::Refused(why.to_owned()).encode())];
+
+        if let Some(why) = self
+            .lobby
+            .as_ref()
+            .and_then(|(ours, _)| lobby::data_warning(ours, &hello.build))
+        {
+            warn!("net: {from}: {why}");
+        }
 
         match (why, seat) {
             (Some(why), _) => refused(&why),

@@ -1031,12 +1031,16 @@ fn found_rows(
                 .rect_filled(canvas.fit.rect(at), 0.0, save_page::LIT);
         }
 
-        // Why it may not be joined in red, else whether full, else its
-        // build.
+        // Why it may not be joined in red, else whether full, else a
+        // data warning, else its build.
+        let warning = ours.as_ref().and_then(|b| game.warning(b));
         let (state, tint) = match (ours.as_ref().and_then(|b| game.misfit(b)), game.full()) {
             (Some(why), _) => (why, FAILED),
             (None, true) => (FULL.to_owned(), paint::PALE),
-            (None, false) => (game.open.build.shown(), paint::PALE),
+            (None, false) => warning.map_or_else(
+                || (game.open.build.shown(), paint::PALE),
+                |why| (why.to_owned(), paint::PALE),
+            ),
         };
         let open = &game.open;
         let map = map_text(open, lists.dialog(open.players));

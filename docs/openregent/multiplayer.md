@@ -175,12 +175,13 @@ Tests: `two_peers_over_a_lossy_network_play_alike`,
 `chat_lines_arrive_once_in_order`, `a_file_arrives_whole_in_any_order`,
 `a_file_not_as_offered_is_refused`.
 
-- **Build check.** The host refuses a guest whose version, profile
+- **Build check.** The host refuses a guest whose version or profile
   (`debug_assertions`: the sim's `debug_assert!`s; both check overflow)
-  or data differ (`a_differing_build_is_refused_with_its_reason`). The
-  data hash covers the GPL images, the freestyle quest, the chart and
-  each archive's name (`/`-separated) and length, not the archives'
-  bytes. A differing git commit (`MAJ_COMMIT`, from `openregent/build.rs`;
+  differ (`a_differing_build_is_refused_with_its_reason`). Differing
+  data is warned, not refused: logged by the host, shown in the guest's
+  game list. The data hash covers the GPL images, the freestyle quest,
+  the chart and each archive's name (`/`-separated, lower case) and
+  length, not the archives' bytes. A differing git commit (`MAJ_COMMIT`, from `openregent/build.rs`;
   `-dirty` with local edits under `crates/`) is refused unless
   `--net-any-build`; the system may differ.
 - **Desync.** A differing digest holds every peer that finds it; each
@@ -499,7 +500,8 @@ guest   Multiplayer Setup open: UDP 47100 bound, shared (SO_REUSEADDR,
           broadcast; a game unheard 3 s leaves the list (Inferred bound);
           one heard twice (two networks) is one game, by its lobby id
 row     title (nick)  1/2 Players  land, Map N         build | Full | why not
-          (red: version, profile, data or commit differ, `lobby::mismatch`)
+          (red: version, profile or commit differ, `lobby::mismatch`;
+          differing data shown as a warning, `lobby::data_warning`)
 ```
 
 Announced, not asked: a guest's firewall need only let in 47100; a
@@ -511,7 +513,7 @@ scrolling. IPv4 only: no IPv6 multicast. Without a network up, a guest
 hears a host on its own machine at 127.0.0.1; with several guests there,
 only one of them (a shared port takes a unicast once). Tests announce
 nowhere unless told (`lobby::ANNOUNCED`).
-`lan_discovery_finds_hosts_marks_a_misfit_and_drops_one_gone`,
+`lan_discovery_finds_hosts_warns_of_other_data_and_drops_one_gone`,
 `guests_on_one_machine_share_the_discovery_port`,
 `a_host_announces_to_the_limited_broadcast_and_this_machine`.
 

@@ -1687,7 +1687,7 @@ fn a_polled_lobby_seats_guests_by_nick_and_lets_a_silent_one_go() {
 /// every way once, a guest's ready lapsing with a changed setup, the
 /// change said in the host's and every guest's chat, and
 /// the game startable only with every seat taken and every guest
-/// ready; a guest of other data refused.
+/// ready; a guest of another version refused.
 #[test]
 #[allow(clippy::too_many_lines, reason = "one lobby, step by step")]
 fn a_lobby_shows_its_setup_carries_chat_and_starts_only_when_all_are_ready() {
@@ -1805,9 +1805,9 @@ fn a_lobby_shows_its_setup_carries_chat_and_starts_only_when_all_are_ready() {
     assert!(chat.contains(&line("Ann", "hi")) && chat.contains(&line("Ann", "again")));
     assert_eq!((ann.chat(), bob.chat()), (&chat[..], &chat[..]));
 
-    // Other data: refused.
+    // Another version: refused.
     let other = Build {
-        data: 9,
+        version: "0".to_owned(),
         ..lobby_build()
     };
     let mut eve = Joining::new(host, (&other, "Eve"), clock.get()).expect("asking");
@@ -1815,7 +1815,8 @@ fn a_lobby_shows_its_setup_carries_chat_and_starts_only_when_all_are_ready() {
     until("Eve refused", || {
         let _ = eve.poll(clock.get());
         hosting.poll(clock.get());
-        eve.poll(clock.get()).is_err_and(|why| why.contains("data"))
+        eve.poll(clock.get())
+            .is_err_and(|why| why.contains("version"))
     });
 
     // Ready again, then started: each welcomed to the changed setup.
@@ -1874,12 +1875,12 @@ fn a_host_that_leaves_tells_its_guests_and_no_nick_is_a_seat_number() {
 }
 
 /// LAN discovery over localhost: three hosts found with their sessions,
-/// seats, maps and builds, the one of other data marked; a guest joins
+/// seats, maps and builds, the one of other data warned of; a guest joins
 /// one at the address found and its seats count up; a host that leaves
 /// drops off the list.
 #[test]
 #[allow(clippy::too_many_lines, reason = "one search, step by step")]
-fn lan_discovery_finds_hosts_marks_a_misfit_and_drops_one_gone() {
+fn lan_discovery_finds_hosts_warns_of_other_data_and_drops_one_gone() {
     let build = lobby_build();
     let other = Build {
         data: 9,
@@ -1954,10 +1955,10 @@ fn lan_discovery_finds_hosts_marks_a_misfit_and_drops_one_gone() {
     assert_eq!(found_ann.open.save, None);
     assert_eq!(found_ann.misfit(&build), None);
     assert!(!found_ann.full());
-    assert!(
-        find(&finder, "Cat")
-            .misfit(&build)
-            .is_some_and(|why| why.contains("data"))
+    assert_eq!(find(&finder, "Cat").misfit(&build), None);
+    assert_eq!(
+        find(&finder, "Cat").warning(&build),
+        Some(super::lobby::DATA_DIFFER)
     );
 
     // A guest joins Ann at the address found: her game is full.

@@ -171,14 +171,17 @@ fn data_hash(hd: &Path, sdk: &Path) -> Result<u64, String> {
         let len = std::fs::metadata(path)
             .map_err(|e| format!("{}: {e}", path.display()))?
             .len();
-        // One spelling on every system: `/` between parts.
+        // One spelling on every system: `/` between parts, lower case
+        // (Windows finds `FOO.CAM` as the definitions' `Foo.cam`; Linux
+        // falls back to the disk's spelling).
         let name = path
             .strip_prefix(hd)
             .unwrap_or(path)
             .components()
             .map(|part| part.as_os_str().to_string_lossy())
             .collect::<Vec<_>>()
-            .join("/");
+            .join("/")
+            .to_ascii_lowercase();
 
         h = fold(fold(h, name.as_bytes()), &len.to_le_bytes());
     }
@@ -191,11 +194,20 @@ fn data_hash(hd: &Path, sdk: &Path) -> Result<u64, String> {
 pub enum Builds {
     /// The same commit only, on any system.
     Same,
-    /// Any, of the same version, profile and data.
+    /// Any, of the same version and profile.
     Any,
 }
 
-/// Why `theirs` may not play with `ours`; `None` if it may.
+/// What a peer told of differing game data sees: warned, not refused.
+pub const DATA_DIFFER: &str = "the game data differ: the game may desync";
+
+/// [`DATA_DIFFER`] if `theirs` reads other game data than `ours`.
+pub fn data_warning(ours: &Build, theirs: &Build) -> Option<&'static str> {
+    (ours.data != theirs.data).then_some(DATA_DIFFER)
+}
+
+/// Why `theirs` may not play with `ours`; `None` if it may. Differing
+/// data does not refuse ([`data_warning`]).
 pub fn mismatch(ours: &Build, theirs: &Build, builds: Builds) -> Option<String> {
     if ours.version != theirs.version {
         Some(format!(
@@ -207,8 +219,6 @@ pub fn mismatch(ours: &Build, theirs: &Build, builds: Builds) -> Option<String> 
             "a {:?} build here, {:?} there: debug assertions differ",
             ours.profile, theirs.profile
         ))
-    } else if ours.data != theirs.data {
-        Some("the game data differ".to_owned())
     } else if ours.commit != theirs.commit && builds == Builds::Same {
         Some(format!(
             "commit {} here, {} there (the host may allow it: --net-any-build)",
@@ -990,6 +1000,10 @@ impl Hosting {
 
         match seat {
             Ok(seat) => {
+                if let Some(why) = data_warning(&self.build.0, &hello.build) {
+                    warn!("net: {from}: {why}");
+                }
+
                 let taken = self.told(seat, hello);
 
                 Packet::Lobby(self.room((seat, taken), hello.heard))
@@ -1716,7 +1730,9 @@ mod tests {
         assert_eq!(mismatch(&ours, &build(), Builds::Same), None);
         assert!(mismatch(&ours, &commit, Builds::Same).is_some_and(|w| w.contains("commit")));
         assert_eq!(mismatch(&ours, &commit, Builds::Any), None);
-        assert!(mismatch(&ours, &data, Builds::Any).is_some_and(|w| w.contains("data")));
+        assert_eq!(mismatch(&ours, &data, Builds::Same), None);
+        assert_eq!(data_warning(&ours, &data), Some(DATA_DIFFER));
+        assert_eq!(data_warning(&ours, &build()), None);
         assert!(mismatch(&ours, &debug, Builds::Any).is_some_and(|w| w.contains("debug")));
     }
 

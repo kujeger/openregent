@@ -28,7 +28,7 @@ use std::time::{Duration, Instant};
 use bevy::log::{debug, warn};
 use socket2::{Domain, Protocol, Socket, Type};
 
-use super::lobby::mismatch;
+use super::lobby::{self, mismatch};
 use super::wire::{Build, Open, Packet};
 
 /// The port every guest's finder shares: [`super::PORT`]'s neighbour.
@@ -166,6 +166,13 @@ impl Found {
     #[must_use]
     pub fn misfit(&self, ours: &Build) -> Option<String> {
         mismatch(ours, &self.open.build, self.open.builds)
+    }
+
+    /// Whether its game data differ from `ours`: it may be joined,
+    /// warned.
+    #[must_use]
+    pub fn warning(&self, ours: &Build) -> Option<&'static str> {
+        lobby::data_warning(ours, &self.open.build)
     }
 
     /// Whether every seat is taken.
