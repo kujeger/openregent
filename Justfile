@@ -25,7 +25,6 @@ release:
 # Build the stripped Windows exe to hand out, with mingw64-gcc.
 release-windows:
     cargo build --release -p openregent --target x86_64-pc-windows-gnu
-    x86_64-w64-mingw32-strip -o target/x86_64-pc-windows-gnu/release/openregent-stripped.exe target/x86_64-pc-windows-gnu/release/openregent.exe
 
 # Remove the build output.
 clean:

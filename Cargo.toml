@@ -94,3 +94,6 @@ opt-level = 3
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[profile.release]
+strip = true
