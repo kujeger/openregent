@@ -15,12 +15,24 @@ The only "supported" datafiles are from the 1.5.2.28 version (latest GOG, or the
 
 The older Gold releases (Windows and Linux) have datasets that can be read, but they won't work right. It's out of scope for OpenRegent to work with those, at least for now.
 
+## Installing
+Either [build from source](#building), or grab the latest [release](https://github.com/kujeger/openregent/releases/latest)!
+
+Extract the archive, and put the `openregent`/`openregent.exe` executable in your Majesty Gold HD dir, and run -- or put it somewhere else, and put the Majesty Gold HD path in the [config](#configuration).
+
 ## Configuration
 Most settings are changeable in the game, but a couple are only available by editing the `config.toml` config file, such as paths to data or mods.
 Config file can be found at:
 - Linux: `$XDG_CONFIG_HOME/openregent/config.toml` (default `~/.config/openregent/config.toml`)
 - Windows: `%APPDATA%\openregent\config.toml`
 - macOS: `~/Library/Application Support/openregent/config.toml`
+
+For example, to set a custom data source path:
+```toml
+[paths]
+majesty_hd = '/path/to/Majesty Gold HD' # linux
+majesty_hd = 'C:\Path\To\Majesty Gold HD' # windows
+```
 
 ## Mods
 Mods are supported! If they work with HD, they should work with OpenRegent. I haven't tested _all_ mods, but have tested a few.
