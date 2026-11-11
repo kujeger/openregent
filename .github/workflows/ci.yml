@@ -27,12 +27,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Bevy's audio (ALSA) and window (Wayland, xkbcommon) headers; `just`.
+      # Bevy's audio (ALSA) and window (Wayland, xkbcommon) headers; `just`;
+      # lavapipe, a software Vulkan, for the GPU tests on a GPU-less runner.
       - name: System libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            pkg-config libasound2-dev libwayland-dev libxkbcommon-dev just
+            pkg-config libasound2-dev libwayland-dev libxkbcommon-dev just \
+            mesa-vulkan-drivers
 
       - uses: dtolnay/rust-toolchain@stable
         with:
