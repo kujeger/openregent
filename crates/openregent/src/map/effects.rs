@@ -35,6 +35,7 @@ use crate::game::scope::Scoped;
 use crate::game::seen::Watch;
 use crate::map::mirror::Pieces;
 use crate::map::pieces::{self, Depth, Key, LAYER_STEP, Lifts, Piece};
+use crate::map::tie::{Class, Tied, Who};
 use crate::map::words::{self, GOLD_FOOT, Tie, Words};
 use regent_draw::art::world::Variant;
 use regent_draw::art::{Assets2, Sprites};
@@ -148,7 +149,7 @@ pub fn draw(
     corpus: Res<Corpus>,
     reel: Res<Reel>,
     holders: Query<&Transform, (With<Piece>, Without<EffectDrawn>)>,
-    mut drawn: Query<&mut Transform, (With<EffectDrawn>, Without<Piece>)>,
+    mut drawn: Query<(&mut Transform, &Tied), (With<EffectDrawn>, Without<Piece>)>,
     mut lifts: ResMut<Lifts>,
     mut sprites: ResMut<Sprites>,
     mut hung: ResMut<Hung>,
@@ -197,9 +198,9 @@ pub fn draw(
             Some((entity, was, look, value))
                 if *was == key && *look == effect.look && *value == effect.value =>
             {
-                if let Ok(mut transform) = drawn.get_mut(*entity) {
+                if let Ok((mut transform, tied)) = drawn.get_mut(*entity) {
                     transform.set_if_neq(Transform {
-                        translation: place,
+                        translation: place.with_z(tied.keep(place.z)),
                         ..*transform
                     });
                 }
@@ -233,7 +234,9 @@ pub fn draw(
                     (None, place, place.truncate(), Visibility::Inherited, timing),
                 );
 
-                commands.entity(entity).insert(EffectDrawn);
+                commands
+                    .entity(entity)
+                    .insert((EffectDrawn, Tied::new(Who(Class::Effect, effect.handle))));
                 hung.0
                     .insert(effect.handle, (entity, key, effect.look, effect.value));
 

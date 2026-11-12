@@ -35,6 +35,7 @@ use regent_draw::material;
 
 use crate::game::clock::Snapshot;
 use crate::map::mirror::{DrawingOf, Phase, Pieces, Pin, Was};
+use crate::map::tie::{Class, Tied, Who};
 use crate::map::{effects, fog};
 
 /// Sets a character is drawn in, in order of preference, while it walks
@@ -134,6 +135,7 @@ pub(crate) type Drawn = (
     Option<&'static Children>,
     &'static mut Under,
     Option<&'static mut Footing>,
+    &'static Tied,
 );
 
 /// Descriptor, set, slot.
@@ -266,13 +268,13 @@ pub(crate) fn pieces(
             Some((entity, was))
                 if was == key && (was_pinned == pin || was_pinned.and(pin).is_some()) =>
             {
-                if let Ok((mut transform, mut visibility, children, mut drop, lies)) =
+                if let Ok((mut transform, mut visibility, children, mut drop, lies, tied)) =
                     drawn.get_mut(entity)
                 {
                     // Written only when changed: a write marks the
-                    // tree for transform propagation.
+                    // tree for transform propagation. A tie's order kept.
                     transform.set_if_neq(Transform {
-                        translation: place,
+                        translation: place.with_z(tied.keep(place.z)),
                         ..*transform
                     });
                     drop.set_if_neq(ground);
@@ -367,9 +369,13 @@ pub(crate) fn pieces(
                     ),
                 );
 
-                commands
-                    .entity(entity)
-                    .insert((ground, footing, Keyed(key), DrawingOf(mirror)));
+                commands.entity(entity).insert((
+                    ground,
+                    footing,
+                    Keyed(key),
+                    DrawingOf(mirror),
+                    Tied::new(Who(Class::Piece, shown.agent)),
+                ));
             }
         }
     }
@@ -515,7 +521,9 @@ pub(crate) fn missiles(
                 ground: maps.standing_at(cell).y,
             };
 
-            commands.entity(entity).insert(footing);
+            commands
+                .entity(entity)
+                .insert((footing, Tied::new(Who(Class::Missile, flown.handle))));
             shots.drawn.push(entity);
             crate::perf::churn(crate::perf::Churn::Missiles, 1);
         }

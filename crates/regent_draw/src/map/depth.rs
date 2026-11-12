@@ -118,6 +118,54 @@ impl Depth {
     }
 }
 
+/// How much nearer a thing draws than the one before it in a tie
+/// ([`untie`]): eight steps of an f32 in the band, four of the depth
+/// buffer over the camera's 2,000 units, so the projection keeps them
+/// apart.
+pub const TIE: f32 = 1.0 / 2048.0;
+
+/// Depths for things at `drawn`, each with its key: in (depth, key)
+/// order, each at least [`TIE`] nearer than the one before. Things on
+/// one row get one depth, and the `GreaterEqual` test leaves a tie to
+/// the draw order, which Bevy does not fix. A lower key draws behind.
+/// Only a run of things within `TIE` of each other moves, by
+/// `TIE` a member.
+#[must_use]
+pub fn untie<K: Ord + Copy>(drawn: &[(f32, K)]) -> Vec<f32> {
+    let mut order: Vec<(u32, K, usize)> = drawn
+        .iter()
+        .enumerate()
+        .map(|(i, (z, key))| (ordered(*z), *key, i))
+        .collect();
+    let mut out = vec![0.0; drawn.len()];
+
+    order.sort_unstable();
+
+    // Each at its own depth, or past the one before.
+    order
+        .into_iter()
+        .fold(f32::NEG_INFINITY, |before, (.., i)| {
+            let z = drawn[i].0.max(before + TIE);
+
+            out[i] = z;
+            z
+        });
+
+    out
+}
+
+/// `z`'s bits, ordered as the depths: the sign bit flipped, and a
+/// negative's other bits too.
+const fn ordered(z: f32) -> u32 {
+    let bits = z.to_bits();
+
+    if bits >> 31 == 1 {
+        !bits
+    } else {
+        bits | 1 << 31
+    }
+}
+
 // Orthographic z is linear in depth, so this range keeps thousands of
 // objects from quantising into ties. Gizmos draw at zero, above all.
 
@@ -193,6 +241,29 @@ mod tests {
         let z = sorted_at(&[64.0], 64.0, -1000, NEAREST - FURTHEST);
 
         assert!(z > GROUND_DEPTH && z < FURTHEST, "{z}");
+    }
+
+    /// Things at one depth draw in key order, `TIE` apart, the lowest
+    /// where it was; a thing further than `TIE` keeps its own depth.
+    #[test]
+    fn a_tie_is_ordered_by_key() {
+        let row = -500.0;
+        let out = untie(&[(row, 9), (row + 1.0, 1), (row, 4), (row, 7)]);
+
+        assert_eq!(out, vec![row + 2.0 * TIE, row + 1.0, row, row + TIE]);
+    }
+
+    /// Across the band, a tie's steps stay distinct in the depth buffer
+    /// (the camera's 2,000 units onto 0..1).
+    #[test]
+    fn a_tie_stays_distinct_in_the_depth_buffer() {
+        let buffer = |z: f32| (z + 1000.0) / 2000.0;
+
+        for z in [GROUND_DEPTH, FURTHEST, -500.0, NEAREST] {
+            let next = z + TIE;
+
+            assert!(next > z && buffer(next) > buffer(z), "{z}");
+        }
     }
 
     /// The rows sorted once are the rows now: a change to the placed

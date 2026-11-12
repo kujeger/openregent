@@ -17,6 +17,7 @@ pub(crate) mod quake;
 pub(crate) mod reach;
 pub(crate) mod rings;
 pub(crate) mod select;
+pub(crate) mod tie;
 pub(crate) mod trail;
 pub(crate) mod words;
 pub(crate) mod zoom;

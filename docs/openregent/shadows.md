@@ -148,6 +148,19 @@ Shadows would land on ground but not on buildings.
   over a body. Sort once and number. The depth band is 1,000 units wide:
   orthographic projection maps z linearly, so 9,000 objects within a fraction
   of a unit quantise back into ties.
+- **A tie is ordered.** Things on one row still share a depth, and the
+  draw order Bevy picks changes from run to run. `map::tie::untie` sorts
+  every shown piece, effect and missile by (depth, `Who`) and moves each
+  within `depth::TIE` (2⁻¹¹, four depth-buffer steps) of the one before
+  to `TIE` past it. `Who`: pieces, then effects, then missiles (**Game**,
+  the user: missiles draw over units; effects between, **Inferred**),
+  each by agent id or unit handle, lower behind (**Inferred**: the
+  engine's list order, [vm.md](../gpl/vm.md#what-an-effect-shows)). The
+  lowest of a run keeps its depth. A run moves `TIE` a member: 16
+  (0.0073) at most in a late 512 game, under a layer's 0.01, so a tie
+  orders layer by layer, not drawing by drawing; 45 reach a quarter
+  rank over 9,000 placed rows. A thing within `TIE` of a placed thing,
+  or of a shadow lying on the ground, may cross it.
 - **One ruin is direct colour.** 47 of 73,219 frame references carry no palette
   index: 38 `Interface` portraits (never on this path) and nine frames of the
   Fairgrounds collapsing (`a_units_frames_are_indexed_bar_the_fairgrounds_ruin`). A third material, `plain::Plain` (2D's

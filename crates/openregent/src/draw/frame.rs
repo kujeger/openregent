@@ -210,6 +210,7 @@ fn update(app: &mut App) {
                 effects::tint,
                 trail::draw,
                 trail::paint,
+                crate::map::tie::untie,
                 select::follow,
                 hp_bars::follow,
                 labels::follow,

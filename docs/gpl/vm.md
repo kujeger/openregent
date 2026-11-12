@@ -781,6 +781,10 @@ game clock in seconds; the first update steps 1e-5 s, then 0.05.
   nearer by their set's nudge, 2,000 and 1,500 px (76 and 57 cells), so
   over all about them; thought bubbles and `Got_Gold` have none and sort
   at their holder's y plus their offset (`Set::sort_nudge`).
+- A tie draws after the parts listed before it; the order units join
+  the list is not read. openregent orders a tie by kind, then id, lower
+  behind (**Inferred**); missiles over units (**Game**, the user's
+  recollection). See [shadows.md](../openregent/shadows.md#three-things-the-data-forced).
 - An effector's systems take the handles after its own: the unit is
   numbered, then vents. `energy_blast_effector`, set `0x60` alone, `XL08`
   on it, shows its 500 ms burst on a target that lives. A kill shows none:
