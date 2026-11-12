@@ -110,7 +110,8 @@ fi
 measured() {
     # ctx: involuntary context switches, faults: major page faults (swap,
     # cold files); either high marks a repeat another load disturbed.
-    local -a timed=(/usr/bin/time -f "wall=%e user=%U sys=%S rss_kb=%M ctx=%c faults=%F" -o "$dir/time.txt" "$@")
+    # vol: voluntary context switches, the threads' waits.
+    local -a timed=(/usr/bin/time -f "wall=%e user=%U sys=%S rss_kb=%M ctx=%c vol=%w faults=%F" -o "$dir/time.txt" "$@")
 
     if [[ $counted == yes ]]; then
         LC_ALL=C perf stat -x, -e instructions:u,cycles:u,task-clock -o "$dir/stat.csv" -- "${timed[@]}"

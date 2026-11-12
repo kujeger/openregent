@@ -147,6 +147,25 @@ Memory:
   thousands, so the idle upscale quads keep no material
   (`present::equip`).
 
+## Threads
+
+Every schedule of the main and render worlds runs on Bevy's
+single-threaded executor (`openregent/src/draw/threads.rs`): the game
+thread, the main thread and the render thread do the frame. Bevy's
+multithreaded executor wakes pool threads for each system, about 1,000
+futex calls a frame in a late game; single-threaded, that frame takes
+about half the time on 1, 2 and 16 cores.
+
+The pools stay Bevy's: the ground's patches draw on the compute pool,
+upscaling on the async compute pool. Without the render thread a frame
+takes longer.
+
+Switches for the `threads` cases (`x-<config>-<cores>`):
+`MAJ_PERF_EXECUTOR=multi` (Bevy's executor), `MAJ_PERF_POOL=<n>` (compute
+pool threads; IO and async compute 1 each) and `MAJ_PERF_UNPIPELINED=1`
+(no render thread). The summary's `vol k` is the voluntary context
+switches in thousands: the threads' waits.
+
 ## Traces
 
 `tools/perf/build.sh trace` builds openregent's `trace` feature (Bevy's

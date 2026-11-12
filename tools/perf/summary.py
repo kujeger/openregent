@@ -60,6 +60,9 @@ def case(dir: Path) -> dict:
             if "ctx" in fields:
                 figures["ctx k"] = float(fields["ctx"]) / 1000
                 figures["faults"] = float(fields["faults"])
+            # The threads' waits: voluntary context switches.
+            if "vol" in fields:
+                figures["vol k"] = float(fields["vol"]) / 1000
     siblings = dir / "siblings.txt"
     if siblings.exists():
         busy = re.search(r"busy=([\d.]+)%", siblings.read_text())
@@ -191,7 +194,7 @@ def main() -> None:
     runs = [run(p) for p in paths]
     # The cases of the last run: a comparison shows those run now.
     names = list(runs[-1])
-    order = ["wall s", "cpu s", "rss MB", "ctx k", "faults", "sibling %", "instr G", "cycles G", "to drawn ms", "to game ms"] + TIMERS
+    order = ["wall s", "cpu s", "rss MB", "ctx k", "vol k", "faults", "sibling %", "instr G", "cycles G", "to drawn ms", "to game ms"] + TIMERS
     known = set(order) | set(MEMORY) | {"failed", "busy"}
     named = sorted({k for r in runs for _, rs in r.values() for c in rs for k in c if k not in known})
     order += named + MEMORY

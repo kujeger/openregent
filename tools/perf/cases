@@ -111,3 +111,19 @@ ig512-720     drawn WGPU_ADAPTER_NAME="$igpu" MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1
 # 300 drawn frames: a trace grows by megabytes a second.
 t128-early    drawn BUILD=trace MAJ_PERF_UNCAPPED=1 --map-seed 7 --side 128 --bot 5 --warm 600 --frames 300 --running --select ABJ1
 t512-late     drawn BUILD=trace MAJ_PERF_UNCAPPED=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 300 --running --select ABJ1
+
+#= threads
+# The threads' switches (draw::threads) on g512-late: x-<config>-<cores>;
+# base: as played. Cores 2: cpus 0,1; a: all; 1: cpu 2.
+x-base-2      drawn CPUS=0,1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-base-a      drawn CPUS=all MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-base-1      drawn CPUS=2 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-multi-2     drawn CPUS=0,1 MAJ_PERF_EXECUTOR=multi MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-multi-a     drawn CPUS=all MAJ_PERF_EXECUTOR=multi MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-multi-1     drawn CPUS=2 MAJ_PERF_EXECUTOR=multi MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-unpipe-2    drawn CPUS=0,1 MAJ_PERF_UNPIPELINED=1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-unpipe-a    drawn CPUS=all MAJ_PERF_UNPIPELINED=1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-unpipe-1    drawn CPUS=2 MAJ_PERF_UNPIPELINED=1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-pool1-2     drawn CPUS=0,1 MAJ_PERF_POOL=1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-pool1-a     drawn CPUS=all MAJ_PERF_POOL=1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+x-pool1-1     drawn CPUS=2 MAJ_PERF_POOL=1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1

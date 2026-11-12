@@ -226,7 +226,7 @@ fn defaults(
     (display, sound): (Display, Sound),
     mode: crate::files::config::WindowMode,
 ) -> bevy::app::PluginGroupBuilder {
-    let plugins = DefaultPlugins
+    let plugins = threads::plugins(DefaultPlugins.build())
         .set(WindowPlugin {
             primary_window: Some(Window {
                 title: "OpenRegent".to_owned(),
@@ -588,6 +588,7 @@ fn base(speed: Option<f32>, settings: Settings, output: (Display, Sound)) -> App
         );
 
     crate::perf::install(&mut app);
+    app.add_plugins(threads::Executors);
     app
 }
 
@@ -787,6 +788,7 @@ pub(crate) fn frame_start(
 
 #[cfg(test)]
 mod lifecycle;
+mod threads;
 
 #[cfg(test)]
 mod tests {
