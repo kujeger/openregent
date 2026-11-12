@@ -7,8 +7,8 @@
 #   lan       two headless peers on this machine: --server <port> <args>, --client <args>
 # Leading NAME=value words: the run's environment (run.sh: CPUS, BUILD;
 # CPUS=one: one performance core, CPUS=eff<N>: N efficiency cores,
-# tools/perf/cores.sh);
-# $lavapipe is run.sh's.
+# tools/perf/cores.sh; BUILD=dist: the shipped build);
+# $lavapipe and $igpu are run.sh's.
 # `#= <group>`: the following cases' group (tools/perf/quiet.sh).
 #
 # Fixed seeds: --map-seed picks the generated map, --bot the scripted
@@ -97,6 +97,14 @@ e2-512-720    drawn CPUS=eff2 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1280x720
 e2-512-768    drawn CPUS=eff2 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1024x768 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
 e1-512-720    drawn CPUS=eff1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1280x720 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
 e2-lvp128-720 drawn CPUS=eff2 VK_ICD_FILENAMES=$lavapipe MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1280x720 --map-seed 7 --side 128 --bot 5 --warm 600 --frames 1800 --running --select ABJ1
+
+#= igpu
+# The integrated GPU (WGPU_ADAPTER_NAME="$igpu": run.sh's PERF_IGPU, else the
+# first integrated Vulkan adapter): a case fails where there is none. Not
+# in quiet.sh's default groups.
+ig128-early   drawn WGPU_ADAPTER_NAME="$igpu" MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 128 --bot 5 --warm 600 --frames 1800 --running --select ABJ1
+ig512-late    drawn WGPU_ADAPTER_NAME="$igpu" MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+ig512-720     drawn WGPU_ADAPTER_NAME="$igpu" MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 --size 1280x720 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
 
 #= trace
 # Timelines (build.sh trace): <case>/trace.json, for ui.perfetto.dev.

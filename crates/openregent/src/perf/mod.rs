@@ -232,7 +232,7 @@ pub fn startup(what: &'static str) {
 /// Each non-empty series logged, `what` the run's part, and emptied:
 ///
 /// ```text
-///  drawn step n 600 mean 2.026 p99 13.136 max 26.985 over 1
+///  drawn step n 600 mean 2.026 p50 1.9 p99 13.136 max 26.985 over 1
 /// ```
 ///
 /// `over`: the samples past [`SPIKE`].
@@ -242,10 +242,10 @@ pub fn report(what: &str) {
     };
 
     for (timer, samples) in Timer::ALL.iter().zip(series.iter_mut()) {
-        if let Some((mean, p99, max)) = stats(samples) {
+        if let Some((mean, p50, p99, max)) = stats(samples) {
             info!(
                 target: TARGET,
-                "{what} {} n {} mean {mean:.3} p99 {p99:.3} max {max:.3} over {}",
+                "{what} {} n {} mean {mean:.3} p50 {p50:.3} p99 {p99:.3} max {max:.3} over {}",
                 timer.name(),
                 samples.len(),
                 spikes(samples)
@@ -264,10 +264,10 @@ pub fn report(what: &str) {
                 format!(" over {}", spikes(samples))
             };
 
-            if let Some((mean, p99, max)) = stats(samples) {
+            if let Some((mean, p50, p99, max)) = stats(samples) {
                 info!(
                     target: TARGET,
-                    "{what} {name} n {} mean {mean:.3} p99 {p99:.3} max {max:.3}{over}",
+                    "{what} {name} n {} mean {mean:.3} p50 {p50:.3} p99 {p99:.3} max {max:.3}{over}",
                     samples.len(),
                 );
             }
@@ -383,8 +383,9 @@ fn counted(entities: &Query<()>, meshes: &Meshes) {
     named("visible", visible as f64);
 }
 
-/// Mean, 99th percentile and maximum; `None` for no samples.
-fn stats(samples: &mut [f64]) -> Option<(f64, f64, f64)> {
+/// Mean, median, 99th percentile and maximum; `None` for no samples.
+/// The median shows the typical sample: one hitch moves the mean.
+fn stats(samples: &mut [f64]) -> Option<(f64, f64, f64, f64)> {
     samples.sort_by(f64::total_cmp);
 
     let max = *samples.last()?;
@@ -392,7 +393,12 @@ fn stats(samples: &mut [f64]) -> Option<(f64, f64, f64)> {
     let mean = samples.iter().sum::<f64>() / samples.len() as f64;
     let p99 = samples[(samples.len() - 1) * 99 / 100];
 
-    Some((mean, p99, max))
+    // Even counts: the middle two averaged.
+    let low = samples[(samples.len() - 1) / 2];
+    let high = samples[samples.len() / 2];
+    let p50 = f64::midpoint(low, high);
+
+    Some((mean, p50, p99, max))
 }
 
 /// How many samples are past [`SPIKE`].
@@ -410,10 +416,11 @@ mod tests {
     }
 
     #[test]
-    fn stats_are_mean_p99_and_max() {
+    fn stats_are_mean_median_p99_and_max() {
         let mut samples: Vec<f64> = (1..=100).rev().map(f64::from).collect();
 
-        assert_eq!(stats(&mut samples), Some((50.5, 99.0, 100.0)));
+        assert_eq!(stats(&mut samples), Some((50.5, 50.5, 99.0, 100.0)));
+        assert_eq!(stats(&mut [3.0, 1.0, 2.0]), Some((2.0, 2.0, 2.0, 3.0)));
         assert_eq!(stats(&mut []), None);
     }
 }

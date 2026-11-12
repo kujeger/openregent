@@ -3,7 +3,7 @@
 # The fixed perf runs (tools/perf/cases), each into <out-dir>/<case>/,
 # then one summary table: <out-dir>/summary.txt (tools/perf/summary.py).
 #
-#   tools/perf/build.sh [trace]               release, frame pointers
+#   tools/perf/build.sh [trace|dist]          release, frame pointers
 #   tools/perf/run.sh <out-dir> [case...]     every case, or those named
 #   tools/perf/summary.py <before> <after>    two runs side by side
 #   tools/perf/quiet.sh [case|group...]       repeated, kept, compared
@@ -26,9 +26,16 @@
 # them a case runs under /usr/bin/time alone, with a warning.
 #
 # The binary is $PERF_BIN, else build.sh's; BUILD=trace cases' is
-# $PERF_TRACE_BIN, else `build.sh trace`'s. Its Bevy links dynamically:
-# LD_LIBRARY_PATH takes its deps/ and the toolchain's lib/. Keep
+# $PERF_TRACE_BIN, else `build.sh trace`'s; BUILD=dist cases' is
+# $PERF_DIST_BIN, else `build.sh dist`'s. The others' Bevy links
+# dynamically: LD_LIBRARY_PATH takes their deps/ and the toolchain's lib/
+# (the dist build is static: it needs none). Keep
 # <out-dir> out of tracked folders: local/ (quiet.sh's default) is ignored.
+#
+# Busy machine (busy.sh: cargo, rustc, clippy-driver or openregent
+# running, or a 1-minute load above its max_load) at start: a warning, and
+# <out-dir>/disturbed; the summary marks the cases DISTURBED. PERF_GUARD=off
+# skips the check (quiet.sh, which has its own).
 
 set -euo pipefail
 
@@ -36,6 +43,7 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 here=$root/tools/perf
 bin=$(realpath "${PERF_BIN:-$root/target/perf/release/openregent}")
 trace_bin=$(realpath -m "${PERF_TRACE_BIN:-$root/target/perf-trace/release/openregent}")
+dist_bin=$(realpath -m "${PERF_DIST_BIN:-$root/target/perf-dist/dist/openregent}")
 
 # This machine's performance cores (cores.sh; M1 Pro: 2-9). Unpinned,
 # a run's timers turn bimodal as threads land on either type.
@@ -50,6 +58,7 @@ fi
 out=$(realpath -m "$1")
 shift
 mkdir -p "$out"
+rm -f "$out/disturbed"
 
 case $out/ in
 "$root"/*)
@@ -78,6 +87,14 @@ export MAJ_PERF=1 RUST_LOG=warn,maj_perf=info
 
 # Mesa's software Vulkan (lavapipe), for the cases' VK_ICD_FILENAMES.
 lavapipe=/usr/share/vulkan/icd.d/lvp_icd.$(uname -m).json
+
+# The integrated GPU's name, for the cases' WGPU_ADAPTER_NAME: $PERF_IGPU,
+# else the last parenthesis of the first integrated Vulkan adapter's
+# deviceName ("... (RADV RAPHAEL_MENDOCINO)" -> "RADV RAPHAEL_MENDOCINO");
+# empty when there is none.
+igpu=${PERF_IGPU-$(vulkaninfo --summary 2>/dev/null |
+    awk '/deviceType/ { integrated = /INTEGRATED_GPU/ } /deviceName/ && integrated { print; exit }' |
+    sed -n 's/.*(\([^()]*\))[^()]*$/\1/p' || true)}
 
 # The LAN case's port.
 port=47613
@@ -144,11 +161,12 @@ run_case() {
     rm -rf "$dir"
     mkdir -p "$dir"
     echo "$kind $*" >"$dir/args.txt"
+    [[ -f $out/disturbed ]] && cp "$out/disturbed" "$dir/disturbed"
     echo "== $name: $kind $*"
 
     # Leading NAME=value words: the case's environment. CPUS=<list> pins
     # it to those cores (taskset), CPUS=all to none; BUILD=trace runs build.sh's timeline
-    # build, its trace to <case>/trace.json.
+    # build, its trace to <case>/trace.json; BUILD=dist the shipped profile's.
     local game=$bin
     local -a with=(env) pin=()
     [[ -n $cpus ]] && pin=(taskset -c "$cpus")
@@ -169,6 +187,11 @@ run_case() {
         BUILD=trace)
             game=$trace_bin
             with+=("TRACE_CHROME=$dir/trace.json" "LD_LIBRARY_PATH=$(dirname "$game")/deps:$toolchain")
+            ;;
+        BUILD=dist) game=$dist_bin ;;
+        WGPU_ADAPTER_NAME=)
+            echo "$name: no integrated GPU here (PERF_IGPU names one)" >&2
+            return 1
             ;;
         *) with+=("$1") ;;
         esac
@@ -221,6 +244,16 @@ run_case() {
 }
 
 wanted=("$@")
+
+# A busy machine skews every case: warn, and mark the run for the summary.
+if [[ ${PERF_GUARD:-on} != off ]]; then
+    source "$here/busy.sh"
+    found=$(busy)
+    if [[ -n $found ]]; then
+        printf 'WARNING: machine busy; timings skewed (marked DISTURBED):\n%s\n' "$found" >&2
+        echo "$found" >"$out/disturbed"
+    fi
+fi
 
 while read -r name kind args; do
     [[ -z $name || $name == \#* ]] && continue

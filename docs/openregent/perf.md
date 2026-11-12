@@ -4,7 +4,7 @@
 
 | Tool | Does |
 |---|---|
-| `build.sh` | release with frame pointers into `target/perf` (`perf record --call-graph fp`; dwarf graphs truncate in deep GPL recursion) |
+| `build.sh [trace\|dist]` | release with frame pointers and symbols into `target/perf` (`perf record --call-graph fp`; dwarf graphs truncate in deep GPL recursion); `dist`: the shipped `dist` profile, below |
 | `run.sh <scratch-dir> [case...]` | runs `tools/perf/cases` with isolated XDG directories under `perf stat` and `/usr/bin/time` |
 | `summary.py` | prints one run, or two side by side |
 | `quiet.sh [case\|group...]` | the figures to keep (below) |
@@ -41,8 +41,11 @@ The game's own timers are opt-in: `MAJ_PERF=1`
 - the entities, the meshes and the meshes a camera drew (`entities`,
   `meshes`, `visible`).
 
-Each series also counts its samples past 25 ms (`over`, `perf::SPIKE`): a
-stutter is the tail, not the mean.
+Each series logs `n`, `mean`, `p50` (median), `p99`, `max` and its samples
+past 25 ms (`over`, `perf::SPIKE`): a stutter is the tail, not the mean; one
+hitch moves the mean, not the median. `summary.py` merges a drawn run's
+reports by sample weight (p50 too: an approximation) and reads logs without
+`p50`.
 
 ## Pinning and clocks
 
@@ -52,6 +55,12 @@ cores, the highest `cpu_capacity` on ARM, none where every core is alike)
 unless the case sets `CPUS=` (`CPUS=all`: none; `CPUS=one`: the last
 performance core). Every case runs with `setarch -R`: no address
 randomising. Release links Bevy dynamically: the runner sets
+`LD_LIBRARY_PATH`.
+
+`build.sh dist` builds the shipped profile (thin LTO, Bevy linked
+statically: no `dev` feature), still with frame pointers and symbols, into
+`target/perf-dist/dist/openregent`. A case selects it with `BUILD=dist`
+(`PERF_DIST_BIN` overrides the path); a static build needs no
 `LD_LIBRARY_PATH`.
 
 Without hardware counters (`perf_event_paranoid` above 2, most VMs) a
@@ -72,6 +81,11 @@ min–max per figure) and `compare.txt` against the previous run there
 (`--against <run>`). Groups are the `#= ` lines of `cases`; the default
 is headless, replay, drawn, camera, startup, lan and gpu; `--list` shows each group's
 time.
+
+`run.sh` itself refuses nothing, but at start it checks the same
+condition (`busy.sh`, shared with `quiet.sh`), warns on stderr and writes
+`<out>/disturbed`; `summary.py` marks the cases DISTURBED (machine busy).
+`quiet.sh` sets `PERF_GUARD=off` for its repeats: it checks itself.
 
 Other load the load average misses still skews a case. `run.sh` records
 it: `ctx k` (thousands of involuntary context switches), `faults` (major
@@ -112,6 +126,15 @@ lists `EXPERIMENTAL_COOPERATIVE_MATRIX` for it and the driver then
 refuses the device, so openregent asks for no experimental feature
 (`draw::UNUSED_FEATURES`, wgpu's `all_experimental_mask`).
 
+The `igpu` cases (`ig*`) run the `g128-early`, `g512-late` and a
+1280x720 game on the integrated GPU: `WGPU_ADAPTER_NAME` takes a substring
+of the adapter's name, `$igpu` in `cases`. `run.sh` sets it from
+`PERF_IGPU`, else from the last parenthesis of the first
+`INTEGRATED_GPU` `deviceName` in `vulkaninfo --summary` (e.g.
+`RADV RAPHAEL_MENDOCINO`). Without one a case fails (FAILED); it never
+falls back to the main GPU. The group is not in `quiet.sh`'s default
+groups; name it (`quiet.sh igpu`).
+
 Memory:
 
 - wgpu's allocator takes blocks of 8 to 64 MB
@@ -129,7 +152,14 @@ Memory:
 `tools/perf/build.sh trace` builds openregent's `trace` feature (Bevy's
 `trace_chrome`, off by default: spans cost) into `target/perf-trace`; the
 `t*` cases write `<case>/trace.json` to open in ui.perfetto.dev, or sum
-with `tools/perf/trace_top.py <trace.json> [count] [match]`. By hand:
+with `tools/perf/trace_top.py <trace.json> [count] [match]`: spans by total
+ms, per frame and calls, over the drawn frames from 10 after the game's first
+`game::clock::tick` (a trace with no game: after the first third); it names
+the rule used. `--schedule <Name>` (`PostUpdate`, `Update`, `Render`, ...)
+instead gives that schedule's wall ms per frame, the spans in it (its thread's
+outermost, and task-pool `system:` spans inside its intervals: another
+schedule's concurrent systems leak in), and the unattributed remainder, the
+executor's own cost. By hand:
 `TRACE_CHROME=<file> openregent ...` with that build; without
 `TRACE_CHROME` the file is `./trace-<time>.json`.
 
