@@ -41,13 +41,15 @@ use bevy::render::renderer::{
 };
 // Renamed: regent_draw's art_service test bans the module's path followed
 // by `::` in openregent, where it would mean regent_draw's texture module.
+use bevy::platform::collections::{HashMap, HashSet};
 use bevy::render::erased_render_asset::ErasedRenderAssets;
 use bevy::render::material_bind_groups::MaterialBindGroupAllocators;
 use bevy::render::sync_world::MainEntity;
 use bevy::render::texture as gpu_images;
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
-use bevy_egui::EguiRenderOutput;
 use bevy_egui::egui::epaint::Primitive;
+use bevy_egui::egui::{self, TextureId};
+use bevy_egui::{EguiContext, EguiRenderOutput};
 use gpu_images::GpuImage;
 use wgpu::{
     Buffer, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, Features, MapMode, QuerySet,
@@ -166,27 +168,115 @@ fn series(path: &str) -> Option<String> {
     Some(format!("{kind}_{pass}"))
 }
 
-/// egui's draw calls this frame, one a mesh, and its texture changes.
-fn egui(outputs: Query<&EguiRenderOutput>) {
+/// egui's draw calls this frame, one a mesh, and its texture changes;
+/// the distinct textures drawn, and the calls split by a clip rect alone
+/// (`clips_egui`: same texture as the call before). With [`DUMP`] set to
+/// a frame, that frame's calls are logged one a line.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+fn egui(
+    outputs: Query<&EguiRenderOutput>,
+    mut contexts: Query<&mut EguiContext>,
+    art: Option<Res<regent_draw::art::Art>>,
+    mut frames: Local<u32>,
+) {
     let mut draws = 0_u32;
     let mut binds = 0_u32;
+    let mut clips = 0_u32;
+    let mut textures = HashSet::new();
+
+    *frames += 1;
 
     for output in &outputs {
         let mut last = None;
 
         for job in &output.paint_jobs {
             draws += 1;
-            if let Primitive::Mesh(mesh) = &job.primitive
-                && last != Some(mesh.texture_id)
-            {
-                last = Some(mesh.texture_id);
-                binds += 1;
+            if let Primitive::Mesh(mesh) = &job.primitive {
+                textures.insert(mesh.texture_id);
+
+                if last.is_some_and(|(t, _)| t == mesh.texture_id) {
+                    clips += 1;
+                } else {
+                    binds += 1;
+                }
+                last = Some((mesh.texture_id, job.clip_rect));
             }
         }
     }
 
     named("draws_egui", f64::from(draws));
     named("binds_egui", f64::from(binds));
+    named("clips_egui", f64::from(clips));
+    #[allow(clippy::cast_precision_loss, reason = "a count")]
+    named("textures_egui", textures.len() as f64);
+
+    if dump_at() == Some(*frames) {
+        dumped(&outputs, &mut contexts, art.as_deref());
+    }
+}
+
+/// The environment variable that logs one frame's egui draw calls, e.g.
+/// `MAJ_PERF_EGUI_DUMP=1700` (with [`ENV`]).
+const DUMP: &str = "MAJ_PERF_EGUI_DUMP";
+
+/// The frame [`DUMP`] names, read once.
+fn dump_at() -> Option<u32> {
+    static AT: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+
+    *AT.get_or_init(|| std::env::var(DUMP).ok()?.parse().ok())
+}
+
+/// Each egui draw call, one a line: texture, its name (an egui texture's,
+/// or the art service's picture), clip rect, vertices' bounds and count.
+///
+/// ```text
+///  egui 12 tex User(40) Pic(Set { record: .. }) clip [0 0 1920 1200] at [1700 0 1920 400] verts 4
+/// ```
+fn dumped(
+    outputs: &Query<&EguiRenderOutput>,
+    contexts: &mut Query<&mut EguiContext>,
+    art: Option<&regent_draw::art::Art>,
+) {
+    let mut names: HashMap<TextureId, String> = art
+        .map(regent_draw::art::Art::names)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
+    for mut context in contexts.iter_mut() {
+        let manager = context.get_mut().tex_manager();
+        for (id, meta) in manager.read().allocated() {
+            names.insert(*id, meta.name.clone());
+        }
+    }
+
+    let jobs = outputs.iter().flat_map(|o| o.paint_jobs.iter());
+    for (at, job) in jobs.enumerate() {
+        let r = |r: egui::Rect| {
+            format!(
+                "[{:.0} {:.0} {:.0} {:.0}]",
+                r.min.x, r.min.y, r.max.x, r.max.y
+            )
+        };
+
+        if let Primitive::Mesh(mesh) = &job.primitive {
+            let name = names.get(&mesh.texture_id).map_or("?", String::as_str);
+
+            info!(
+                target: TARGET,
+                "egui {at} tex {:?} {name} clip {} at {} verts {}",
+                mesh.texture_id,
+                r(job.clip_rect),
+                r(mesh.calc_bounds()),
+                mesh.vertices.len()
+            );
+        } else {
+            info!(target: TARGET, "egui {at} callback clip {}", r(job.clip_rect));
+        }
+    }
 }
 
 /// Every [`WINDOW`] frames, the art service's textures: upscaled

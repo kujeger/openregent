@@ -116,6 +116,10 @@ The renderer's cases (`g-*`, and the weak machines' `lvp-*`, `e1-*`,
   (`draws_*`, `items`, `pipelines`, `binds`; egui's from its paint jobs);
   and every 600 frames the GPU memory: wgpu's allocator report, Bevy's
   images, the art service's upscaled and plain textures.
+  egui's draws: `draws_egui`, `binds_egui` (texture changes),
+  `clips_egui` (draws a clip rect alone splits) and `textures_egui`
+  (distinct textures). `MAJ_PERF_EGUI_DUMP=<frame>` logs that frame's
+  draws one a line: texture, picture, clip rect, bounds.
 
 Drivers: Asahi (Honeykrisp) gives no usable timestamp inside a pass (0
 or nonsense: left out), so on it only `gpu_frame` and Bevy's

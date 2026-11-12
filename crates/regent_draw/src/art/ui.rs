@@ -798,6 +798,17 @@ impl Art {
         }
     }
 
+    /// Each plain texture held, and its picture: the perf runs' draw
+    /// dump names the textures egui draws with.
+    #[must_use]
+    pub fn names(&self) -> Vec<(TextureId, String)> {
+        self.entries
+            .plain
+            .iter()
+            .filter_map(|(want, held)| Some((held.as_ref()?.0.id(), format!("{:?}", want.picture))))
+            .collect()
+    }
+
     /// Whether pictures are upscaled.
     fn on(&self) -> bool {
         self.mode != Upscale::None
