@@ -1102,6 +1102,7 @@ fn rescan(mut menus: Menus, install: Option<Res<crate::files::env::Install>>) {
 fn rescanned(f: &mut Flows, install: &crate::files::env::Install) {
     install.rescan();
     f.mods.on(install);
+    f.lan.rehash();
     f.quests_on(install);
     f.extras_on(install);
     f.saves_on(install);
@@ -1221,16 +1222,32 @@ fn show(
             let loads = (f.menu.page == Page::Loads)
                 .then(|| loads(ctx, &mut f, &mut shared))
                 .flatten();
-            // The lobby's LOAD GAME list over it takes the presses.
+            // The lobby's LOAD GAME list over it takes the presses; so
+            // does the mods page over it, the host's MODS.
             let lan_loading = f.menu.page == Page::Lobby && f.saves.open.is_some();
 
             if lan_loading {
                 lan_loads(ctx, &mut f, &mut shared);
             }
 
-            let escape =
-                (keys.just_pressed(KeyCode::Escape) && !naming && !listing && !lan_loading)
-                    .then_some(Press::Back);
+            if f.menu.page == Page::Lobby && f.lan.take_mods_asked() {
+                let (entries, loading) = f.lan.mod_list();
+
+                f.mods.open_lobby(&entries, loading);
+            }
+
+            let lan_mods = f.menu.page == Page::Lobby && f.mods.over_lobby();
+
+            if lan_mods {
+                lobby_mods(ctx, &mut f);
+            }
+
+            let escape = (keys.just_pressed(KeyCode::Escape)
+                && !naming
+                && !listing
+                && !lan_loading
+                && !lan_mods)
+                .then_some(Press::Back);
             let edited = (f.menu.page == Page::Settings)
                 .then(|| {
                     crate::ui::editor::page(
@@ -1302,7 +1319,7 @@ fn show(
                     .then(|| player.profile.as_mut())
                     .flatten(),
             )
-            .filter(|_| !lan_loading);
+            .filter(|_| !lan_loading && !lan_mods);
 
             // Its art changed in the editor: the room starts over.
             if settings.ui.main_menu != before {
@@ -1686,6 +1703,19 @@ fn lan_loads(ctx: &bevy_egui::egui::Context, f: &mut Flows, shared: &mut regent_
         },
         Some(crate::save::dialog::Chose::Cancel) => f.saves.close(),
         _ => {}
+    }
+}
+
+/// The mods page over the host's lobby, its rows marked where a player
+/// lacks the mod, as the lobby stands now: Done gives the lobby its
+/// list, which every guest then sees.
+fn lobby_mods(ctx: &bevy_egui::egui::Context, f: &mut Flows) {
+    f.mods.set_problems(f.lan.mod_problems());
+
+    if mods::page(ctx, f.mods).is_some()
+        && let Some(list) = f.mods.take_chosen()
+    {
+        f.lan.set_mods(list, &f.freestyle.custom);
     }
 }
 

@@ -1,11 +1,31 @@
 //! The game's source reads through the real readers as what it says.
 
 use regent_core::content::unit::Unit;
+use regent_core::data::catalogue::Catalogue;
 use regent_core::data::imag::{Image, SetKind};
 use regent_core::sim::placement;
 use regent_core::sim::setup;
 use regent_core::sim::world::bodies::Class;
-use regent_testgame::{BITER, CODES, HUT, KEEP, LODGE, TestGame, WALKER};
+use regent_testgame::{BITER, CODES, HUT, KEEP, LODGE, TOUGH_WALKER_HP, TestGame, WALKER};
+
+/// The game's mod raises the walker's hit points.
+#[test]
+fn the_mod_makes_walkers_tougher() {
+    let game = TestGame::get();
+    let modded = game.modded();
+    let catalogue = Catalogue::build(&modded).expect("the catalogue");
+    let hp = |catalogue: &Catalogue<'_>| {
+        Unit::find(catalogue, WALKER)
+            .expect("a unit")
+            .expect("reads")
+            .desc
+            .character()
+            .and_then(|c| c.max_hp())
+    };
+
+    assert_eq!(hp(&game.catalogue()), Some(30));
+    assert_eq!(hp(&catalogue), Some(TOUGH_WALKER_HP));
+}
 
 /// The game's archives hold every code it names, as its chunk.
 #[test]

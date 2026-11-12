@@ -9,6 +9,7 @@ pub(crate) mod config;
 pub(crate) mod env;
 pub(crate) mod log;
 pub(crate) mod lore;
+pub(crate) mod mod_hash;
 pub(crate) mod mod_list;
 pub(crate) mod presets;
 pub(crate) mod profile;

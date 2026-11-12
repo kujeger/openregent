@@ -637,6 +637,7 @@ mod tests {
                     lines: Vec::new(),
                 },
                 holding: Holding::None,
+                mods: Vec::new(),
             })
             .encode()
         };

@@ -23,9 +23,14 @@
 //! the agent member `type`; the player field `gold`; `#ATTRIB_HP` and
 //! `#ATTRIB_MaxHP`; and a palace's code prefix `ABJ` ([`KEEP`]). The rest of
 //! the names, numbers and codes are invented.
+//!
+//! [`TOUGH_WALKERS`] is the game's one mod: a `mod.toml` raising the
+//! walker's `MaxHP` from 30 to [`TOUGH_WALKER_HP`]; [`TestGame::modded`]
+//! is the game's archives with its patch after them.
 
 use std::sync::OnceLock;
 
+use regent_core::content::{flags, mods};
 use regent_core::data::cam::{self, ChunkFlag, Written};
 use regent_core::data::catalogue::Catalogue;
 use regent_core::data::desc::xml;
@@ -176,6 +181,28 @@ impl TestGame {
         Catalogue::build(&self.archives).expect("the archives")
     }
 
+    /// The game's archives, then [`TOUGH_WALKERS`]' patch, as a game
+    /// with the mod loads them.
+    ///
+    /// # Panics
+    ///
+    /// Never for the fixtures: the mod and its patch read.
+    #[must_use]
+    pub fn modded(&self) -> Vec<(String, Vec<u8>)> {
+        let manifest = std::path::Path::new(TOUGH_WALKERS_FILE);
+        let parsed = mods::parse_toml(TOUGH_WALKERS, manifest, std::path::Path::new(""))
+            .expect("the mod reads");
+        let text = parsed.inline_patch.expect("a patch");
+        let patch = flags::compile(&self.catalogue(), &[(manifest.to_path_buf(), text)])
+            .expect("the patch compiles");
+
+        self.archives
+            .iter()
+            .cloned()
+            .chain([("tough_walkers".to_owned(), patch)])
+            .collect()
+    }
+
     #[must_use]
     pub const fn program(&self) -> &Program {
         &self.program
@@ -217,6 +244,15 @@ impl TestGame {
         played
     }
 }
+
+/// The game's mod, a `mod.toml`: the walker's `MaxHP` raised.
+pub const TOUGH_WALKERS: &str = include_str!("../fixtures/tough_walkers.toml");
+
+/// [`TOUGH_WALKERS`]' file name, as a mod folder holds it.
+pub const TOUGH_WALKERS_FILE: &str = mods::SOURCE_MANIFEST;
+
+/// The walker's `MaxHP` under [`TOUGH_WALKERS`].
+pub const TOUGH_WALKER_HP: u32 = 90;
 
 const UNITS: &str = include_str!("../fixtures/units.xml");
 const RULES: &str = include_str!("../fixtures/rules.gpl");

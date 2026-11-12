@@ -18,6 +18,7 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 
 use crate::files::env::Install;
+use crate::files::mod_hash::{self, Holdings};
 use crate::setup::Setup;
 
 use super::{
@@ -113,12 +114,11 @@ pub enum Started {
         setup: Setup,
         saved: Option<PathBuf>,
     },
-    /// A guest's: as `welcome` asks, from `host`, going on from this
-    /// machine's copy of the host's save, `saved`.
+    /// A guest's: as `welcome` asks, going on from this machine's copy
+    /// of the host's save, `saved`.
     Welcomed {
         peer: Peer,
         welcome: Welcome,
-        host: String,
         saved: Option<PathBuf>,
     },
 }
@@ -151,6 +151,9 @@ pub struct Session {
     install: Option<Install>,
     /// This build, hashed once.
     built: Option<Aside<Build>>,
+    /// The install's mods, hashed: again after a rescan
+    /// ([`Session::rehash`]).
+    held: Option<Aside<Holdings>>,
     bridge: Option<Arc<iroh::Bridge>>,
     wait: Option<Wait>,
     starts: Starts,
@@ -167,6 +170,7 @@ impl Session {
         Session {
             install: None,
             built: None,
+            held: None,
             bridge: None,
             wait: None,
             starts: Starts::Pressed,
@@ -180,6 +184,27 @@ impl Session {
     pub fn on(&mut self, install: Install) {
         self.install = Some(install);
         self.built = None;
+        self.held = None;
+    }
+
+    /// The install's mods hashed again, as a rescan may change them.
+    pub fn rehash(&mut self) {
+        self.held = None;
+    }
+
+    /// The install's mods, hashed aside on the first ask; `None` while
+    /// they are, or with no install.
+    fn holdings(&mut self) -> Option<Holdings> {
+        let install = self.install.clone();
+        let aside = self.held.get_or_insert_with(|| {
+            Aside::spawn(move || {
+                let install = install.ok_or("no install to hash")?;
+
+                Ok(mod_hash::holdings(&install.mods()))
+            })
+        });
+
+        aside.poll().and_then(|done| done.as_ref().ok()).cloned()
     }
 
     /// This build, hashed aside on the first ask; `None` while it is.
@@ -197,9 +222,11 @@ impl Session {
         aside.poll().cloned().transpose()
     }
 
-    /// The build hashed ahead, as a page that needs it opens.
+    /// The build and the mods hashed ahead, as a page that needs them
+    /// opens.
     pub fn warm(&mut self) {
         let _ = self.build();
+        let _ = self.holdings();
     }
 
     /// The profile's LAN saves, where a LAN save is looked for and one
@@ -517,6 +544,10 @@ impl Session {
                 })),
             },
             Wait::Hosting { mut hosting, setup } => {
+                if let Some(holdings) = self.holdings() {
+                    hosting.set_holdings(&holdings);
+                }
+
                 hosting.poll(now);
 
                 // Nicks follow the lobby's seats: kept as a guest sits,
@@ -568,25 +599,29 @@ impl Session {
                     title,
                 })),
             },
-            Wait::Joining(mut joining) => match joining.poll(now)? {
-                Some(welcome) => {
-                    let host = joining.host().to_string();
-                    let saved = welcome
-                        .save
-                        .as_ref()
-                        .map(|game| joining.copy(game).ok_or("the host's save is not here"))
-                        .transpose()?;
-                    let peer = Peer::welcomed(joining, &welcome, (self.dumps)())?;
-
-                    Ok(Step::Started(Box::new(Started::Welcomed {
-                        peer: self.keep_bridge(peer),
-                        welcome,
-                        host,
-                        saved,
-                    })))
+            Wait::Joining(mut joining) => {
+                if let Some(holdings) = self.holdings() {
+                    joining.set_holdings(&holdings);
                 }
-                None => Ok(Step::waiting(Wait::Joining(joining))),
-            },
+
+                match joining.poll(now)? {
+                    Some(welcome) => {
+                        let saved = welcome
+                            .save
+                            .as_ref()
+                            .map(|game| joining.copy(game).ok_or("the host's save is not here"))
+                            .transpose()?;
+                        let peer = Peer::welcomed(joining, &welcome, (self.dumps)())?;
+
+                        Ok(Step::Started(Box::new(Started::Welcomed {
+                            peer: self.keep_bridge(peer),
+                            welcome,
+                            saved,
+                        })))
+                    }
+                    None => Ok(Step::waiting(Wait::Joining(joining))),
+                }
+            }
         }
     }
 
@@ -642,6 +677,15 @@ impl Session {
         }
     }
 
+    /// These mods taken as hashed already: a test's.
+    #[cfg(test)]
+    pub(crate) fn held(&mut self, holdings: Holdings) {
+        self.held = Some(Aside {
+            running: None,
+            done: Some(Ok(holdings)),
+        });
+    }
+
     /// This build taken as hashed already: a test's.
     #[cfg(test)]
     pub(crate) fn built(&mut self, build: Build) {
@@ -658,6 +702,7 @@ const fn said(unready: Unready) -> &'static str {
         Unready::Seats => "a seat is free",
         Unready::Guests => "a player is not ready",
         Unready::Save => "a player lacks the save",
+        Unready::Mods => "a player lacks a mod, or has another version",
     }
 }
 
@@ -677,7 +722,7 @@ impl Step {
 mod tests {
     use std::time::Duration;
 
-    use super::super::wire::Profile;
+    use super::super::wire::{ModMatch, Profile};
     use super::*;
 
     /// How long a lobby's step may take: generous, as a loaded machine
@@ -842,6 +887,69 @@ mod tests {
             host.start().expect("started"),
         ))));
         welcomed(all("welcomed", &mut [&mut guest]).pop().flatten());
+    }
+
+    /// A guest lacking a mod the host's setup names holds the start, its
+    /// seat marked; once it holds the host's version, the game starts,
+    /// the welcome naming the mod.
+    #[test]
+    fn a_guest_lacking_a_mod_holds_the_start() {
+        let guid = regent_core::data::guid::Guid::parse("{17BF53DE-722F-4683-8E63-6B93D1606DFF}")
+            .expect("a GUID");
+        let held: Holdings = [(
+            guid,
+            mod_hash::Held {
+                title: "New Game+".to_owned(),
+                hash: "aa".to_owned(),
+            },
+        )]
+        .into();
+        let setup = Setup {
+            mods: vec![guid.into()],
+            ..two()
+        };
+        let (mut host, mut guest) = (session(), session());
+
+        host.held(held.clone());
+        guest.held(Holdings::new());
+        host.host((Service::Lan, 0), setup, ("Host".to_owned(), String::new()))
+            .expect("bound");
+
+        let port = host.bound_port().expect("bound");
+
+        guest
+            .join(Service::Lan, &format!("127.0.0.1:{port}"), "Ann".to_owned())
+            .expect("joining");
+        until("seated", &mut [&mut host, &mut guest], |_, s| {
+            s[1].room().is_some()
+        });
+        guest.flip_ready();
+
+        let marked = |s: &[&mut Session]| {
+            s[0].room().is_some_and(|r| {
+                r.seats
+                    .get(1)
+                    .is_some_and(|seat| seat.mods == [ModMatch::Missing])
+            })
+        };
+
+        until("marked", &mut [&mut host, &mut guest], |_, s| marked(s));
+        assert_eq!(
+            host.start().err().as_deref(),
+            Some("a player lacks a mod, or has another version")
+        );
+
+        guest.held(held);
+        until("startable", &mut [&mut host, &mut guest], |_, s| {
+            s[0].startable()
+        });
+        hosted(Some(Polled::Started(Box::new(
+            host.start().expect("started"),
+        ))));
+
+        let (_, welcome) = welcomed(all("welcomed", &mut [&mut guest]).pop().flatten());
+
+        assert_eq!(welcome.setup.mods, [guid.into()]);
     }
 
     /// A name that does not resolve fails aside: said, the session idle.

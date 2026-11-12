@@ -38,7 +38,20 @@
 //! HD keeps its choice one session (**Inferred**, mods free); this
 //! game keeps it in the settings file. HD's main menu control 9001,
 //! ACTIVATE MODS, has the Load mods toggle as stand-in.
+//!
+//! Over a LAN lobby, the host's (`menu::lan`), the page edits the
+//! lobby's list instead: Done hands it to the lobby
+//! ([`Editor::take_chosen`]) and writes no settings file; Load, Save
+//! and Rescan work as here. A mod of the lobby's that a player lacks,
+//! or holds in another version, shows its name red, and the players
+//! beside it ([`Editor::set_problems`]):
+//!
+//! ```text
+//!  2 [x] Decor Buildings  New decorations…  Bob: missing [Up] [Down]
+//!        └ red ┘                            └ red ─────┘
+//! ```
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use bevy::log::warn;
@@ -128,6 +141,23 @@ pub struct Editor {
     picked: Option<Guid>,
     /// Rescan pressed: the folders to scan again (`menu::rescan`).
     rescan: bool,
+    /// Whose list it edits.
+    target: Target,
+    /// The lobby's list as Done left it, not yet taken.
+    chosen: Option<(Vec<Entry>, Loading)>,
+    /// Over a lobby, each mod a player lacks or holds in another
+    /// version: the players' lines, by GUID.
+    problems: BTreeMap<Guid, Vec<String>>,
+}
+
+/// Whose list the page edits.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Target {
+    /// The settings file's: Done writes it.
+    #[default]
+    Settings,
+    /// A LAN lobby's: Done hands it over.
+    Lobby,
 }
 
 impl Editor {
@@ -254,7 +284,37 @@ impl Editor {
 
     /// Opened on `entries`, the file's list, and `loading`, its toggle.
     pub fn open(&mut self, entries: &[Entry], loading: Loading) {
+        self.opened(entries, loading, Target::Settings);
+    }
+
+    /// Opened over a LAN lobby on its list, `entries` and `loading`.
+    pub fn open_lobby(&mut self, entries: &[Entry], loading: Loading) {
+        self.opened(entries, loading, Target::Lobby);
+    }
+
+    /// Whether it is open over a LAN lobby.
+    pub const fn over_lobby(&self) -> bool {
+        self.draft.is_some() && matches!(self.target, Target::Lobby)
+    }
+
+    /// The lobby's list, once Done gave it: every entry, and the toggle.
+    pub const fn take_chosen(&mut self) -> Option<(Vec<Entry>, Loading)> {
+        self.chosen.take()
+    }
+
+    /// The lobby's mods a player lacks or holds in another version, the
+    /// players' lines by GUID: their rows marked.
+    pub fn set_problems(&mut self, problems: BTreeMap<Guid, Vec<String>>) {
+        self.problems = problems;
+    }
+
+    /// Opened on `entries` and `loading`, for `target`.
+    fn opened(&mut self, entries: &[Entry], loading: Loading, target: Target) {
         let (rows, kept) = mod_list::rows(entries, &self.library);
+
+        self.target = target;
+        self.chosen = None;
+        self.problems.clear();
 
         self.saved = List {
             rows,
@@ -293,6 +353,13 @@ impl Editor {
             Act::Load => self.ask(Asked::Load),
             Act::Save => self.ask(Asked::Save(String::new())),
             Act::Rescan => self.rescan = true,
+            Act::Done if self.target == Target::Lobby => {
+                self.chosen = self.draft.take().map(|draft| {
+                    let entries = draft.rows.into_iter().chain(draft.kept).collect();
+
+                    (entries, draft.loading)
+                });
+            }
             Act::Done => {
                 if let (true, Some(path), Some(draft)) =
                     (self.changed(), &self.list_file, &self.draft)
@@ -760,12 +827,24 @@ fn rows(ui: &mut egui::Ui, editor: &Editor, draft: &[Entry]) -> (Option<Edit>, O
                                     ui.weak(BUILT_IN);
                                 }
 
+                                // A lobby's mod a player lacks: who, beside it.
+                                let problems = editor.problems.get(&m.guid);
+
+                                if let Some(lines) = problems {
+                                    ui.colored_label(PROBLEM, lines.join(", "));
+                                }
+
                                 let pick = if picked == Some(m.guid) {
                                     Pick::Picked
                                 } else {
                                     Pick::Free
                                 };
-                                let shown = line(ui, m, Able::of(row.enabled), pick);
+                                let mark = if problems.is_some() {
+                                    Mark::Problem
+                                } else {
+                                    Mark::Plain
+                                };
+                                let shown = line(ui, m, Able::of(row.enabled), (pick, mark));
 
                                 (up.or(down), tapped(&shown).then_some(m.guid))
                             })
@@ -789,9 +868,17 @@ enum Pick {
     Free,
 }
 
+/// Whether a row's name is marked: a lobby's mod a player lacks.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Mark {
+    Plain,
+    Problem,
+}
+
 /// A row's name and short description, one line cut to its room, picked
-/// or not: a click picks it. The name is brighter while enabled.
-fn line(ui: &mut egui::Ui, m: &Mod, enabled: Able, picked: Pick) -> egui::Response {
+/// or not: a click picks it. The name is brighter while enabled, red
+/// where marked.
+fn line(ui: &mut egui::Ui, m: &Mod, enabled: Able, (picked, mark): (Pick, Mark)) -> egui::Response {
     let size = vec2(ui.available_width(), ui.spacing().interact_size.y);
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     let visuals = ui.visuals();
@@ -811,6 +898,10 @@ fn line(ui: &mut egui::Ui, m: &Mod, enabled: Able, picked: Pick) -> egui::Respon
         (Pick::Picked, _) => (visuals.strong_text_color(), visuals.text_color()),
         (Pick::Free, Able::Enabled) => (visuals.strong_text_color(), visuals.weak_text_color()),
         (Pick::Free, Able::Disabled) => (visuals.text_color(), visuals.weak_text_color()),
+    };
+    let name = match mark {
+        Mark::Plain => name,
+        Mark::Problem => PROBLEM,
     };
     let font = TextStyle::Body.resolve(ui.style());
     let short = m.short.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -1279,6 +1370,30 @@ mod tests {
         assert_eq!(mod_list::chosen(&entries, Loading::Off).len(), 0);
         assert_eq!(entries[1].guid, Guid::parse(EXPANDED));
         assert!(entries[1].enabled, "the list kept");
+    }
+
+    /// Over a lobby, Done hands the list over, the entries no folder
+    /// holds with it, and writes no settings file.
+    #[test]
+    fn done_over_a_lobby_hands_the_list_over_and_writes_nothing() {
+        let dir = crate::testdata::scratch("mods-page-lobby");
+        let mut editor = Editor {
+            list_file: Some(dir.path().join("mods.toml")),
+            ..Editor::default()
+        };
+
+        editor.open_lobby(&[entry(UNKNOWN, true)], Loading::On);
+        assert!(editor.over_lobby());
+
+        editor.edit(Edit::Loading);
+        editor.act(Act::Done);
+
+        let (entries, loading) = editor.take_chosen().expect("handed over");
+
+        assert!(!editor.over_lobby());
+        assert_eq!(loading, Loading::Off);
+        assert_eq!(entries[0].guid, Guid::parse(UNKNOWN));
+        assert!(!editor.list_file.as_ref().expect("a path").exists());
     }
 
     /// Cancel drops the edits and closes; nothing written.

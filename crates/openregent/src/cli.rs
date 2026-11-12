@@ -143,8 +143,9 @@ pub(crate) struct Recorded {
     pub(crate) limits: Option<String>,
     /// Mods to load, GUIDs by commas, in load order: the last wins a
     /// shared name; e.g. {D666FCBE-9906-4582-A6A0-DC96F812441E}. None by
-    /// default; never on the LAN, as HD; a loaded save plays with its own
-    #[arg(long, value_name = "GUIDS", conflicts_with_all = ["server", "client"])]
+    /// default; a LAN guest plays the host's; a loaded save plays with
+    /// its own
+    #[arg(long, value_name = "GUIDS", conflicts_with = "client")]
     pub(crate) mods: Option<String>,
 }
 
@@ -721,21 +722,6 @@ pub(crate) fn hosted(mut cli: Cli, matches: &clap::ArgMatches) -> Cli {
     cli
 }
 
-/// The host's setup `welcome` from `host` carries, which the guest plays.
-///
-/// # Errors
-///
-/// A setup naming mods.
-pub(crate) fn joined(welcome: &net::Welcome, host: &str) -> Result<Setup, String> {
-    // HD plays no mods on the LAN, nor does
-    // this game: a host's setup naming some is refused.
-    if welcome.setup.mods.is_empty() {
-        Ok(welcome.setup.clone())
-    } else {
-        Err(format!("{host}'s game names mods: LAN games play none"))
-    }
-}
-
 /// The quest `setup` asks for, as [`quest_of`] finds it among those
 /// offered.
 pub(crate) fn quest(
@@ -1036,9 +1022,9 @@ pub(crate) mod tests {
     }
 
     /// A game hosted from the menus records the freestyle config and its
-    /// player count; the guest's game reads back from that, on its seat.
+    /// player count.
     #[test]
-    fn a_hosted_custom_game_records_its_players_and_a_guest_reads_it_back() {
+    fn a_hosted_custom_game_records_its_players() {
         let custom = menu::freestyle::Custom {
             map_number: 4242,
             gold: 15_000,
@@ -1051,29 +1037,6 @@ pub(crate) mod tests {
         assert_eq!(recorded.map_seed, Some(4242));
         assert_eq!(recorded.gold, 15_000);
         assert_eq!(recorded.cheats, Some(Cheats::Barred));
-
-        let welcome = net::Welcome {
-            seat: 2,
-            players: 3,
-            delay: 4,
-            setup: recorded.clone(),
-            nicks: Vec::new(),
-            host: 0,
-            save: None,
-        };
-        let guest = joined(&welcome, "host").expect("read back");
-
-        assert_eq!(guest.recorded(), recorded);
-        assert!(
-            joined(
-                &net::Welcome {
-                    setup: parsed(["openregent", "--mods", GUARDHOUSE_MOD]),
-                    ..welcome
-                },
-                "host"
-            )
-            .is_err()
-        );
     }
 
     /// A guest's lobby reads the host's config back from its recorded
@@ -1786,7 +1749,11 @@ pub(crate) mod tests {
                 .collect::<Vec<_>>(),
             [GUARDHOUSE_MOD]
         );
-        assert!(Cli::try_parse_from(["openregent", "--mods", GUARDHOUSE_MOD, "--server"]).is_err());
+        assert!(Cli::try_parse_from(["openregent", "--mods", GUARDHOUSE_MOD, "--server"]).is_ok());
+        assert!(
+            Cli::try_parse_from(["openregent", "--mods", GUARDHOUSE_MOD, "--client", "host"])
+                .is_err()
+        );
         assert_eq!(cli.mods.len(), 1);
         assert!(
             Setup::try_from(&Cli::parse_from(["openregent", "--mods", "{nope}"]).setup).is_err()

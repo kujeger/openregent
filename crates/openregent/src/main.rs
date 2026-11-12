@@ -48,7 +48,7 @@ use clap::{CommandFactory, FromArgMatches};
 use regent_core::data::text::Text;
 use regent_core::sim::world::offer::Menu;
 
-use cli::{Cli, Lists, Opening, codes, hosted, joined, lists, opening, quest, replayed};
+use cli::{Cli, Lists, Opening, codes, hosted, lists, opening, quest, replayed};
 use draw::shot::Capture;
 use files::env::Install;
 use headless::{headless, lan_headless};
@@ -132,15 +132,17 @@ fn lan(
             let players = (setup.players, delay);
             let recorded = setup.recorded();
             let named = (&recorded, nick.as_str());
-            let peer = net::Peer::host(port, (&build, builds), players, named, dumps)?;
+            let holdings = files::mod_hash::holdings(&install.mods());
+            let peer = net::Peer::host(port, (&build, builds), players, named, &holdings, dumps)?;
 
             Ok((setup, cli.mode.local, Some(peer)))
         }
         (None, Some(host)) => {
             let build = net::build(install)?;
-            let (peer, welcome) = net::Peer::join(host, (&build, &nick), dumps)?;
+            let holdings = files::mod_hash::holdings(&install.mods());
+            let (peer, welcome) = net::Peer::join(host, (&build, &nick), &holdings, dumps)?;
 
-            Ok((joined(&welcome, host)?, welcome.seat, Some(peer)))
+            Ok((welcome.setup, welcome.seat, Some(peer)))
         }
         (None, None) => Ok((setup, cli.mode.local, None)),
     }

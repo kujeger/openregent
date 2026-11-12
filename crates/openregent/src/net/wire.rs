@@ -5,9 +5,11 @@
 //!  "MJLN" version kind  body
 //!  kind 1 Hello    build: version, profile, commit, data hash; nick,
 //!                  ready, chat held, own chat (first, lines), the save
-//!                  loaded (0 none | 1 have game | 2 want game, from)
+//!                  loaded (0 none | 1 have game | 2 want game, from),
+//!                  the setup's mods held (GUID, hash?)
 //!       2 Lobby    seat, players, delay, title, revision, setup (RON),
-//!                  seats (nick, build, ready), own chat taken, chat
+//!                  the setup's mods' titles, seats (nick, build, ready,
+//!                  each mod's match), own chat taken, chat
 //!                  (first, (0 who line | 1 settings changed)...), the
 //!                  save loaded (name, game, file, size, saved nicks,
 //!                  each seat's saved seat)?: in the lobby, waiting
@@ -38,6 +40,8 @@
 //! ```
 
 use regent_core::sim::game::Order;
+
+use regent_core::data::guid::Guid;
 
 use crate::setup::Setup;
 
@@ -79,6 +83,12 @@ const HOLD_WANT: u8 = 2;
 const NOT_READY: u8 = 0;
 const READY_FOR: u8 = 1;
 const READY_ALWAYS: u8 = 2;
+
+/// A seat's match of a mod the setup names, as sent.
+const MATCH_UNKNOWN: u8 = 0;
+const MATCH_SAME: u8 = 1;
+const MATCH_MISSING: u8 = 2;
+const MATCH_DIFFERS: u8 = 3;
 
 /// A lobby chat line's tag: a player's line, or the settings changed.
 const SAID: u8 = 0;
@@ -209,6 +219,9 @@ pub struct Hello {
     pub said: Lines<String>,
     /// What it holds of the save the host loads.
     pub holding: Holding,
+    /// Each mod the host's setup names, by GUID: its files' hash here
+    /// (`files::mod_hash`), `None` where no folder holds it.
+    pub mods: Vec<(Guid, Option<String>)>,
 }
 
 /// What a guest holds of the save the host loads, by its game's hash.
@@ -246,6 +259,21 @@ pub struct Seat {
     pub build: String,
     /// The host's seat always is.
     pub ready: bool,
+    /// Its match of each mod the setup names, in the setup's order.
+    pub mods: Vec<ModMatch>,
+}
+
+/// How a seat's copy of a mod the setup names matches the host's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ModMatch {
+    /// Not said yet.
+    #[default]
+    Unknown,
+    Same,
+    /// No mod folder holds it.
+    Missing,
+    /// Its files hash otherwise: another version.
+    Differs,
 }
 
 /// The host's lobby, as it answers a guest's hello.
@@ -262,6 +290,8 @@ pub struct Room {
     pub revision: u32,
     /// The recording's setup the game is made from ([`Setup::recorded`]).
     pub setup: Setup,
+    /// Each mod the setup names, its title as the host has it.
+    pub mods: Vec<String>,
     /// Each seat taken, by seat.
     pub seats: Vec<Seat>,
     /// The guest's own chat lines taken so far.
@@ -633,6 +663,28 @@ impl<'a> In<'a> {
         }
     }
 
+    /// A guest's hash of a mod: its GUID, and the hash if held.
+    fn held(&mut self) -> Result<(Guid, Option<String>), String> {
+        let text = self.str()?;
+        let guid = Guid::parse(&text).ok_or_else(|| format!("mod {text}: no GUID"))?;
+        let hash = match self.u8()? {
+            0 => None,
+            _ => Some(self.str()?),
+        };
+
+        Ok((guid, hash))
+    }
+
+    /// A seat's match of a mod.
+    fn matched(&mut self) -> Result<ModMatch, String> {
+        Ok(match self.u8()? {
+            MATCH_SAME => ModMatch::Same,
+            MATCH_MISSING => ModMatch::Missing,
+            MATCH_DIFFERS => ModMatch::Differs,
+            _ => ModMatch::Unknown,
+        })
+    }
+
     /// `n` of what `one` reads, `n` read first.
     fn list<T>(
         &mut self,
@@ -676,6 +728,12 @@ impl Packet {
                 }
 
                 out.holding(&h.holding);
+                out.count(h.mods.len());
+
+                for (guid, hash) in &h.mods {
+                    out.str(&guid.to_string());
+                    out.maybe(hash.as_deref());
+                }
             }
             Packet::Lobby(r) => {
                 out.u8(LOBBY);
@@ -685,6 +743,7 @@ impl Packet {
                 out.str(&r.title);
                 out.u32(r.revision);
                 out.setup(&r.setup);
+                out.strings(&r.mods);
 
                 out.count(r.seats.len());
 
@@ -692,6 +751,16 @@ impl Packet {
                     out.str(&seat.nick);
                     out.str(&seat.build);
                     out.u8(u8::from(seat.ready));
+                    out.count(seat.mods.len());
+
+                    for m in &seat.mods {
+                        out.u8(match m {
+                            ModMatch::Unknown => MATCH_UNKNOWN,
+                            ModMatch::Same => MATCH_SAME,
+                            ModMatch::Missing => MATCH_MISSING,
+                            ModMatch::Differs => MATCH_DIFFERS,
+                        });
+                    }
                 }
 
                 out.u32(r.taken);
@@ -797,6 +866,7 @@ impl Packet {
                     },
                     _ => Holding::None,
                 },
+                mods: at.list(In::held)?,
             })),
             LOBBY => Ok(Packet::Lobby(Room {
                 seat: at.u8()?.into(),
@@ -805,11 +875,13 @@ impl Packet {
                 title: at.str()?,
                 revision: at.u32()?,
                 setup: at.setup()?,
+                mods: at.list(In::str)?,
                 seats: at.list(|at| {
                     Ok(Seat {
                         nick: at.str()?,
                         build: at.str()?,
                         ready: at.u8()? != 0,
+                        mods: at.list(In::matched)?,
                     })
                 })?,
                 taken: at.u32()?,
@@ -1092,6 +1164,8 @@ mod tests {
     use super::*;
     use regent_core::sim::game::Input;
 
+    const MOD: &str = "{17BF53DE-722F-4683-8E63-6B93D1606DFF}";
+
     #[test]
     #[allow(clippy::too_many_lines, reason = "every kind of packet")]
     fn every_packet_reads_back_as_written() {
@@ -1115,6 +1189,10 @@ mod tests {
                     game: "0123".to_owned(),
                     from: 7,
                 },
+                mods: vec![
+                    (Guid::parse(MOD).expect("a GUID"), Some("89ab".to_owned())),
+                    (Guid::parse(MOD).expect("a GUID"), None),
+                ],
             }),
             Packet::Lobby(Room {
                 seat: 1,
@@ -1126,10 +1204,17 @@ mod tests {
                     gold: 30_000,
                     ..Setup::default()
                 },
+                mods: vec!["New Game+".to_owned()],
                 seats: vec![Seat {
                     nick: "Ælfred".to_owned(),
                     build: "v0.1.0 c0ffee".to_owned(),
                     ready: true,
+                    mods: vec![
+                        ModMatch::Unknown,
+                        ModMatch::Same,
+                        ModMatch::Missing,
+                        ModMatch::Differs,
+                    ],
                 }],
                 taken: 1,
                 chat: Lines {

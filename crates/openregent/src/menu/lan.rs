@@ -29,6 +29,7 @@
 //! ([`net::Session`]) and LAN discovery are polled each pass
 //! ([`Lan::poll`]); the client runs what may block on a thread aside.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -47,11 +48,14 @@ use super::page::{Button, Page, Press};
 use super::paint::{self, Able, Align, Canvas, Inset};
 use super::save_page;
 use super::setup::{boxed, ground, line};
+use crate::files::compiled::Built;
 use crate::files::env::Install;
+use crate::files::mod_list::{self, Entry, Loading};
 use crate::files::profile::Profile;
 use crate::game::begin::Command;
 use crate::net::{self, Service};
-use crate::setup::Setup;
+use crate::setup::{Setup, Wanted};
+use regent_core::data::guid::Guid;
 use regent_draw::art as service;
 
 /// The fewest players of a LAN game.
@@ -195,6 +199,14 @@ pub struct Lan {
     /// LAN discovery's games, heard while Multiplayer Setup shows; why
     /// not, if its port will not bind.
     finder: Option<Result<net::Finder, String>>,
+    /// The install games are hosted on: its mods are what a lobby may
+    /// name.
+    install: Option<Install>,
+    /// The host's mod list for its lobbies, as the mods page edits it:
+    /// the settings' at the first hosting, then kept for the session.
+    mods: Option<(Vec<Entry>, Loading)>,
+    /// The lobby's MODS pressed, for the mods page to open over it.
+    mods_asked: bool,
 }
 
 impl Default for Lan {
@@ -217,6 +229,9 @@ impl Default for Lan {
             before: None,
             read: None,
             finder: None,
+            install: None,
+            mods: None,
+            mods_asked: false,
         }
     }
 }
@@ -225,7 +240,70 @@ impl Lan {
     /// Games hosted and joined on `install`: its build is what the
     /// lobby checks.
     pub fn on(&mut self, install: Install) {
+        self.install = Some(install.clone());
         self.client.on(install);
+    }
+
+    /// The install's mods hashed again: a rescan may have changed them.
+    pub fn rehash(&mut self) {
+        self.client.rehash();
+    }
+
+    /// The host's mod list, as the mods page opens on it: the settings'
+    /// until hosted.
+    pub fn mod_list(&self) -> (Vec<Entry>, Loading) {
+        self.mods
+            .clone()
+            .unwrap_or_else(|| (mod_list::read(), mod_list::loading()))
+    }
+
+    /// The host's mod list now `list`: the setup every guest sees made
+    /// of it and `custom`.
+    pub fn set_mods(&mut self, list: (Vec<Entry>, Loading), custom: &Custom) {
+        self.mods = Some(list);
+        self.client.share(self.setup(custom, self.players()));
+    }
+
+    /// Each mod the lobby names that a seat lacks or holds in another
+    /// version, the seats' lines by GUID: none with no lobby.
+    pub fn mod_problems(&self) -> BTreeMap<Guid, Vec<String>> {
+        self.room()
+            .map(|room| mod_problems(&room))
+            .unwrap_or_default()
+    }
+
+    /// Whether the lobby's MODS was pressed since the last ask.
+    pub const fn take_mods_asked(&mut self) -> bool {
+        std::mem::replace(&mut self.mods_asked, false)
+    }
+
+    /// The setup `custom` makes for `players`, naming the mods the
+    /// host's list enables that a folder holds and that compiled.
+    fn setup(&self, custom: &Custom, players: u32) -> Setup {
+        let enabled = self
+            .mods
+            .as_ref()
+            .map(|(entries, loading)| mod_list::chosen(entries, *loading))
+            .unwrap_or_default();
+        let usable = |guid: Guid| {
+            self.install.as_ref().is_none_or(|install| {
+                let found = install.mods().find(guid).is_some();
+                let refused = matches!(install.builds().get(&guid), Some(Built::Refused(_)));
+
+                found && !refused
+            })
+        };
+        let mods = enabled
+            .iter()
+            .filter_map(|text| Guid::parse(text))
+            .filter(|&guid| usable(guid))
+            .map(Wanted::from)
+            .collect();
+
+        Setup {
+            mods,
+            ..Setup::hosted(custom, players)
+        }
     }
 
     /// The profile's LAN saves directory, where a LAN save is looked for and
@@ -306,6 +384,8 @@ impl Lan {
     ///
     /// A port that is not a number from 1 to 65535, or will not bind.
     pub fn host(&mut self, custom: &Custom, nick: String) -> Result<(), String> {
+        self.mods = Some(self.mod_list());
+
         let typed = self.port.trim();
         let port = match self.protocol {
             Service::Lan => typed
@@ -325,7 +405,7 @@ impl Lan {
     ///
     /// A port that will not bind.
     fn bound(&mut self, custom: &Custom, nick: String, port: u16) -> Result<(), String> {
-        let setup = Setup::hosted(custom, self.players);
+        let setup = self.setup(custom, self.players);
         let title = self.session.trim().to_owned();
 
         self.client
@@ -376,7 +456,7 @@ impl Lan {
     /// Back from a LAN game: its lobby again on the game's socket, the
     /// host's showing `custom`'s setup.
     pub fn regroup(&mut self, regroup: net::Regroup, custom: &Custom) {
-        let setup = Setup::hosted(custom, regroup.players());
+        let setup = self.setup(custom, regroup.players());
         let title = self.session.trim().to_owned();
 
         self.forget();
@@ -438,7 +518,7 @@ impl Lan {
         let players = self.players();
 
         self.before = None;
-        self.client.share(Setup::hosted(custom, players));
+        self.client.share(self.setup(custom, players));
     }
 
     /// The host's game started: every guest welcomed, the game to make.
@@ -447,7 +527,7 @@ impl Lan {
     ///
     /// Not the host, a seat free, a guest not ready, a socket that fails.
     pub fn start(&mut self) -> Result<(), String> {
-        let command = command(self.client.start()?)?;
+        let command = command(self.client.start()?);
 
         self.ready = Some(command);
         Ok(())
@@ -577,10 +657,7 @@ impl Lan {
     /// [`Lan::take`]. A failure stops it, said on its page.
     pub fn poll(&mut self, now: Instant) -> bool {
         match self.client.poll(now) {
-            Some(net::Polled::Started(started)) => match command(*started) {
-                Ok(command) => self.ready = Some(command),
-                Err(why) => self.said = Some(why),
-            },
+            Some(net::Polled::Started(started)) => self.ready = Some(command(*started)),
             Some(net::Polled::Failed(why)) => self.said = Some(why),
             None => {}
         }
@@ -596,26 +673,17 @@ impl Lan {
 
 /// The LAN game `started` makes: the host's of its setup, a guest's as
 /// its welcome asks.
-///
-/// # Errors
-///
-/// A welcome whose setup will not make a game here.
-fn command(started: net::Started) -> Result<Command, String> {
+fn command(started: net::Started) -> Command {
     let ((setup, local), peer, saved) = match started {
         net::Started::Hosted { peer, setup, saved } => ((setup, peer.seat()), peer, saved),
         net::Started::Welcomed {
             peer,
             welcome,
-            host,
             saved,
-        } => {
-            let setup = crate::cli::joined(&welcome, &host)?;
-
-            ((setup, welcome.seat), peer, saved)
-        }
+        } => ((welcome.setup, welcome.seat), peer, saved),
     };
 
-    Ok(Command {
+    Command {
         setup,
         local,
         warm: None,
@@ -623,7 +691,7 @@ fn command(started: net::Started) -> Result<Command, String> {
         offered: None,
         peer: Some(peer),
         saved,
-    })
+    }
 }
 
 /// Whether `page` is one of these, its lobby polled: the host's
@@ -1358,12 +1426,7 @@ fn lobby_page(
         .map(|o| o.name.clone());
     let settings = room
         .as_ref()
-        .and_then(|r| lan.read_back(r).cloned())
-        .map(|custom| settings_text(&custom, dialog))
-        .map(|text| match &loaded {
-            Some(name) => format!("{LOADED}\n{name}\n\n{text}"),
-            None => text,
-        });
+        .and_then(|room| lobby_settings(lan, room, dialog));
     // This machine's seat: a guest's from the host, the host's is 0.
     let own = room
         .as_ref()
@@ -1447,17 +1510,204 @@ fn lobby_page(
     } else {
         (Button::Ready, able(joined))
     };
-    let offered = [
-        first,
-        (Button::AdjustSettings, able(hosts && joined)),
-        (Button::Cancel, Able::Enabled),
-    ];
+    let adjust = able(hosts && joined);
+    // The host's mods, but while a save sets them.
+    let mods = able(hosts && joined && loaded.is_none());
+    let (adjusted, modded) = split_adjust(&mut canvas, layout, (adjust, mods));
+    let drawn = [first, (Button::Cancel, Able::Enabled)];
+    let offered = [first, (Button::AdjustSettings, adjust), drawn[1]];
 
-    let pressed = buttons(&mut canvas, layout, (&offered, lobby_control))
+    lan.mods_asked |= modded;
+
+    let pressed = buttons(&mut canvas, layout, (&drawn, lobby_control))
+        .or(adjusted.then_some(Press::Button(Button::AdjustSettings)))
         .or_else(|| keyed(ctx, layout, (&offered, lobby_control)));
 
     pressed.or(load.then_some(Press::Button(Button::LoadGame)))
 }
+
+/// The lobby's settings box: the save loaded, if any, the settings, the
+/// mods.
+fn lobby_settings(lan: &mut Lan, room: &net::Room, dialog: Dialog<'_>) -> Option<String> {
+    let text = settings_text(lan.read_back(room)?, dialog);
+    let mods = mods_text(room);
+
+    Some(match &room.save {
+        Some(offer) => format!("{LOADED}\n{}\n\n{text}\n\n{mods}", offer.name),
+        None => format!("{text}\n\n{mods}"),
+    })
+}
+
+/// ADJUST SETTINGS' place split in two, its picture cut to each half
+/// ([`SPLIT_CAP`]): SETTINGS, the original's button, and MODS; whether
+/// each was pressed.
+///
+/// ```text
+///  (   ADJUST SETTINGS   )   ──>   ( SETTINGS ) (  MODS  )
+/// ```
+fn split_adjust(
+    canvas: &mut Canvas<'_>,
+    layout: &Layout,
+    (settings, mods): (Able, Able),
+) -> (bool, bool) {
+    let adjust = layout
+        .control(lobby::ADJUST)
+        .and_then(|c| Some((c, fit::rect(c.rect?))));
+
+    adjust.map_or((false, false), |(c, rect)| {
+        let middle = rect.center().x;
+        let left = Rect::from_min_max(rect.min, pos2(middle - SPLIT_GAP / 2.0, rect.max.y));
+        let right = Rect::from_min_max(pos2(middle + SPLIT_GAP / 2.0, rect.min.y), rect.max);
+        let half = |id: i32, rect: Rect, text: &str| ShownControl {
+            id: Some(id),
+            rect: Some(super::setup::whole(rect)),
+            text: Some(text.to_owned()),
+            hotkey: None,
+            ..c.clone()
+        };
+
+        canvas.caps = Some(SPLIT_CAP);
+
+        let pressed = (
+            canvas.button(
+                Pack::Expansion,
+                &half(lobby::ADJUST, left, SETTINGS_BUTTON),
+                settings,
+            ),
+            canvas.button(
+                Pack::Expansion,
+                &half(MODS_CONTROL, right, MODS_BUTTON),
+                mods,
+            ),
+        );
+
+        canvas.caps = None;
+        pressed
+    })
+}
+
+/// The split buttons' labels: placeholders, MODS openregent's own, as
+/// the original's lobby has no mods.
+const SETTINGS_BUTTON: &str = "SETTINGS";
+const MODS_BUTTON: &str = "MODS";
+
+/// MODS' control id, its press told apart by it: no layout's, which
+/// are positive.
+const MODS_CONTROL: i32 = -lobby::ADJUST;
+
+/// The gap between the split buttons, and their pictures' end caps,
+/// layout pixels (**Inferred**: the settings page's tabs' cap, on the
+/// same art).
+const SPLIT_GAP: f32 = 4.0;
+const SPLIT_CAP: f32 = 6.0;
+
+/// The settings box's mods: a heading, then each mod the setup names,
+/// in load order; one a seat lacks, or holds in another version, red,
+/// a line under it for each such seat, one not yet checked yellow.
+///
+/// ```text
+///  MODS
+///  New Game+
+///  Decor Buildings          red
+///  Bob: missing             red
+/// ```
+fn mods_text(room: &net::Room) -> String {
+    let lines = room.mods.iter().enumerate().flat_map(|(at, title)| {
+        let seats = seat_lines(room, at);
+        let worst = seats
+            .iter()
+            .map(|(_, colour)| *colour)
+            .find(|colour| *colour == MOD_PROBLEM)
+            .or_else(|| seats.first().map(|(_, colour)| *colour));
+        let head = match worst {
+            Some(colour) => tinted(title, colour),
+            None => title.clone(),
+        };
+
+        std::iter::once(head)
+            .chain(
+                seats
+                    .into_iter()
+                    .map(|(line, colour)| tinted(&line, colour)),
+            )
+            .collect::<Vec<_>>()
+    });
+    let listed: Vec<String> = lines.collect();
+
+    if listed.is_empty() {
+        format!("{MODS_HEADING}\n{NO_MODS}")
+    } else {
+        format!("{MODS_HEADING}\n{}", listed.join("\n"))
+    }
+}
+
+/// Each seat whose match of the setup's `at`th mod is not the same, as a
+/// line, and its colour.
+///
+/// ```text
+///  ("Bob: missing", MOD_PROBLEM), ("Cat: checking", MOD_CHECKING)
+/// ```
+fn seat_lines(room: &net::Room, at: usize) -> Vec<(String, &'static str)> {
+    room.seats
+        .iter()
+        .filter_map(|seat| {
+            let m = seat.mods.get(at).copied().unwrap_or_default();
+            let who = if seat.nick.is_empty() {
+                format!("({})", seat.build)
+            } else {
+                seat.nick.clone()
+            };
+
+            mod_said(m).map(|(said, colour)| (format!("{who}: {said}"), colour))
+        })
+        .collect()
+}
+
+/// Each mod the lobby's setup names that a seat lacks or holds in
+/// another version, by GUID: the seats' lines, as the mods page marks
+/// its row.
+fn mod_problems(room: &net::Room) -> BTreeMap<Guid, Vec<String>> {
+    room.setup
+        .mods
+        .iter()
+        .enumerate()
+        .filter_map(|(at, wanted)| {
+            let lines: Vec<String> = seat_lines(room, at)
+                .into_iter()
+                .filter(|(_, colour)| *colour == MOD_PROBLEM)
+                .map(|(line, _)| line)
+                .collect();
+
+            (!lines.is_empty()).then_some((wanted.guid, lines))
+        })
+        .collect()
+}
+
+/// `text` in `colour`, as text markup tags it.
+fn tinted(text: &str, colour: &str) -> String {
+    format!("[color:{colour}]{text}[/color]")
+}
+
+/// How a seat's match of a mod is said, and its colour; none where it
+/// matches.
+const fn mod_said(m: net::ModMatch) -> Option<(&'static str, &'static str)> {
+    match m {
+        net::ModMatch::Same => None,
+        net::ModMatch::Unknown => Some(("checking", MOD_CHECKING)),
+        net::ModMatch::Missing => Some(("missing", MOD_PROBLEM)),
+        net::ModMatch::Differs => Some(("another version", MOD_PROBLEM)),
+    }
+}
+
+/// The settings box's mods heading, and its line with none: in
+/// `AP73`'s headings' manner, openregent's own.
+const MODS_HEADING: &str = "MODS";
+const NO_MODS: &str = "None";
+
+/// A mod's colours in the settings box, as text markup's hex: a seat
+/// lacks it or holds another version; not yet checked.
+const MOD_PROBLEM: &str = "db2124";
+const MOD_CHECKING: &str = "ffff00";
 
 /// The invite's font: the map's line, smaller than the page's.
 const INVITE_FONT: FourCc = FourCc(*b"fnt7");
@@ -2004,6 +2254,90 @@ mod tests {
             super::super::freestyle::Lists::default().dialog(LEAST_PLAYERS),
         );
         assert!(barred.ends_with("CHEATS\nNo"));
+    }
+
+    /// The settings box lists the setup's mods; one a seat lacks or
+    /// holds in another version is red, each such seat under it, one not
+    /// yet checked yellow.
+    #[test]
+    fn the_settings_box_marks_a_mod_a_seat_lacks() {
+        use net::ModMatch::{Differs, Missing, Same, Unknown};
+
+        let seat = |nick: &str, mods: Vec<net::ModMatch>| net::Seat {
+            nick: nick.to_owned(),
+            build: "v0.1.0 c0ffee".to_owned(),
+            ready: true,
+            mods,
+        };
+        let room = net::Room {
+            mods: vec![
+                "New Game+".to_owned(),
+                "Decor".to_owned(),
+                "Tweaks".to_owned(),
+            ],
+            seats: vec![
+                seat("Ann", vec![Same, Same, Same]),
+                seat("Bob", vec![Same, Missing, Unknown]),
+                seat("Cat", vec![Same, Differs, Same]),
+            ],
+            ..net::Room::default()
+        };
+        let red = |text: &str| format!("[color:{MOD_PROBLEM}]{text}[/color]");
+        let yellow = |text: &str| format!("[color:{MOD_CHECKING}]{text}[/color]");
+
+        assert_eq!(
+            mods_text(&room).lines().collect::<Vec<_>>(),
+            [
+                "MODS".to_owned(),
+                "New Game+".to_owned(),
+                red("Decor"),
+                red("Bob: missing"),
+                red("Cat: another version"),
+                yellow("Tweaks"),
+                yellow("Bob: checking"),
+            ]
+        );
+        assert_eq!(mods_text(&net::Room::default()), "MODS\nNone");
+    }
+
+    /// The mods page marks a lobby's mod a player lacks or holds in
+    /// another version, by GUID, naming each; not one still checked.
+    #[test]
+    fn a_mod_a_player_lacks_is_a_problem_by_its_guid() {
+        use net::ModMatch::{Differs, Missing, Same, Unknown};
+
+        let guids = [
+            "{00000000-0000-0000-0000-00000000000A}",
+            "{00000000-0000-0000-0000-00000000000B}",
+            "{00000000-0000-0000-0000-00000000000C}",
+        ]
+        .map(|text| Guid::parse(text).expect("a GUID"));
+        let seat = |nick: &str, mods: Vec<net::ModMatch>| net::Seat {
+            nick: nick.to_owned(),
+            build: String::new(),
+            ready: true,
+            mods,
+        };
+        let room = net::Room {
+            setup: Setup {
+                mods: guids.iter().map(|&g| Wanted::from(g)).collect(),
+                ..Setup::default()
+            },
+            seats: vec![
+                seat("Ann", vec![Same, Same, Same]),
+                seat("Bob", vec![Same, Missing, Unknown]),
+                seat("Cat", vec![Same, Differs, Same]),
+            ],
+            ..net::Room::default()
+        };
+
+        assert_eq!(
+            mod_problems(&room),
+            BTreeMap::from([(
+                guids[1],
+                vec!["Bob: missing".to_owned(), "Cat: another version".to_owned()]
+            )])
+        );
     }
 
     /// A found game's row names it by session and nick, else by its

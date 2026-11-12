@@ -104,8 +104,12 @@ pub use resync::Payload;
 pub use session::{Phase, Polled, Service, Session, Started};
 #[cfg(test)]
 pub use wire::Profile;
-pub use wire::{Build, Leave, Lines, Open, Ready, Room, Talk, Welcome};
+#[cfg(test)]
+pub use wire::Seat;
+pub use wire::{Build, Leave, Lines, ModMatch, Open, Ready, Room, Talk, Welcome};
 use wire::{Bundle, Item, Packet};
+
+use crate::files::mod_hash::Holdings;
 
 /// Frames from an order's giving to the frame it comes before, unless
 /// told: 150 ms, room for a LAN's round trip and a lost packet's resend.
@@ -423,8 +427,9 @@ impl Peer {
     }
 
     /// Host a game of `players` on `port`, named `nick`: wait for the
-    /// guests, then welcome them to `setup`. Desyncs are written to
-    /// `dumps`. Blocks: the command line's.
+    /// guests, then welcome them to `setup`, once they hold its mods as
+    /// `holdings` does. Desyncs are written to `dumps`. Blocks: the
+    /// command line's.
     ///
     /// # Errors
     ///
@@ -434,9 +439,10 @@ impl Peer {
         build: (&wire::Build, Builds),
         (players, delay): (u32, Delay),
         (setup, nick): (&crate::setup::Setup, &str),
+        holdings: &Holdings,
         dumps: Option<PathBuf>,
     ) -> Result<Peer, String> {
-        let seated = Lobby::bind(port)?.seat(build, (players, delay), (setup, nick))?;
+        let seated = Lobby::bind(port)?.seat(build, (players, delay), (setup, nick), holdings)?;
 
         Peer::hosted(seated, dumps)
     }
@@ -477,8 +483,8 @@ impl Peer {
         Ok(peer)
     }
 
-    /// Join the host at `host`, named `nick`: the peer, and the host's
-    /// welcome. Blocks: the command line's.
+    /// Join the host at `host`, named `nick`, its mods `holdings`: the
+    /// peer, and the host's welcome. Blocks: the command line's.
     ///
     /// # Errors
     ///
@@ -486,10 +492,11 @@ impl Peer {
     pub fn join(
         host: &str,
         build: (&wire::Build, &str),
+        holdings: &Holdings,
         dumps: Option<PathBuf>,
     ) -> Result<(Peer, Welcome), String> {
         let addr = lobby::address(host)?;
-        let (socket, welcome) = lobby::join(addr, build)?;
+        let (socket, welcome) = lobby::join(addr, build, holdings)?;
 
         Ok((Peer::guest(socket, addr, &welcome, dumps)?, welcome))
     }

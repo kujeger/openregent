@@ -261,7 +261,8 @@ even one that does nothing different. openregent runs no budget
 alone no longer parts them (**Inferred**: no other rule of play reads a record count). openregent's LAN hello hashes the SDK `.bcd` bytes
 (`lobby::data_hash`) and refuses a peer whose hash differs: these two
 builds cannot start a game together. Archives are hashed by name and
-length only, and mods are not hashed, as a network game plays none.
+length only; mods are hashed apart, each by its files
+([multiplayer.md](../openregent/multiplayer.md)).
 
 ### What 1.5.2.28 changes in play
 

@@ -34,6 +34,16 @@
 //!       <── Welcome(.., saved seat, host's seat, game)
 //! ```
 //!
+//! A setup naming mods is played only once every seat holds each, its
+//! files hashed alike (`files::mod_hash`): each guest says its hash of
+//! each, the host marks every seat's match in the lobby.
+//!
+//! ```text
+//!  Hello(.., mods: (GUID, hash?)...) ──>  each seat's match of each mod:
+//!       <── Lobby(.., titles, seats       same, missing, differs, unknown;
+//!           with each mod's match)        startable when all are same
+//! ```
+//!
 //! After a game, each peer may go back to the lobby on its game's socket
 //! ([`super::Regroup`], the end panel's Return to Lobby):
 //!
@@ -62,11 +72,13 @@ use super::discover::{Beacon, Targets};
 use super::node::Back;
 use super::transfer::{Incoming, Outgoing, WINDOW};
 use super::wire::{
-    Build, Hello, Holding, Lines, MOST_BYTES, Offer, Open, Packet, Profile, Ready, Room, Seat,
-    Talk, Welcome,
+    Build, Hello, Holding, Lines, MOST_BYTES, ModMatch, Offer, Open, Packet, Profile, Ready, Room,
+    Seat, Talk, Welcome,
 };
 use crate::files::env::Install;
+use crate::files::mod_hash::Holdings;
 use crate::setup::Setup;
+use regent_core::data::guid::Guid;
 
 /// The port a host listens on unless told: this game's own pick.
 pub const PORT: u16 = 47_101;
@@ -266,6 +278,8 @@ struct Guest {
     heard: Instant,
     taken: u32,
     holding: Holding,
+    /// Its hash of each mod it was asked of; `None`, not held.
+    mods: Vec<(Guid, Option<String>)>,
     probe: Probe,
 }
 
@@ -389,6 +403,8 @@ pub enum Unready {
     Guests,
     /// A guest lacks the save the host loads.
     Save,
+    /// A seat lacks a mod the setup names, or holds another version.
+    Mods,
 }
 
 /// A host's lobby, polled: each guest seated as its hello comes, the
@@ -416,6 +432,8 @@ pub struct Hosting {
     /// Announces the lobby to LAN discovery; none where its socket
     /// will not bind.
     beacon: Option<Beacon>,
+    /// The host's mods, hashed; none until hashed.
+    holdings: Option<Holdings>,
 }
 
 impl Lobby {
@@ -445,9 +463,11 @@ impl Lobby {
     /// Wait for `players - 1` guests running `build`, the host seat 0
     /// and named `nick`, and welcome each to the game of `setup`, orders
     /// `delay` frames ahead, as soon as every seat is taken, ready or
-    /// not. Blocks: the command line's. An automatic delay waits up to
+    /// not, and every seat holds the setup's mods as `holdings` does.
+    /// Blocks: the command line's. An automatic delay waits up to
     /// [`SAMPLE_WAIT`] after the last seat for every guest's pings,
-    /// else the default stands ([`Delay::pick`]).
+    /// else the default stands ([`Delay::pick`]). A mod that does not
+    /// match is logged, once each change, and waited on.
     ///
     /// # Errors
     ///
@@ -457,19 +477,33 @@ impl Lobby {
         build: (&Build, Builds),
         (players, delay): (u32, Delay),
         (setup, nick): (&Setup, &str),
+        holdings: &Holdings,
     ) -> Result<Seated, String> {
         let mut hosting = self.host(build, (players, delay), (setup, nick))?;
         let mut full = None;
         let mut start = false;
+        let mut said = Vec::new();
 
-        // Full at `full`; started once the pings are in, or SAMPLE_WAIT on.
+        hosting.set_holdings(holdings);
+
+        // Full at `full`; started once the pings are in, or SAMPLE_WAIT
+        // on, and the mods match.
         while !start {
             let now = Instant::now();
 
             if hosting.poll(now) {
                 let since = now.saturating_duration_since(*full.get_or_insert(now));
+                let problems = hosting.mod_problems();
 
-                start = hosting.sampled() || since >= SAMPLE_WAIT;
+                if problems != said {
+                    for problem in &problems {
+                        warn!("net: waiting on a mod: {problem}");
+                    }
+
+                    said = problems;
+                }
+
+                start = (hosting.sampled() || since >= SAMPLE_WAIT) && said.is_empty();
             }
 
             if !start {
@@ -525,6 +559,7 @@ impl Lobby {
                     .inspect_err(|why| warn!("net: not announced to LAN discovery: {why}"))
                     .ok()
             },
+            holdings: None,
         })
     }
 }
@@ -594,6 +629,112 @@ impl Hosting {
             self.setup = setup.clone();
             self.revise();
         }
+    }
+
+    /// The host's mods, hashed: each guest's are matched to them.
+    pub fn set_holdings(&mut self, holdings: &Holdings) {
+        if self.holdings.as_ref() != Some(holdings) {
+            self.holdings = Some(holdings.clone());
+        }
+    }
+
+    /// The host's hash of each mod the setup names: `None` where not
+    /// held, or not hashed yet.
+    fn own_mods(&self) -> Vec<(Guid, Option<String>)> {
+        self.setup
+            .mods
+            .iter()
+            .map(|w| {
+                let hash = self
+                    .holdings
+                    .as_ref()
+                    .and_then(|h| h.get(&w.guid))
+                    .map(|held| held.hash.clone());
+
+                (w.guid, hash)
+            })
+            .collect()
+    }
+
+    /// The host seat's match of each mod the setup names.
+    fn own_matches(&self) -> Vec<ModMatch> {
+        self.own_mods()
+            .iter()
+            .map(|(_, hash)| match (&self.holdings, hash) {
+                (None, _) => ModMatch::Unknown,
+                (Some(_), None) => ModMatch::Missing,
+                (Some(_), Some(_)) => ModMatch::Same,
+            })
+            .collect()
+    }
+
+    /// A guest's match of each mod the setup names, `theirs` its hashes:
+    /// unknown until both it and the host have said.
+    fn matches(&self, theirs: &[(Guid, Option<String>)]) -> Vec<ModMatch> {
+        self.own_mods()
+            .iter()
+            .map(|(guid, ours)| {
+                let said = theirs.iter().find(|(g, _)| g == guid).map(|(_, h)| h);
+
+                match (ours, said) {
+                    (_, None) | (None, Some(Some(_))) => ModMatch::Unknown,
+                    (_, Some(None)) => ModMatch::Missing,
+                    (Some(ours), Some(Some(hash))) if ours == hash => ModMatch::Same,
+                    (Some(_), Some(Some(_))) => ModMatch::Differs,
+                }
+            })
+            .collect()
+    }
+
+    /// Each mod the setup names, its title as the host has it, else its
+    /// GUID.
+    fn mod_titles(&self) -> Vec<String> {
+        self.setup
+            .mods
+            .iter()
+            .map(|w| {
+                self.holdings
+                    .as_ref()
+                    .and_then(|h| h.get(&w.guid))
+                    .map_or_else(|| w.guid.to_string(), |held| held.title.clone())
+            })
+            .collect()
+    }
+
+    /// Whether every seat holds every mod the setup names, as the host's.
+    fn mods_match(&self) -> bool {
+        let same = |m: &ModMatch| *m == ModMatch::Same;
+
+        self.own_matches().iter().all(same)
+            && self
+                .guests
+                .iter()
+                .all(|g| self.matches(&g.mods).iter().all(same))
+    }
+
+    /// Each seat whose mods do not match, and how: for the log.
+    ///
+    /// ```text
+    ///  Bob: New Game+ missing
+    /// ```
+    pub fn mod_problems(&self) -> Vec<String> {
+        let titles = self.mod_titles();
+        let seats = std::iter::once((self.nick.clone(), self.own_matches())).chain(
+            self.guests
+                .iter()
+                .map(|g| (g.nick.clone(), self.matches(&g.mods))),
+        );
+
+        seats
+            .flat_map(|(nick, matches)| {
+                titles
+                    .iter()
+                    .zip(matches)
+                    .filter(|(_, m)| *m != ModMatch::Same)
+                    .map(move |(title, m)| format!("{nick}: {title} {}", said_match(m)))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 
     /// A change every guest must ready for again, said in the chat.
@@ -777,6 +918,8 @@ impl Hosting {
             Some(Unready::Seats)
         } else if self.guests.iter().any(|g| !self.ready(g.ready)) {
             Some(Unready::Guests)
+        } else if !self.mods_match() {
+            Some(Unready::Mods)
         } else if self.chosen.as_ref().is_some_and(|c| {
             let have = Holding::Have(c.offer.game.clone());
 
@@ -817,11 +960,13 @@ impl Hosting {
             nick: self.nick.clone(),
             build: self.build.0.shown(),
             ready: true,
+            mods: self.own_matches(),
         };
         let guests = self.guests.iter().map(|g| Seat {
             nick: g.nick.clone(),
             build: g.build.clone(),
             ready: self.ready(g.ready),
+            mods: self.matches(&g.mods),
         });
         let first = heard.min(u32::try_from(self.chat.len()).unwrap_or(u32::MAX));
         let mut room = Room {
@@ -831,6 +976,7 @@ impl Hosting {
             title: self.title.clone(),
             revision: self.revision,
             setup: self.setup.clone(),
+            mods: self.mod_titles(),
             seats: std::iter::once(host).chain(guests).collect(),
             taken,
             chat: Lines {
@@ -1037,6 +1183,7 @@ impl Hosting {
                     // lines before these were taken, or are lost.
                     taken: hello.said.first,
                     holding: Holding::None,
+                    mods: Vec::new(),
                     probe: Probe::default(),
                 });
                 info!("net: {from} joined as player {}", self.guests.len());
@@ -1050,6 +1197,7 @@ impl Hosting {
         guest.build = hello.build.shown();
         guest.ready = hello.ready;
         guest.holding.clone_from(&hello.holding);
+        guest.mods.clone_from(&hello.mods);
         u32::try_from(at + 1).map_err(|e| e.to_string())
     }
 
@@ -1089,6 +1237,16 @@ impl Hosting {
 
         self.chat.extend(said);
         taken
+    }
+}
+
+/// A mod's match, as the log says it.
+const fn said_match(m: ModMatch) -> &'static str {
+    match m {
+        ModMatch::Unknown => "not checked yet",
+        ModMatch::Same => "the same",
+        ModMatch::Missing => "missing",
+        ModMatch::Differs => "another version",
     }
 }
 
@@ -1232,6 +1390,8 @@ pub struct Joining {
     /// The host plays on: asked from the lobby after a game, this guest
     /// waits for it.
     held: bool,
+    /// This machine's mods, hashed; none until hashed.
+    holdings: Option<Holdings>,
 }
 
 /// What a guest holds of the save the host loads.
@@ -1297,6 +1457,7 @@ impl Joining {
             saves: None,
             save: Save::None,
             held: false,
+            holdings: None,
         })
     }
 
@@ -1476,6 +1637,28 @@ impl Joining {
 
     /// The hello as it stands: ready, the chat held, the lines the host
     /// has not taken.
+    /// This machine's mods, hashed: the host is told its hash of each
+    /// the setup names.
+    pub fn set_holdings(&mut self, holdings: &Holdings) {
+        if self.holdings.as_ref() != Some(holdings) {
+            self.holdings = Some(holdings.clone());
+        }
+    }
+
+    /// This machine's hash of each mod the host's setup names; none
+    /// before the lobby is heard or the mods hashed.
+    fn held_mods(&self) -> Vec<(Guid, Option<String>)> {
+        match (&self.room, &self.holdings) {
+            (Some(room), Some(holdings)) => room
+                .setup
+                .mods
+                .iter()
+                .map(|w| (w.guid, holdings.get(&w.guid).map(|h| h.hash.clone())))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
     fn hello(&self) -> Vec<u8> {
         let held = u32::try_from(self.chat.len()).unwrap_or(u32::MAX);
 
@@ -1484,6 +1667,7 @@ impl Joining {
             nick: self.nick.clone(),
             ready: self.ready,
             holding: self.holding(),
+            mods: self.held_mods(),
             heard: held,
             said: Lines {
                 first: self.taken,
@@ -1640,6 +1824,7 @@ impl super::Regroup {
                 heard: now,
                 taken: 0,
                 holding: Holding::None,
+                mods: Vec::new(),
                 probe: Probe::default(),
             })
             .collect();
@@ -1661,16 +1846,22 @@ impl super::Regroup {
     }
 }
 
-/// Join the host at `host` running `build`, named `nick`, always ready:
-/// its welcome, and the socket. Blocks: the command line's.
+/// Join the host at `host` running `build`, named `nick`, always ready,
+/// its mods `holdings`: its welcome, and the socket. Blocks: the command
+/// line's.
 ///
 /// # Errors
 ///
 /// A refusal, or a host silent for [`JOIN_TIMEOUT`].
-pub fn join(host: SocketAddr, build: (&Build, &str)) -> Result<(UdpSocket, Welcome), String> {
+pub fn join(
+    host: SocketAddr,
+    build: (&Build, &str),
+    holdings: &Holdings,
+) -> Result<(UdpSocket, Welcome), String> {
     let mut joining = Joining::new(host, build, Instant::now())?;
 
     joining.set_ready(Ready::Always);
+    joining.set_holdings(holdings);
 
     loop {
         if let Some(welcome) = joining.poll(Instant::now())? {
@@ -1800,6 +1991,7 @@ mod tests {
                 lines: lines.iter().map(|l| (*l).to_owned()).collect(),
             },
             holding: Holding::None,
+            mods: Vec::new(),
         }
     }
 
@@ -1835,6 +2027,125 @@ mod tests {
             },
             ..Room::default()
         });
+    }
+
+    /// Two mods' GUIDs: the tests' setup names both.
+    const MODS: [&str; 2] = [
+        "{17BF53DE-722F-4683-8E63-6B93D1606DFF}",
+        "{D666FCBE-9906-4582-A6A0-DC96F812441E}",
+    ];
+
+    fn guid(at: usize) -> Guid {
+        Guid::parse(MODS[at]).expect("a GUID")
+    }
+
+    /// The mods `held` names hashed as given, titled by their place.
+    fn holdings(held: &[(usize, &str)]) -> Holdings {
+        held.iter()
+            .map(|&(at, hash)| {
+                let held = crate::files::mod_hash::Held {
+                    title: format!("Mod {at}"),
+                    hash: hash.to_owned(),
+                };
+
+                (guid(at), held)
+            })
+            .collect()
+    }
+
+    /// A setup naming both mods.
+    fn modded() -> Setup {
+        Setup {
+            mods: (0..MODS.len())
+                .map(|at| crate::setup::Wanted::from(guid(at)))
+                .collect(),
+            ..Setup::default()
+        }
+    }
+
+    /// A guest that lacks a mod, or holds another version, holds the
+    /// start, marked on its seat; once it holds each as the host does,
+    /// the game may start.
+    #[test]
+    fn a_guest_missing_a_mod_or_of_another_version_holds_the_start() {
+        use ModMatch::{Differs, Missing, Same};
+
+        let now = Instant::now();
+        let mut host = hosting(2);
+        let from = SocketAddr::from(([127, 0, 0, 1], 9));
+
+        host.set_setup(&modded());
+        host.set_holdings(&holdings(&[(0, "aa"), (1, "bb")]));
+
+        let said = |host: &mut Hosting, second: Option<&str>| {
+            let hello = Hello {
+                ready: Ready::For(host.revision),
+                mods: vec![
+                    (guid(0), Some("aa".to_owned())),
+                    (guid(1), second.map(str::to_owned)),
+                ],
+                ..hello(0, &[])
+            };
+
+            host.hello(&hello, from, now);
+            (host.view().seats[1].mods.clone(), host.unready())
+        };
+
+        assert_eq!(
+            said(&mut host, None),
+            (vec![Same, Missing], Some(Unready::Mods))
+        );
+        assert_eq!(host.mod_problems(), ["Ann: Mod 1 missing"]);
+        assert_eq!(
+            said(&mut host, Some("xx")),
+            (vec![Same, Differs], Some(Unready::Mods))
+        );
+        assert_eq!(said(&mut host, Some("bb")), (vec![Same, Same], None));
+        assert_eq!(host.view().mods, ["Mod 0", "Mod 1"]);
+    }
+
+    /// The host's own seat: unknown until its mods are hashed, then
+    /// missing where it holds none.
+    #[test]
+    fn a_host_unhashed_or_lacking_a_mod_holds_the_start() {
+        use ModMatch::{Missing, Same, Unknown};
+
+        let mut host = hosting(1);
+
+        host.set_setup(&modded());
+
+        assert_eq!(host.view().seats[0].mods, [Unknown, Unknown]);
+        assert_eq!(host.unready(), Some(Unready::Mods));
+
+        host.set_holdings(&holdings(&[(0, "aa")]));
+
+        assert_eq!(host.view().seats[0].mods, [Same, Missing]);
+        assert_eq!(host.unready(), Some(Unready::Mods));
+    }
+
+    /// A guest tells the host its hash of each mod the host's setup
+    /// names, none for one it lacks; nothing before its mods are hashed.
+    #[test]
+    fn a_guest_says_its_hash_of_each_mod_the_setup_names() {
+        let now = Instant::now();
+        let from = SocketAddr::from(([127, 0, 0, 1], 9));
+        let mut guest = Joining::new(from, (&build(), "Ann"), now).expect("joining");
+
+        guest.lobby(Room {
+            seat: 1,
+            players: 2,
+            setup: modded(),
+            ..Room::default()
+        });
+
+        assert_eq!(guest.held_mods(), []);
+
+        guest.set_holdings(&holdings(&[(1, "bb")]));
+
+        assert_eq!(
+            guest.held_mods(),
+            [(guid(0), None), (guid(1), Some("bb".to_owned()))]
+        );
     }
 
     /// A guest let go for its silence and seated again goes on chatting:

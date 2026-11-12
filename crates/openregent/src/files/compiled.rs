@@ -198,7 +198,7 @@ fn present(dir: &Path, listed: &Listed) -> bool {
 }
 
 /// `path`, `\` or `/` between parts, under `dir`.
-fn under(dir: &Path, path: &str) -> PathBuf {
+pub(crate) fn under(dir: &Path, path: &str) -> PathBuf {
     path.split(['/', '\\'])
         .filter(|part| !part.is_empty())
         .fold(dir.to_path_buf(), |at, part| at.join(part))

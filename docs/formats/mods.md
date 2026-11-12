@@ -112,8 +112,9 @@ program (`Program::with_members`, openregent's `load::patched`):
   the `.dat` file stay as they were.
 - A patch with no `[[prototype]]` writes the text it did before, so a
   unit-only mod's saves keep their hash.
-- LAN games play no mods ([below](#the-mod-set-recorded)), so no peer
-  sees a patch.
+- A LAN game's mods are matched by their files' hash, the manifest
+  among them, so every peer plays the same patch
+  ([multiplayer.md](../openregent/multiplayer.md)).
 
 Tests: `regent_core/tests/mod_patch.rs` on the made-up game,
 `regent_core/tests/flag_patch.rs`, openregent's
@@ -321,10 +322,11 @@ that guard's birth again finds it running. Test: openregent's
 - An HD save's list ([saves.md](saves.md#mods)): HD plays
   a loaded save with exactly those mods, none for version 10; a missing one
   refuses the load, named. openregent loads no HD saves.
-- LAN games play no mods: HD's network game start composes none
-  (**Inferred**: no mod set is compared). `--mods`
-  conflicts with `--server` and `--client`; a guest refuses a setup naming
-  mods. The data hash is unchanged.
+- HD's network game start composes no mods (**Inferred**: no mod set
+  is compared). openregent's LAN games play the host's setup's mods once
+  every seat holds each, hashed alike
+  ([multiplayer.md](../openregent/multiplayer.md)). The data hash is
+  unchanged.
 - Golden and trace tests compose no mods.
 
 ## XML

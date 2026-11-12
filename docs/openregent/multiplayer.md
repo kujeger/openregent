@@ -3,10 +3,9 @@
 Lockstep over UDP (`openregent/src/net`): every peer runs the whole game;
 only orders cross the wire. The original's protocol is a non-goal.
 A new freestyle game, 2 to 4 players, from the command line or the
-menus' Multiplayer page (`menu::lan`). No mods, as in HD (**Binary**: its
-network start composes no mod set): `--mods` conflicts with `--server` and
-`--client`, a guest refuses a setup naming mods, and the data hash is the
-stock dataset's ([mods.md](../formats/mods.md#the-mod-set-recorded)).
+menus' Multiplayer page (`menu::lan`). Mods play as the host's setup
+names them, once every seat holds each alike (**Mods**, below); HD plays
+none (**Binary**: its network start composes no mod set).
 
 Internet play (`net::iroh`) carries the same packets between loopback
 proxies over iroh ([Internet play](#internet-play)); this section covers
@@ -71,16 +70,20 @@ menus   Multiplayer Setup (AP33): the open games LAN discovery hears (a row pres
           ─JOIN GAME (an address that reads)─> lobby, a guest's
         lobby (MX19): the session's name, its settings (scrolling), each
           seat's status, nick and build, ready ticks, chat
-          host: ADJUST SETTINGS ─> MX17 with its chat (BUILDING EDIT
+          host: ADJUST SETTINGS' place split in two, SETTINGS and MODS
+                (`menu::lan::split_adjust`)
+                SETTINGS ─> MX17 with its chat (BUILDING EDIT
                 MENU, LOAD, SAVE as alone; presets of the lobby's players)
                 ─ACCEPT─> the guests see it, their ready lapses; CANCEL
                 puts the config back
                 LOAD GAME ─> the profile's mp-saves: a LAN save of as many
                 seats offered (the settings box names it), its setup
                 the lobby's; a seat's line pressed moves it to the next
-                saved seat; ADJUST SETTINGS' ACCEPT lets it go
+                saved seat; SETTINGS' ACCEPT lets it go
+                MODS ─> the mods page over the lobby, its list the
+                lobby's (**Mods**, below); none while a save is loaded
                 START GAME, every seat taken, every guest ready (and with
-                a save, holding it) ─> game
+                a save, holding it; every seat holding the mods) ─> game
           guest: Ready flips; the host's start ─> game
 ```
 
@@ -116,11 +119,12 @@ the game is hosted (`Custom::fit`). A settings change puts `GMTX` 314
 
 ```text
 lobby   guest: Hello(version, profile, commit, data hash, nick, ready for a
-               setup revision, chat lines held, own lines not taken),
-               every 250 ms
+               setup revision, chat lines held, own lines not taken, its
+               hash of each mod the setup names), every 250 ms
         host:  Refused(why) | Lobby(seat, players, delay, title, revision, the
-               recording's setup, seats, own lines taken, chat lines: a
-               player's or "settings changed");
+               recording's setup, its mods' titles, seats with each mod's
+               match, own lines taken, chat lines: a player's or
+               "settings changed");
                a guest silent 2 s loses its seat; the host's start (the
                command line's: every seat taken): Welcome(seat, players,
                delay, the recording's setup, nicks, host's seat, save's
@@ -184,6 +188,36 @@ Tests: `two_peers_over_a_lossy_network_play_alike`,
   length, not the archives' bytes. A differing git commit (`MAJ_COMMIT`, from `openregent/build.rs`;
   `-dirty` with local edits under `crates/`) is refused unless
   `--net-any-build`; the system may differ.
+- **Mods.** The host's lobby starts on the Mods page's list
+  (`mods.toml`, enabled, found, compiled); its MODS opens that page
+  over the lobby, Load, Save and Rescan as ever, Done giving the lobby
+  the list, not the settings file, for the session. A change is a
+  settings change: each guest's ready lapses. Each peer hashes each of
+  its mods (`files::mod_hash`: the manifest and the files it loads, a
+  compiled image's bytes for its source; on a thread, kept by file
+  length and time; again after a rescan). A guest says its hash of each
+  mod the setup names, none for one it lacks; the host marks each
+  seat's match: same, missing, another version, or not yet checked.
+  The settings box lists the mods under MODS: one a seat lacks or holds
+  otherwise red, a line under it naming each such seat ("Bob:
+  missing"), one not yet checked yellow. The Mods page over the lobby
+  marks the same mods: the name red, the seats beside it. Only the
+  setup's mods are checked, so a mod ticked there shows nothing until
+  Done shares it. START GAME waits for every
+  seat's match to be the same (`net::Unready::Mods`). A loaded save
+  names its own mods, matched the same way. The command line's host
+  (`--server --mods`) waits for them too, logging each seat that does
+  not match; `--mods` conflicts with `--client`, which plays the
+  host's. The data hash stays the stock dataset's. Tests:
+  `a_guest_missing_a_mod_or_of_another_version_holds_the_start`,
+  `a_host_unhashed_or_lacking_a_mod_holds_the_start`,
+  `a_guest_says_its_hash_of_each_mod_the_setup_names`,
+  `a_guest_lacking_a_mod_holds_the_start`,
+  `the_settings_box_marks_a_mod_a_seat_lacks`,
+  `a_mod_a_player_lacks_is_a_problem_by_its_guid`,
+  `done_over_a_lobby_hands_the_list_over_and_writes_nothing`; on the
+  test game's mod, `the_test_games_mod_hashes_alike_and_an_edit_differs`,
+  `two_peers_with_the_test_mod_play_alike`.
 - **Desync.** A differing digest holds every peer that finds it; each
   logs both digests and writes `desync-player<seat>-frame<n>.ron` beside
   its log: for a deep digest the snapshot it folded, of frame n; for the
@@ -593,7 +627,7 @@ guest game ─UDP─ guest proxy ══iroh══ host proxy, one per guest ─U
 
 Differs from LAN: no list of open games ("Internet games are joined by
 invite code"), no port to choose, no `--server`/`--client`. Same: 2 to
-4 players, delay picked as in the LAN lobby, build check, no mods.
+4 players, delay picked as in the LAN lobby, build check, mods.
 
 Limits: anyone with the invite may join while seats are free; there is
 no password. The host checks only a `Hello`'s nick against its key; a

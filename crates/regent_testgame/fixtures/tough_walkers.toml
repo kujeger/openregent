@@ -1,0 +1,10 @@
+# The test game's mod, in the manifest a source-only mod writes
+# (regent_core::content::mods::parse_toml): walkers made tougher.
+version = 1
+id = '{7E57A11E-0000-4000-8000-00000000F00D}'
+name = 'Tough Walkers'
+base = 'Any'
+
+[[unit]]
+id = 'ZTW1'
+set = { MaxHP = 90 }

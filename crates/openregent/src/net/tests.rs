@@ -294,6 +294,121 @@ fn two_peers_over_a_lossy_network_play_alike() {
     );
 }
 
+/// The test game's two kingdoms, each a keep and a walker, and a biter
+/// between: seat `n`'s walker is the `n + 2`th unit placed.
+fn test_scene() -> regent_core::sim::scene::Scene {
+    use regent_core::sim::scene::{Placed, Scene};
+    use regent_core::sim::world::new_map::NEUTRAL;
+    use regent_testgame::{BITER, KEEP, WALKER};
+
+    Scene::flat(128)
+        .players(2)
+        .gold(1_000)
+        .unit(Placed::new(KEEP, [40.0, 64.0]))
+        .unit(Placed::new(KEEP, [88.0, 64.0]).owner(1))
+        .unit(Placed::new(WALKER, [50.0, 60.0]))
+        .unit(Placed::new(WALKER, [78.0, 60.0]).owner(1))
+        .unit(Placed::new(BITER, [64.0, 60.0]).owner(NEUTRAL))
+}
+
+/// Seat `seat`'s game of [`test_scene`] on the test game with its mod
+/// loaded ([`regent_testgame::TestGame::modded`]), as `Plan::begin`
+/// makes a scene's, networked with `peer`, recorded in `dir`.
+fn modded_test_game(seat: u32, peer: Peer, dir: &std::path::Path) -> (Sim, Bot, Made) {
+    use regent_core::data::catalogue::Catalogue;
+    use regent_core::gpl::{startup, vm::Config};
+    use regent_testgame::{TOUGH_WALKERS, TestGame};
+
+    let game = TestGame::get();
+    let archives: &'static [(String, Vec<u8>)] = Box::leak(game.modded().into_boxed_slice());
+    let catalogue = Catalogue::build(archives).expect("the catalogue");
+    let scene = test_scene();
+    let world = scene
+        .flat_world(&catalogue, game.program())
+        .expect("a world");
+    let staging = scene.staging(&world).expect("staged");
+    let begun = (SEED, startup::FREESTYLE);
+    let mut sim = Sim::on(game.program(), world, begun, &staging, Config::RELEASE)
+        .expect("set up")
+        .networked(peer);
+    let id = regent_core::content::mods::parse_toml(
+        TOUGH_WALKERS,
+        std::path::Path::new("mod.toml"),
+        std::path::Path::new(""),
+    )
+    .expect("the mod")
+    .guid;
+    let setup = Setup {
+        seed: SEED,
+        players: 2,
+        mods: vec![id.into()],
+        ..Setup::default()
+    };
+    let session = crate::game::sim::Session {
+        quest: None,
+        quest_id: None,
+        goals: None,
+        messages: regent_core::content::quest::Messages::default(),
+        setup: None,
+        needs: crate::save::Needs {
+            archives: Vec::new(),
+            images: String::new(),
+            mods: Vec::new(),
+        },
+        resumed: None,
+    };
+
+    sim.set_local(seat).expect("a human seat");
+    Recording::In(dir.to_path_buf()).record(&mut sim, &setup, Vec::new());
+
+    let bot = Bot::new(Menu::of(&catalogue), 11 + seat);
+
+    (sim, bot, (session, catalogue))
+}
+
+/// The seed of the test game's networked games.
+const SEED: u32 = 7;
+
+/// Two peers on the test game with its mod, over a lossy network: each
+/// walker has the mod's hit points, and both games play alike.
+#[test]
+fn two_peers_with_the_test_mod_play_alike() {
+    const FRAMES: u32 = 400;
+
+    let weather = Weather {
+        latency: Duration::from_millis(20),
+        jitter: Duration::from_millis(40),
+        loss: 10,
+    };
+    let start = Instant::now();
+    let mut seats = table_of(2, weather, "net-modded", start, &modded_test_game);
+    let max_hp = |sim: &Sim, seat: u32| {
+        let walker = regent_testgame::placed(seat + 2);
+        let piece = sim.world().piece(walker).expect("the walker");
+
+        regent_core::data::attrib::get(&piece.attributes, regent_core::data::attrib::MAX_HP)
+    };
+    let tough = i32::try_from(regent_testgame::TOUGH_WALKER_HP).ok();
+
+    for seat in &seats {
+        assert_eq!((max_hp(&seat.sim, 0), max_hp(&seat.sim, 1)), (tough, tough));
+    }
+
+    run(&mut seats, start, FRAMES, FRAMES * 40);
+
+    let [host, guest] = &seats[..] else {
+        panic!("two seats")
+    };
+
+    assert_eq!(
+        (host.sim.stopped.clone(), guest.sim.stopped.clone()),
+        (None, None)
+    );
+    assert_eq!((host.sim.frames(), guest.sim.frames()), (FRAMES, FRAMES));
+    assert_eq!(host.sim.digest(), guest.sim.digest());
+    assert_eq!(host.sim.deep_digest(), guest.sim.deep_digest());
+}
+
 /// A guest cut off mid-game: the host holds for it, a second short of
 /// the window waiting on it still, then drops it and plays on alone,
 /// the guest's kingdom uncontrolled.
@@ -564,6 +679,7 @@ fn a_dropped_guest_rejoins(from: Address, name: &str) {
         heard: 0,
         said: Lines::default(),
         holding: wire::Holding::None,
+        mods: Vec::new(),
     });
 
     end.set_now(now);
@@ -1548,6 +1664,7 @@ fn two_threads_play_alike_over_localhost_udp() {
                 (&host_build, Builds::Same),
                 (2, Delay::Fixed(DELAY)),
                 (&setup, "Host"),
+                &Holdings::new(),
             )
             .expect("seated");
         let peer = Peer::hosted(seated, None).expect("peer");
@@ -1560,8 +1677,13 @@ fn two_threads_play_alike_over_localhost_udp() {
 
     let guest = std::thread::spawn(move || {
         let port: u16 = port_rx.recv().expect("port");
-        let (peer, welcome) =
-            Peer::join(&format!("127.0.0.1:{port}"), (&build, "Guest"), None).expect("joined");
+        let (peer, welcome) = Peer::join(
+            &format!("127.0.0.1:{port}"),
+            (&build, "Guest"),
+            &Holdings::new(),
+            None,
+        )
+        .expect("joined");
 
         assert_eq!(welcome.nicks, ["Host", "Guest"]);
         assert_eq!(
@@ -2038,6 +2160,7 @@ fn a_stalled_drawing_drops_no_peer_and_freezes_none() {
                 (&host_build, Builds::Same),
                 (2, Delay::Fixed(DELAY)),
                 (&setup, "Host"),
+                &Holdings::new(),
             )
             .expect("seated");
         let peer = Peer::hosted(seated, None).expect("peer");
@@ -2048,8 +2171,13 @@ fn a_stalled_drawing_drops_no_peer_and_freezes_none() {
     });
     let guest = std::thread::spawn(move || {
         let port: u16 = port_rx.recv().expect("port");
-        let (peer, welcome) =
-            Peer::join(&format!("127.0.0.1:{port}"), (&build, "Guest"), None).expect("joined");
+        let (peer, welcome) = Peer::join(
+            &format!("127.0.0.1:{port}"),
+            (&build, "Guest"),
+            &Holdings::new(),
+            None,
+        )
+        .expect("joined");
 
         let dir = scratch("net-stall-1");
 
