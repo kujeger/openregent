@@ -133,9 +133,12 @@ The renderer's cases (`g-*`, and the weak machines' `lvp-*`, `e1-*`,
 
 Fragment counts are deterministic but for one thing: the masked phase
 draws its bins in pipeline id order, and ids follow the order pipelines
-are first specialised, which varies run to run. Where bodies draw before
-the ground, the GPU's early depth test drops the ground under them, so a
-run's opaque count can differ from the last's by that. Compare classes
+are first specialised, which varies run to run. Where a body draws before
+one under it, the GPU's early depth test drops the one under, so a
+run's opaque count can differ from the last's by that. The ground
+(patches, inset) draws in the opaque phase, before every masked mesh
+(`plain::Alpha::MaskFirst`): the floor under it fails the early depth
+test every run, and the ground under bodies is shaded. Compare classes
 in runs with `tracking` hidden too: the window draws every second frame.
 
 Drivers: Asahi (Honeykrisp) gives no usable timestamp inside a pass (0

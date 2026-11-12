@@ -29,7 +29,7 @@ use bevy::render::render_resource::{
 };
 use bevy::shader::ShaderRef;
 
-use crate::material::{Band, Body, CUTOFF};
+use crate::material::{Band, Body};
 use crate::plain::{self, GROUND};
 use crate::present::ViewUpscale;
 
@@ -129,9 +129,10 @@ impl Material for Sheet {
         )
     }
 
-    /// As the ground's [`plain::Plain`]: cells without art leave holes.
+    /// As the ground's [`plain::Plain`]: cells without art leave holes,
+    /// cut out by the shader; drawn first ([`plain::Alpha::MaskFirst`]).
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Mask(CUTOFF)
+        AlphaMode::Opaque
     }
 
     fn enable_prepass() -> bool {

@@ -14,6 +14,10 @@
 //! Composed with the map (a new map, layer or toggle), not at a
 //! recompose: it shows only those frames, so a ground changed since
 //! shows stale there.
+//!
+//! The ground over it draws first, in the opaque phase
+//! ([`Alpha::MaskFirst`]), so the floor is shaded only where no ground
+//! covers it.
 
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
@@ -24,7 +28,7 @@ use super::Maps;
 use super::cel::Store;
 use super::project::{Composed, Rise};
 use super::redraw::{RETIRED_DEPTH, art, grounded, relief};
-use crate::plain::Plain;
+use crate::plain::{Alpha, Plain};
 use crate::terrain::{CELL, Drawn, TileArt};
 use crate::texture;
 
@@ -60,7 +64,12 @@ pub(super) fn lay(
         image.sampler = ImageSampler::linear();
 
         let mesh = relief(terrain, region, maps.projection(), RELIEF);
-        let colour = Plain::ground(store.images.add(image));
+        // In the mask phase, after the patches': under them it fails the
+        // early depth test.
+        let colour = Plain {
+            alpha: Alpha::Mask,
+            ..Plain::ground(store.images.add(image))
+        };
 
         commands.spawn((
             Drawn,

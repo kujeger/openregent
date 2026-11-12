@@ -19,6 +19,11 @@ use crate::material::CUTOFF;
 pub enum Alpha {
     /// Drawn whole where its alpha reaches [`CUTOFF`], else not at all.
     Mask,
+    /// As [`Alpha::Mask`], but in Bevy's opaque phase, which draws before
+    /// the mask phase: what a `Mask` lays under it then fails the early
+    /// depth test, not shaded. The ground's patches over the floor
+    /// (`map::floor`).
+    MaskFirst,
     /// Blended over, in draw order.
     #[default]
     Blend,
@@ -70,12 +75,12 @@ impl Plain {
     }
 
     /// The ground's: `picture`, cut out at [`CUTOFF`] (cells without art
-    /// leave holes).
+    /// leave holes), drawn first ([`Alpha::MaskFirst`]).
     #[must_use]
     pub fn ground(picture: Handle<Image>) -> Plain {
         Plain {
             picture: Some(picture),
-            alpha: Alpha::Mask,
+            alpha: Alpha::MaskFirst,
             lay: Lay::Ground,
             ..default()
         }
@@ -126,7 +131,7 @@ impl Plain {
         unculled(descriptor);
 
         let alpha = match key.alpha {
-            Alpha::Mask => Some("MASK"),
+            Alpha::Mask | Alpha::MaskFirst => Some("MASK"),
             Alpha::Blend => None,
         };
         let defs: Vec<ShaderDefVal> = [
@@ -157,6 +162,8 @@ impl Material for Plain {
     fn alpha_mode(&self) -> AlphaMode {
         match self.alpha {
             Alpha::Mask => AlphaMode::Mask(CUTOFF),
+            // The shader still cuts out (`MASK`).
+            Alpha::MaskFirst => AlphaMode::Opaque,
             Alpha::Blend => AlphaMode::Blend,
         }
     }
@@ -214,5 +221,23 @@ impl bevy::app::Plugin for Plugin {
         load_shader_library!(app, "shaders/card.wesl");
 
         app.add_plugins(MaterialPlugin::<Plain>::default());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The ground draws in the opaque phase, before the mask phase the
+    /// floor under it draws in, and still cuts out its holes.
+    #[test]
+    fn the_ground_draws_before_the_floor_and_cuts_out() {
+        let ground = Plain::ground(Handle::default());
+        let mut descriptor = RenderPipelineDescriptor::default();
+
+        Plain::shape(&mut descriptor, Key::from(&ground));
+
+        assert_eq!(ground.alpha_mode(), AlphaMode::Opaque);
+        assert!(descriptor.vertex.shader_defs.contains(&"MASK".into()));
     }
 }

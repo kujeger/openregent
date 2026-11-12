@@ -611,7 +611,7 @@ mod tests {
     fn plains() -> Vec<RenderPipelineDescriptor> {
         let mut out = Vec::new();
 
-        for alpha in [Alpha::Mask, Alpha::Blend] {
+        for alpha in [Alpha::Mask, Alpha::MaskFirst, Alpha::Blend] {
             for (mesh, lay) in [
                 (patch(), Lay::Ground),
                 (quad(), Lay::Card),
@@ -692,7 +692,7 @@ mod tests {
             );
         }
 
-        let mut sheet = world(&patch(), Cutout::Discard);
+        let mut sheet = world(&patch(), Cutout::Keep);
         let mut veil = world(&chunk(), Cutout::Keep);
 
         Sheet::shape(&mut sheet);
@@ -763,7 +763,7 @@ mod tests {
             }
         }
 
-        assert_eq!(checked, 71, "pipeline variants");
+        assert_eq!(checked, 77, "pipeline variants");
         assert!(failures.is_empty(), "{failures:#?}");
     }
 
