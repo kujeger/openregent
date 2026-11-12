@@ -1778,7 +1778,7 @@ dependencies = [
 
 [[package]]
 name = "bink"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "bit-set"
@@ -5445,7 +5445,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 
 [[package]]
 name = "openregent"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bevy",
  "bevy_egui",
@@ -6061,7 +6061,7 @@ dependencies = [
 
 [[package]]
 name = "regent_cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "png",
@@ -6071,7 +6071,7 @@ dependencies = [
 
 [[package]]
 name = "regent_core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ariadne",
  "bink",
@@ -6090,7 +6090,7 @@ dependencies = [
 
 [[package]]
 name = "regent_corpus"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "dotenvy",
  "regent_core",
@@ -6098,7 +6098,7 @@ dependencies = [
 
 [[package]]
 name = "regent_draw"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bevy",
  "bevy_egui",
@@ -6118,14 +6118,14 @@ dependencies = [
 
 [[package]]
 name = "regent_testgame"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "regent_core",
 ]
 
 [[package]]
 name = "regent_viewer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bevy",
  "bevy_egui",
