@@ -248,6 +248,18 @@ each frame:
   (`minimap::Cache::changed`).
 - `lie::tag` tags no parked band; one coming out is tagged that frame
   (after `cull`).
+- An ended effect's drawing is parked, not despawned (`map::effects::Pool`):
+  it and its parts `Disabled`, so out of every query and every per-frame
+  pass. An effect of the same mold (key, held frames, amount or not) takes
+  one back: its place, frames' start, amount and tie order (`map::tie`)
+  set anew. Every hero in
+  an area shares a kill's gold, so dozens of `Got_Gold` start at once.
+  Bounded a mold and in all (`MOLD`, `POOL`); despawned as the game ends,
+  which the teardown's queries do not see. Nothing changes a parked
+  drawing, so `Disabled`'s cost below does not apply.
+- A flying missile keeps its drawing (`map::pieces::missiles`): moved each
+  frame, its shadow parts kept on the ground under it; drawn anew only as
+  its picture's key or launch changes.
 - A soft band's fragment reads its run's foot from `Band::feet`, made on
   the CPU with the band (`lie::feet`), in place of searching the column
   below it.

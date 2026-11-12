@@ -112,11 +112,12 @@ pub(crate) struct Apart {
     rung: f32,
 }
 
-/// A second-pass part, a flier's shadow: its offset beside the ground's
-/// under its piece ([`stands`]), so it is kept there as the piece moves.
+/// A second-pass part, a flier's shadow: its pose and its frame's anchor
+/// ([`stands`]), so it is kept on the ground under its piece as it moves.
 #[derive(Component, Clone, Copy)]
 pub(crate) struct Grounded {
-    rest: Vec2,
+    posed: Vec2,
+    anchor: Vec2,
 }
 
 /// What [`pieces`] reads and moves of a part.
@@ -314,7 +315,9 @@ pub(crate) fn pieces(
                         // A shadow: on the ground under the piece, as it
                         // climbs or the ground under it does.
                         if let Some(grounded) = grounded {
-                            next.translation = (under + grounded.rest).extend(next.translation.z);
+                            let rest = grounded.posed - grounded.anchor;
+
+                            next.translation = (under + rest).extend(next.translation.z);
                         }
 
                         put.set_if_neq(next);
@@ -442,20 +445,36 @@ pub(crate) fn pin(shown: &Shown, key: Key) -> Option<u16> {
     }
 }
 
-/// The missiles drawn, and the game time they were drawn for.
+/// The missiles drawn, by handle, and the game time they were drawn for.
 #[derive(Resource, Default)]
 pub(crate) struct Shots {
-    drawn: Vec<Entity>,
+    drawn: HashMap<u32, Shot>,
     /// The game time and [`Snapshot::between`] drawn for: stepped, a
     /// game frame's; smooth, every screen frame's.
     at: Option<(u32, u32)>,
 }
 
+/// A missile's drawing: its entity, what it draws and its launch.
+#[derive(Clone, Copy, Debug)]
+struct Shot {
+    entity: Entity,
+    key: Key,
+    launched: u32,
+}
+
+/// What [`missiles`] moves of a missile's drawing.
+type Flying = (
+    &'static mut Transform,
+    &'static mut Visibility,
+    &'static mut Footing,
+    Option<&'static Children>,
+    &'static Tied,
+);
+
 /// Draw each missile in flight where the world has it, lifted by its
 /// height, its set playing from its launch; with `[enhancements]
 /// smooth_position`, slid from where it was a frame before, as a piece.
-/// Redrawn when either changes: a missile steps a run and has no agent
-/// to follow it by.
+/// Moved when either changes; drawn anew only as what it draws changes.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -474,15 +493,14 @@ pub(crate) fn missiles(
     mut shots: ResMut<Shots>,
     fog: Res<fog::Fog>,
     mut stores: Assets2,
+    mut flying: Query<Flying, Without<Grounded>>,
+    mut shadows: Query<(&Grounded, &mut Transform)>,
 ) {
     let at = (reel.ms, snapshot.between.to_bits());
 
     if shots.at != Some(at) {
         let depth = Depth::of(&maps);
-
-        for entity in shots.drawn.drain(..) {
-            commands.entity(entity).despawn();
-        }
+        let mut was = std::mem::take(&mut shots.drawn);
 
         for flown in &snapshot.flown {
             let Some(key) = missile_key(&corpus, flown) else {
@@ -496,39 +514,115 @@ pub(crate) fn missiles(
             );
             let cell = Vec2::new(x, y);
             let place = maps.aloft_at(cell, z).extend(depth.at(cell.y));
-            let timing = Timing {
-                stride: None,
-                from: flown.launched,
-                pin: None,
-            };
+            let ground = maps.standing_at(cell);
             let seen = if fog.hides_missile(flown.handle) {
                 Visibility::Hidden
             } else {
                 Visibility::Inherited
             };
-            let entity = spawn(
-                &mut commands,
-                &corpus,
-                &mut sprites,
-                &mut stores,
-                &reel,
-                key,
-                (None, place, maps.standing_at(cell), seen, timing),
-            );
-
             let footing = Footing {
                 row: cell.y,
-                ground: maps.standing_at(cell).y,
+                ground: ground.y,
             };
 
-            commands
-                .entity(entity)
-                .insert((footing, Tied::new(Who(Class::Missile, flown.handle))));
-            shots.drawn.push(entity);
-            crate::perf::churn(crate::perf::Churn::Missiles, 1);
+            // The same picture: moved. Else drawn anew.
+            let entity = match kept(&mut was, flown.handle, (key, flown.launched)) {
+                Ok(entity) => {
+                    let moved = (place, ground, seen, footing);
+
+                    fly(&mut flying, &mut shadows, entity, moved);
+                    entity
+                }
+                Err(old) => {
+                    if let Some(old) = old {
+                        commands.entity(old).despawn();
+                    }
+
+                    let timing = Timing {
+                        stride: None,
+                        from: flown.launched,
+                        pin: None,
+                    };
+                    let entity = spawn(
+                        &mut commands,
+                        &corpus,
+                        &mut sprites,
+                        &mut stores,
+                        &reel,
+                        key,
+                        (None, place, ground, seen, timing),
+                    );
+
+                    commands
+                        .entity(entity)
+                        .insert((footing, Tied::new(Who(Class::Missile, flown.handle))));
+                    crate::perf::churn(crate::perf::Churn::Missiles, 1);
+                    entity
+                }
+            };
+            let shot = Shot {
+                entity,
+                key,
+                launched: flown.launched,
+            };
+
+            // A handle listed twice keeps its last drawing.
+            if let Some(twice) = shots.drawn.insert(flown.handle, shot) {
+                commands.entity(twice.entity).despawn();
+            }
+        }
+
+        // Landed or gone.
+        for shot in was.into_values() {
+            commands.entity(shot.entity).despawn();
         }
 
         shots.at = Some(at);
+    }
+}
+
+/// Missile `handle`'s drawing, taken from `was`: kept while it draws
+/// `key` from `launched`; else the old one, to despawn, if any.
+fn kept(
+    was: &mut HashMap<u32, Shot>,
+    handle: u32,
+    (key, launched): (Key, u32),
+) -> Result<Entity, Option<Entity>> {
+    match was.remove(&handle) {
+        Some(shot) if (shot.key, shot.launched) == (key, launched) => Ok(shot.entity),
+        old => Err(old.map(|shot| shot.entity)),
+    }
+}
+
+/// Missile drawing `entity` moved to `place`, over `ground`: its shadow
+/// parts on the ground under it, placed as [`spawn`] places them.
+fn fly(
+    flying: &mut Query<Flying, Without<Grounded>>,
+    shadows: &mut Query<(&Grounded, &mut Transform)>,
+    entity: Entity,
+    (place, ground, seen, footing): (Vec3, Vec2, Visibility, Footing),
+) {
+    if let Ok((mut transform, mut visibility, mut lies, children, tied)) = flying.get_mut(entity) {
+        let under = ground - place.truncate();
+
+        // A tie's order kept while its depth stays (`tie::untie`).
+        transform.set_if_neq(Transform {
+            translation: place.with_z(tied.keep(place.z)),
+            ..*transform
+        });
+        visibility.set_if_neq(seen);
+        lies.set_if_neq(footing);
+
+        for child in children.into_iter().flatten() {
+            if let Ok((grounded, mut put)) = shadows.get_mut(*child) {
+                let at = under + grounded.posed - grounded.anchor;
+
+                put.set_if_neq(Transform {
+                    translation: at.extend(put.translation.z),
+                    ..*put
+                });
+            }
+        }
     }
 }
 
@@ -717,7 +811,8 @@ pub(crate) fn spawn(
             }
 
             let grounded = (drawing.pass == Pass::Second).then(|| Grounded {
-                rest: drawing.posed() - cel.anchor,
+                posed: drawing.posed(),
+                anchor: cel.anchor,
             });
 
             mark(&mut child, apart, grounded);
@@ -1365,6 +1460,91 @@ mod tests {
 
         assert_eq!(drawn(&settings), Vec3::new(1.5, 1.0, 1.0));
         assert_eq!(Vec3::from(flight([CELL, CELL, CELL], None, 0.5)), Vec3::ONE);
+    }
+
+    /// A missile keeps its drawing while it draws the same from the same
+    /// launch; turned or launched anew, it is drawn anew.
+    #[test]
+    fn a_flying_missile_keeps_its_drawing_until_its_picture_changes() {
+        let mut world = World::new();
+        let entity = world.spawn_empty().id();
+        let key = (FourCc(*b"WPm1"), 1, 5);
+        let shot = Shot {
+            entity,
+            key,
+            launched: 100,
+        };
+        let mut was = HashMap::from([(7, shot)]);
+
+        assert_eq!(kept(&mut was, 7, (key, 100)), Ok(entity));
+        assert_eq!(kept(&mut was, 7, (key, 100)), Err(None), "taken once");
+
+        was.insert(7, shot);
+        assert_eq!(kept(&mut was, 7, ((key.0, 1, 6), 100)), Err(Some(entity)));
+
+        was.insert(7, shot);
+        assert_eq!(kept(&mut was, 7, (key, 150)), Err(Some(entity)));
+    }
+
+    /// A kept missile's drawing follows it: its body at its new place,
+    /// its shadow on the ground under it, where `spawn` would put it.
+    #[test]
+    fn a_flying_missiles_drawing_follows_it() {
+        use bevy::ecs::system::RunSystemOnce;
+
+        let mut world = World::new();
+        let grounded = Grounded {
+            posed: Vec2::new(0.0, -3.0),
+            anchor: Vec2::new(1.5, 2.25),
+        };
+        let footing = Footing {
+            row: 0.0,
+            ground: 0.0,
+        };
+        let missile = world
+            .spawn((
+                Transform::default(),
+                Visibility::Inherited,
+                footing,
+                Tied::new(Who(Class::Missile, 7)),
+            ))
+            .id();
+        let shadow = world
+            .spawn((
+                grounded,
+                Transform::from_xyz(0.0, 0.0, LAYER_STEP),
+                ChildOf(missile),
+            ))
+            .id();
+        let (place, ground) = (Vec3::new(10.0, 50.0, -1.0), Vec2::new(10.0, 20.0));
+        let now = Footing {
+            row: 3.0,
+            ground: 20.0,
+        };
+
+        world
+            .run_system_once(
+                move |mut flying: Query<Flying, Without<Grounded>>,
+                      mut shadows: Query<(&Grounded, &mut Transform)>| {
+                    let moved = (place, ground, Visibility::Hidden, now);
+
+                    fly(&mut flying, &mut shadows, missile, moved);
+                },
+            )
+            .expect("flown");
+
+        let pose = Pass::Second.height(Vec2::ZERO, ground - place.truncate()) + grounded.posed;
+
+        assert_eq!(
+            world.get::<Transform>(missile).map(|t| t.translation),
+            Some(place)
+        );
+        assert_eq!(world.get::<Visibility>(missile), Some(&Visibility::Hidden));
+        assert_eq!(world.get::<Footing>(missile), Some(&now));
+        assert_eq!(
+            world.get::<Transform>(shadow).map(|t| t.translation),
+            Some((pose - grounded.anchor).extend(LAYER_STEP))
+        );
     }
 
     #[test]
