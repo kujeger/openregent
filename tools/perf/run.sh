@@ -81,8 +81,14 @@ if [[ -f $env_file ]]; then
     done <"$env_file"
 fi
 
-toolchain=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/lib
-export LD_LIBRARY_PATH=$(dirname "$bin")/deps:$toolchain
+# Without rustc (a machine given a dist build as $PERF_BIN), no toolchain
+# lib: a static binary needs none.
+toolchain=
+if command -v rustc >/dev/null; then
+    toolchain=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/lib
+fi
+# Bevy's library: in deps/, or beside the binary (cargo's version decides).
+export LD_LIBRARY_PATH=$(dirname "$bin")/deps:$(dirname "$bin"):$toolchain
 export MAJ_PERF=1 RUST_LOG=warn,maj_perf=info
 
 # Mesa's software Vulkan (lavapipe), for the cases' VK_ICD_FILENAMES.
@@ -187,7 +193,7 @@ run_case() {
         CPUS=*) pin=(taskset -c "${1#CPUS=}") ;;
         BUILD=trace)
             game=$trace_bin
-            with+=("TRACE_CHROME=$dir/trace.json" "LD_LIBRARY_PATH=$(dirname "$game")/deps:$toolchain")
+            with+=("TRACE_CHROME=$dir/trace.json" "LD_LIBRARY_PATH=$(dirname "$game")/deps:$(dirname "$game"):$toolchain")
             ;;
         BUILD=dist) game=$dist_bin ;;
         WGPU_ADAPTER_NAME=)
@@ -211,9 +217,12 @@ run_case() {
         (isolated run && cd "$root" && measured "${with[@]}" "$game" --headless "$@" >"$dir/out.log" 2>&1)
         ;;
     drawn | startup)
+        # A shot that fails (no display, no library) fails the case.
+        local shot=0
         (SHOT_HOME=$dir/shot measured "${with[@]}" "$root/tools/shot.sh" "$game" "$dir/shot.png" "$@" \
-            >"$dir/shot.out" 2>&1)
+            >"$dir/shot.out" 2>&1) || shot=$?
         cp "$dir/shot.png.log" "$dir/out.log"
+        [[ $shot -eq 0 && -s $dir/shot.png ]]
         ;;
     lan)
         (isolated host && cd "$root" &&

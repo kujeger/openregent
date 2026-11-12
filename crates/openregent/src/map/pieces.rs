@@ -326,6 +326,7 @@ pub(crate) fn pieces(
             old => {
                 if let Some((entity, _)) = old {
                     commands.entity(entity).despawn();
+                    crate::perf::churn(crate::perf::Churn::Respawns, 1);
                 }
 
                 // A set the world keeps starts when it says; else a turn
@@ -516,6 +517,7 @@ pub(crate) fn missiles(
 
             commands.entity(entity).insert(footing);
             shots.drawn.push(entity);
+            crate::perf::churn(crate::perf::Churn::Missiles, 1);
         }
 
         shots.at = Some(at);

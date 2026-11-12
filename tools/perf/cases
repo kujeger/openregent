@@ -43,6 +43,14 @@ d512-heroes   drawn --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 -
 p128-early    drawn MAJ_PERF_PIPELINED=1 --map-seed 7 --side 128 --bot 5 --warm 600 --frames 1800 --running --select ABJ1
 p512-late-4x  drawn MAJ_PERF_PIPELINED=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1 --speed 4
 
+#= battle
+# assets/scenes/battle.toml: 40 heroes and 40 monsters fighting in view,
+# on two cores (CPUS=0,1) without vsync. A line a frame (maj_perf=debug):
+# its main ms beside its churn (perf::Churn).
+d-battle      drawn CPUS=0,1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 RUST_LOG=warn,maj_perf=debug --scene assets/scenes/battle.toml --look 64,64 --frames 1800 --running
+d-battle-4x   drawn CPUS=0,1 MAJ_PERF_UNCAPPED=1 MAJ_PERF_GPU=1 RUST_LOG=warn,maj_perf=debug --scene assets/scenes/battle.toml --look 64,64 --frames 1800 --running --speed 4
+t-battle      drawn BUILD=trace CPUS=0,1 MAJ_PERF_UNCAPPED=1 --scene assets/scenes/battle.toml --look 64,64 --frames 300 --running --speed 4
+
 #= camera
 # The view moving (--camera, shot::Camera): a drag of 720 points a
 # second round a square from --look, or a zoom step each half second;

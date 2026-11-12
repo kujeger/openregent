@@ -8,7 +8,9 @@
 //!  drawn     every WINDOW drawn frames: main, interval, wait; on the sim
 //!            thread step, steps, publish, asked, clone (each world copy);
 //!            LAN: snapshot (sim thread), fold (its worker); entities,
-//!            meshes and visible meshes counted
+//!            meshes and visible meshes counted; each frame the entities
+//!            spawned and despawned, pieces and missiles drawn anew
+//!            (maj_perf=debug: a line a frame)
 //!  headless  at the end: step, and every PROBE_EVERY frames clone, deep, henchmen
 //!  startup   once each: ms from start to the first drawn frame, and to the game's
 //! ```
@@ -28,10 +30,11 @@ mod gpu;
 mod hide;
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
-use bevy::log::info;
+use bevy::log::{debug, info};
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 
@@ -134,6 +137,40 @@ impl Timer {
     }
 }
 
+/// What a drawn frame counts of the entities' churn, noted at its end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Churn {
+    /// Entities with a `Transform` spawned.
+    Spawned,
+    /// Entities with a `Transform` despawned.
+    Despawned,
+    /// Pieces drawn anew, their key changed (`map::pieces`).
+    Respawns,
+    /// Missiles drawn anew (`map::pieces::missiles`).
+    Missiles,
+}
+
+impl Churn {
+    const ALL: [Churn; 4] = [
+        Churn::Spawned,
+        Churn::Despawned,
+        Churn::Respawns,
+        Churn::Missiles,
+    ];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Churn::Spawned => "spawned",
+            Churn::Despawned => "despawned",
+            Churn::Respawns => "respawns",
+            Churn::Missiles => "missiles",
+        }
+    }
+}
+
+/// This frame's churn, in [`Churn::ALL`]'s order.
+static CHURN: [AtomicU32; Churn::ALL.len()] = [const { AtomicU32::new(0) }; Churn::ALL.len()];
+
 /// Each timer's samples since the last report, in [`Timer::ALL`]'s order.
 static SERIES: Mutex<[Vec<f64>; Timer::ALL.len()]> =
     Mutex::new([const { Vec::new() }; Timer::ALL.len()]);
@@ -209,6 +246,13 @@ pub fn named(name: &str, value: f64) {
     }
 }
 
+/// `n` added to this frame's `what`, if timing.
+pub fn churn(what: Churn, n: u32) {
+    if on() {
+        CHURN[what as usize].fetch_add(n, Ordering::Relaxed);
+    }
+}
+
 /// `f` run, timed as `timer`.
 pub fn timed<T>(timer: Timer, f: impl FnOnce() -> T) -> T {
     let t = start();
@@ -218,10 +262,11 @@ pub fn timed<T>(timer: Timer, f: impl FnOnce() -> T) -> T {
     out
 }
 
+/// What [`startup`] has said.
+static SAID: Mutex<Vec<&str>> = Mutex::new(Vec::new());
+
 /// One line, `what`'s ms since the process started: once per `what`.
 pub fn startup(what: &'static str) {
-    static SAID: Mutex<Vec<&str>> = Mutex::new(Vec::new());
-
     if on()
         && let (Some(t), Ok(mut said)) = (STARTED.get(), SAID.lock())
         && !said.contains(&what)
@@ -287,6 +332,59 @@ struct Drawn {
     ended: Option<Instant>,
     /// Drawn frames since the last report.
     frames: u32,
+    /// Drawn frames since the start, this one counted: a spike's number.
+    total: u32,
+    /// The run's part: its reports' name.
+    part: Part,
+}
+
+/// A drawn run's part. A game's first frames compose the ground and read
+/// art, sounds and pipelines for the first time: reported apart, so
+/// `drawn` holds play alone.
+///
+/// ```text
+///  menus, loading ──> the game's first frame + OPENING frames ──> play
+///  └──────────────── "opening" ─────────────────────────────┘     "drawn"
+/// ```
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Part {
+    /// No game drawn yet.
+    #[default]
+    Loading,
+    /// The game drawn; this many frames of its opening left.
+    Opening(u32),
+    Play,
+}
+
+/// The drawn frames after a game's first that its opening takes in: the
+/// render thread draws that frame while the next ones wait.
+const OPENING: u32 = 4;
+
+/// Whether a game's first frame has drawn ([`startup`]'s `game`).
+#[derive(Clone, Copy)]
+enum Game {
+    Unseen,
+    Drawn,
+}
+
+impl Part {
+    /// The part after one more frame.
+    const fn after(self, game: Game) -> Part {
+        match (self, game) {
+            (Part::Loading, Game::Drawn) => Part::Opening(OPENING),
+            (Part::Opening(0), _) => Part::Play,
+            (Part::Opening(left), _) => Part::Opening(left - 1),
+            (Part::Loading | Part::Play, _) => self,
+        }
+    }
+
+    /// The name its reports go by.
+    const fn name(self) -> &'static str {
+        match self {
+            Part::Loading | Part::Opening(_) => "opening",
+            Part::Play => "drawn",
+        }
+    }
 }
 
 /// With the timers on, the main schedule and the drawn frames timed.
@@ -295,7 +393,9 @@ pub fn install(app: &mut App) {
         app.init_resource::<Drawn>()
             .init_resource::<GroundClock>()
             .add_systems(First, began)
-            .add_systems(Last, ended);
+            .add_systems(Last, ended)
+            .add_observer(|_: On<Add<Transform>>| churn(Churn::Spawned, 1))
+            .add_observer(|_: On<Despawn<Transform>>| churn(Churn::Despawned, 1));
         gpu::install(app);
         hide::install(app);
     }
@@ -342,34 +442,88 @@ fn began(mut drawn: ResMut<Drawn>) {
     drawn.began = Some(Instant::now());
 }
 
-/// The frame's main schedule and interval noted; each [`WINDOW`]
-/// frames, the entity counts and a report.
+/// The frame's main schedule, interval and churn noted; each [`WINDOW`]
+/// frames, the entity counts and a report, named by the run's [`Part`].
 fn ended(mut drawn: ResMut<Drawn>, entities: Query<()>, meshes: Meshes) {
     let now = Instant::now();
     let ms = |t: Instant| now.duration_since(t).as_secs_f64() * 1e3;
 
     startup("drawn");
 
-    if let Some(t) = drawn.began {
-        note(Timer::Main, ms(t));
+    let main = drawn.began.map(ms);
+    let interval = drawn.ended.map(ms);
+
+    if let Some(main) = main {
+        note(Timer::Main, main);
     }
-    if let Some(t) = drawn.ended {
-        note(Timer::Interval, ms(t));
+    if let Some(interval) = interval {
+        note(Timer::Interval, interval);
     }
 
     drawn.ended = Some(now);
     drawn.frames += 1;
+    drawn.total += 1;
 
-    if drawn.frames == WINDOW {
+    // A frame's line, to set slow frames beside their churn:
+    // `frame 812 main 4.1 interval 16.7 spawned 120 despawned 118 respawns 3 missiles 2`.
+    let churned = Churn::ALL.map(|c| CHURN[c as usize].swap(0, Ordering::Relaxed));
+
+    for (what, n) in Churn::ALL.iter().zip(churned) {
+        named(what.name(), f64::from(n));
+    }
+
+    let [spawned, despawned, respawns, missiles] = churned;
+
+    debug!(
+        target: TARGET,
+        "frame {} main {:.3} interval {:.3} spawned {spawned} despawned {despawned} respawns {respawns} missiles {missiles}",
+        drawn.total,
+        main.unwrap_or(0.0),
+        interval.unwrap_or(0.0)
+    );
+
+    // A spike's frame named, so runs can be compared frame by frame.
+    if main.into_iter().chain(interval).any(|t| t > SPIKE) {
+        info!(
+            target: TARGET,
+            "spike frame {} main {:.1} interval {:.1} wait {:.1} step {:.1}",
+            drawn.total,
+            main.unwrap_or(0.0),
+            interval.unwrap_or(0.0),
+            latest(Timer::Wait),
+            latest(Timer::Step)
+        );
+    }
+
+    let was = drawn.part;
+    let game = if SAID.lock().is_ok_and(|said| said.contains(&"game")) {
+        Game::Drawn
+    } else {
+        Game::Unseen
+    };
+
+    drawn.part = was.after(game);
+
+    // A window's report, or the opening's as play begins.
+    if drawn.frames == WINDOW || (was != Part::Play && drawn.part == Part::Play) {
         drawn.frames = 0;
         counted(&entities, &meshes);
-        report("drawn");
+        report(was.name());
     }
 }
 
-/// The named series that count things, not ms: [`counted`]'s, and
-/// `fog_moved`, 1 for a fog take whose explored ground changed.
-const COUNTS: [&str; 4] = ["entities", "meshes", "visible", "fog_moved"];
+/// The named series that count things, not ms: [`counted`]'s, [`Churn`]'s,
+/// and `fog_moved`, 1 for a fog take whose explored ground changed.
+const COUNTS: [&str; 8] = [
+    "entities",
+    "meshes",
+    "visible",
+    "fog_moved",
+    "spawned",
+    "despawned",
+    "respawns",
+    "missiles",
+];
 
 /// Every mesh, and whether a camera drew it last frame.
 type Meshes<'w, 's> = Query<'w, 's, &'static ViewVisibility, With<Mesh3d>>;
@@ -404,6 +558,16 @@ fn stats(samples: &mut [f64]) -> Option<(f64, f64, f64, f64)> {
     Some((mean, p50, p99, max))
 }
 
+/// `timer`'s last sample since the report, 0 for none: a drawn frame's
+/// own in sync mode.
+fn latest(timer: Timer) -> f64 {
+    SERIES
+        .lock()
+        .ok()
+        .and_then(|series| series[timer as usize].last().copied())
+        .unwrap_or(0.0)
+}
+
 /// How many samples are past [`SPIKE`].
 fn spikes(samples: &[f64]) -> usize {
     samples.iter().filter(|s| **s > SPIKE).count()
@@ -425,5 +589,21 @@ mod tests {
         assert_eq!(stats(&mut samples), Some((50.5, 50.5, 99.0, 100.0)));
         assert_eq!(stats(&mut [3.0, 1.0, 2.0]), Some((2.0, 2.0, 2.0, 3.0)));
         assert_eq!(stats(&mut []), None);
+    }
+
+    /// The opening ends OPENING frames after a game's first; play stays.
+    #[test]
+    fn a_games_opening_ends_after_its_frames() {
+        assert_eq!(Part::Loading.after(Game::Unseen).name(), "opening");
+
+        let mut part = Part::Loading.after(Game::Drawn);
+
+        for _ in 0..OPENING {
+            assert_eq!(part.name(), "opening");
+            part = part.after(Game::Drawn);
+        }
+
+        assert_eq!(part.after(Game::Drawn).name(), "drawn");
+        assert_eq!(Part::Play.after(Game::Drawn).name(), "drawn");
     }
 }

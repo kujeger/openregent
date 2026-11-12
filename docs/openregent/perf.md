@@ -19,6 +19,11 @@ on the hidden display with `--running`, in sync mode and (`p*`, with
 sides, `levels` toggles 1:1 and 2:1 each 30 frames, `wheel` steps smooth
 zoom a notch each 30 frames.
 
+The `battle` cases (`d-battle`, `d-battle-4x`, `t-battle`) play
+`assets/scenes/battle.toml`, 40 heroes and 40 monsters fighting in view
+on a flat 128-cell map, on two cores without vsync, with the line a
+frame; `t-battle` is its trace.
+
 The `replay` cases (`r-*`) replay `assets/input_logs/` headless, the sim
 alone, on one performance core: The Forsaken Land, the shortest, to
 iterate on; Urban Renewal and The Siege, the heaviest, to confirm. A
@@ -39,11 +44,25 @@ The game's own timers are opt-in: `MAJ_PERF=1`
   `redraw_inset`) and the fog take (`fog`; `fog_moved`, the share of
   takes whose explored ground changed);
 - the entities, the meshes and the meshes a camera drew (`entities`,
-  `meshes`, `visible`).
+  `meshes`, `visible`);
+- each drawn frame's churn (`perf::Churn`): entities with a `Transform`
+  spawned and despawned (`spawned`, `despawned`, by observers), pieces
+  drawn anew as their key changed (`respawns`, `map::pieces`) and
+  missiles drawn anew (`missiles`). With `RUST_LOG=warn,maj_perf=debug`,
+  a line a frame sets its number, main and interval ms beside its churn.
 
 Each series logs `n`, `mean`, `p50` (median), `p99`, `max` and its samples
 past 25 ms (`over`, `perf::SPIKE`): a stutter is the tail, not the mean; one
-hitch moves the mean, not the median. `summary.py` merges a drawn run's
+hitch moves the mean, not the median. A drawn frame whose `main` or
+`interval` is past `SPIKE` also logs `spike frame <n>` (drawn frames from
+the start) with its `main`, `interval`, `wait` and `step`; with
+`MAJ_PERF_GPU`, a render schedule past it logs `spike render frame <n>`.
+`startup game` falls between the spike lines of the game's first frame.
+A drawn run's reports go by `opening` until 4 frames past the game's
+first (menus, loading, and the first frame's ground compose and first
+reads), then by `drawn`: play alone. The summary merges the `drawn`
+reports and gives the opening's longest interval as `opening max ms`.
+`summary.py` merges a drawn run's
 reports by sample weight (p50 too: an approximation) and reads logs without
 `p50`.
 

@@ -6,8 +6,9 @@ thousands of involuntary context switches, major page faults, the busy
 share of the pinned cores' SMT siblings (run.sh); instructions and
 cycles (G, user space), then each of the game's timers (openregent/src/perf/mod.rs), ms:
 mean / p50 / p99 / max, then the count of samples past 25 ms (perf::SPIKE)
-where the log gives it: a stutter is the tail, not the mean. A drawn run reports every 600 drawn frames; its first
-report (loading, shader builds) is left out, the rest merged: mean
+where the log gives it: a stutter is the tail, not the mean. A drawn run reports every 600 drawn frames; its
+"opening" reports (menus, loading, the game's first frames) are left out
+but for `opening max ms`, their longest frame interval; the rest merged: mean
 weighted by samples (p50 likewise, an approximation: not the merged
 median; left out when a report lacks it, as old logs do), p99 and max the largest of the reports', spikes
 summed. The
@@ -101,8 +102,16 @@ def case(dir: Path) -> dict:
         # Old logs have no p50: the mean stands in, and the figure is marked absent below.
         reports.setdefault(timer, []).append((what, int(n), float(mean), float(p99), float(top), over, p50))
     for timer, rows in reports.items():
-        # A drawn run's first report covers its loading.
-        if rows[0][0] == "drawn" and len(rows) > 1:
+        # A drawn run's loading and its game's first frames are reported
+        # as "opening": kept apart. Logs from before that: the first
+        # report covers the loading.
+        opening = [r for r in rows if r[0] == "opening"]
+        play = [r for r in rows if r[0] != "opening"]
+        if opening and play:
+            rows = play
+            if timer == "interval":
+                figures["opening max ms"] = max(r[4] for r in opening)
+        elif rows[0][0] == "drawn" and len(rows) > 1:
             rows = rows[1:]
         n = sum(r[1] for r in rows)
         mean = sum(r[1] * r[2] for r in rows) / n
@@ -194,7 +203,7 @@ def main() -> None:
     runs = [run(p) for p in paths]
     # The cases of the last run: a comparison shows those run now.
     names = list(runs[-1])
-    order = ["wall s", "cpu s", "rss MB", "ctx k", "vol k", "faults", "sibling %", "instr G", "cycles G", "to drawn ms", "to game ms"] + TIMERS
+    order = ["wall s", "cpu s", "rss MB", "ctx k", "vol k", "faults", "sibling %", "instr G", "cycles G", "to drawn ms", "to game ms", "opening max ms"] + TIMERS
     known = set(order) | set(MEMORY) | {"failed", "busy"}
     named = sorted({k for r in runs for _, rs in r.values() for c in rs for k in c if k not in known})
     order += named + MEMORY

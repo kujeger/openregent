@@ -56,7 +56,7 @@ use wgpu::{
     QuerySetDescriptor, QueryType,
 };
 
-use super::{TARGET, WINDOW, named};
+use super::{SPIKE, TARGET, WINDOW, named};
 
 /// The environment variable that turns these on, e.g. `MAJ_PERF_GPU=1`.
 pub const ENV: &str = "MAJ_PERF_GPU";
@@ -317,9 +317,18 @@ fn began(mut commands: Commands) {
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
 )]
-fn ended(began: Option<Res<Began>>) {
+fn ended(began: Option<Res<Began>>, mut frames: Local<u32>) {
+    *frames += 1;
+
     if let Some(began) = began {
-        named("render", began.0.elapsed().as_secs_f64() * 1e3);
+        let ms = began.0.elapsed().as_secs_f64() * 1e3;
+
+        named("render", ms);
+
+        // A spike's render frame named, as the main world's.
+        if ms > SPIKE {
+            info!(target: TARGET, "spike render frame {} ms {ms:.1}", *frames);
+        }
     }
 }
 
