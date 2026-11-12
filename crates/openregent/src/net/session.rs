@@ -68,7 +68,7 @@ enum Wait {
     },
     /// The host's lobby, `setup` the game it shows.
     Hosting {
-        hosting: Hosting,
+        hosting: Box<Hosting>,
         setup: Box<Setup>,
     },
     /// The host's name resolving, or the build hashing.
@@ -76,7 +76,7 @@ enum Wait {
         address: Aside<SocketAddr>,
         nick: String,
     },
-    Joining(Joining),
+    Joining(Box<Joining>),
     /// Back from a game, the build still hashing: then the host's lobby
     /// again, `setup` its setup, named `title`, or the guest's.
     Back {
@@ -373,7 +373,7 @@ impl Session {
     pub fn start(&mut self) -> Result<Started, String> {
         match self.wait.take() {
             Some(Wait::Hosting { hosting, setup }) => match hosting.unready() {
-                None => self.hosted(hosting, *setup),
+                None => self.hosted(*hosting, *setup),
                 Some(unready) => {
                     self.wait = Some(Wait::Hosting { hosting, setup });
                     Err(said(unready).to_owned())
@@ -534,7 +534,10 @@ impl Session {
                     let mut hosting = lobby.host(builds, players, (&recorded, &nick))?;
 
                     hosting.set_title(&title);
-                    Ok(Step::waiting(Wait::Hosting { hosting, setup }))
+                    Ok(Step::waiting(Wait::Hosting {
+                        hosting: Box::new(hosting),
+                        setup,
+                    }))
                 }
                 None => Ok(Step::waiting(Wait::Bound {
                     lobby,
@@ -557,7 +560,7 @@ impl Session {
                 }
 
                 if self.starts != Starts::Pressed && hosting.unready().is_none() {
-                    let started = self.hosted(hosting, *setup)?;
+                    let started = self.hosted(*hosting, *setup)?;
 
                     Ok(Step::Started(Box::new(started)))
                 } else {
@@ -571,7 +574,7 @@ impl Session {
                     (Some(host), Some(build)) => {
                         let joining = Joining::new(host, (&build, &nick), now)?;
 
-                        Ok(Step::waiting(Wait::Joining(self.asking(joining))))
+                        Ok(Step::waiting(Wait::Joining(Box::new(self.asking(joining)))))
                     }
                     _ => Ok(Step::waiting(Wait::Resolving { address, nick })),
                 }
@@ -586,12 +589,15 @@ impl Session {
                     let builds = (&build, Builds::Same);
                     let hosting = regroup.host(builds, (&recorded, &title), now)?;
 
-                    Ok(Step::waiting(Wait::Hosting { hosting, setup }))
+                    Ok(Step::waiting(Wait::Hosting {
+                        hosting: Box::new(hosting),
+                        setup,
+                    }))
                 }
                 (Some(build), false) => {
                     let joining = regroup.join(&build, now)?;
 
-                    Ok(Step::waiting(Wait::Joining(self.asking(joining))))
+                    Ok(Step::waiting(Wait::Joining(Box::new(self.asking(joining)))))
                 }
                 (None, _) => Ok(Step::waiting(Wait::Back {
                     regroup,
@@ -611,7 +617,7 @@ impl Session {
                             .as_ref()
                             .map(|game| joining.copy(game).ok_or("the host's save is not here"))
                             .transpose()?;
-                        let peer = Peer::welcomed(joining, &welcome, (self.dumps)())?;
+                        let peer = Peer::welcomed(*joining, &welcome, (self.dumps)())?;
 
                         Ok(Step::Started(Box::new(Started::Welcomed {
                             peer: self.keep_bridge(peer),
