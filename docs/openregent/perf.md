@@ -121,6 +121,23 @@ The renderer's cases (`g-*`, and the weak machines' `lvp-*`, `e1-*`,
   (distinct textures). `MAJ_PERF_EGUI_DUMP=<frame>` logs that frame's
   draws one a line: texture, picture, clip rect, bounds.
 
+- `MAJ_PERF_HIDE=<class,...>` (`openregent/src/perf/hide.rs`) hides
+  classes of world meshes each frame, so two runs' `frag_` counts differ
+  by what a class drew: `floor`, `ground` (patches), `inset`, `veil`,
+  `bands`, `things` (the map's scatter), `pieces` (other opaque
+  bodies), `glass`, `lift`, `plain`, `rings`, and `tracking` (the
+  tracking window's camera off). With `MAJ_PERF` on, every 600 frames
+  also `quad_<kind>`, the world image's texels the main view's body and
+  band quads cover, and `art_<kind>`, the share of those their art
+  draws.
+
+Fragment counts are deterministic but for one thing: the masked phase
+draws its bins in pipeline id order, and ids follow the order pipelines
+are first specialised, which varies run to run. Where bodies draw before
+the ground, the GPU's early depth test drops the ground under them, so a
+run's opaque count can differ from the last's by that. Compare classes
+in runs with `tracking` hidden too: the window draws every second frame.
+
 Drivers: Asahi (Honeykrisp) gives no usable timestamp inside a pass (0
 or nonsense: left out), so on it only `gpu_frame` and Bevy's
 encoder-level `upscaling`; lavapipe gives every pass. Lavapipe is Mesa's

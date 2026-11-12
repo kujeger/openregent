@@ -19,11 +19,13 @@
 //!  MAJ_PERF_UNCAPPED=1  no vsync: the frame interval is the frame's cost, not 16.7 ms
 //!  MAJ_PERF_GPU=1       with MAJ_PERF: GPU time per pass and per frame, draw calls,
 //!                       GPU memory (gpu)
+//!  MAJ_PERF_HIDE=a,b    with MAJ_PERF: classes of world meshes hidden (hide)
 //!  MAJ_PERF_PIPELINED=1 a screenshot's game in pipelined mode, as played
 //!                       (`game::thread::Mode`): game frames by the wall clock
 //! ```
 
 mod gpu;
+mod hide;
 
 use std::collections::BTreeMap;
 use std::sync::{Mutex, OnceLock};
@@ -295,6 +297,7 @@ pub fn install(app: &mut App) {
             .add_systems(First, began)
             .add_systems(Last, ended);
         gpu::install(app);
+        hide::install(app);
     }
 }
 
