@@ -1145,6 +1145,11 @@ into the map's rect: sharp-bilinear, or FSR 1.
   on whole or half units; snapping to whole units would drop or double
   columns between odd and even cels. The image's corner rounds to a whole
   pixel: a pan steps a pixel.
+- Sharp at one texel a pixel (zoom times scale at most 1) would copy the
+  image unchanged, so no quad draws: the shadow resolve writes the shown
+  camera's main texture, each pixel reading the texel the quad would
+  (`present::Route::Straight`, `shadow::Written::Under`;
+  `straight_puts_each_texel_where_the_quad_does`).
 - `--view-upscale` and `--scale` (pixels a logical point; `--size` stays
   the PNG's) set it for a screenshot.
 - FSR above 2× looks painted: EASU's kernel is fixed in texels.

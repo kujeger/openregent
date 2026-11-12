@@ -124,8 +124,10 @@ shadow is drawn after it and never darkened. `soft` alone
    output (window or world image), cleared to the clear colour and cut to
    its viewport: Bevy's own copy (`upscaling`) is skipped for that camera
    (`CameraOutputMode::Skip`), and `shadow::attach` gives it the output
-   Bevy gives only a camera that copies. On the menus the world camera is
-   off (`draw::world_shown`); egui's clears the window.
+   Bevy gives only a camera that copies. Under sharp at one texel a pixel
+   it writes the shown camera's main texture instead, shifted to where the
+   quad would put the image (`shadow::Written::Under`). On the menus the
+   world camera is off (`draw::world_shown`); egui's clears the window.
 
 Order comes from the depth test, not a sort key: a shadow is rejected where
 something nearer stands, nearer than its caster or, under `soft`, than

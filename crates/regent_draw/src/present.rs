@@ -7,6 +7,10 @@
 //!  sharp    WorldCamera ──> world image (Grid), shadows resolved
 //!           Shown camera, the window's map rect ──> sharp-bilinear quad,
 //!             then the overlays (OVERLAY: hit point bars)
+//!    at one texel a pixel (Straight), where the quad would copy:
+//!           WorldCamera ──> its main texture at the art grid, shadows
+//!             resolved straight into the Shown camera's main texture
+//!           Shown camera ──> the overlays over it
 //!  fsr      WorldCamera ──> world image
 //!           Easu camera ──> easu image, the map rect's pixels: EASU quad
 //!           Shown camera ──> RCAS quad, the easu image 1:1, then the
@@ -36,6 +40,7 @@ use bevy::asset::{AssetPath, RenderAssetUsages, embedded_asset, embedded_path};
 use bevy::camera::visibility::RenderLayers;
 use bevy::camera::{CameraUpdateSystems, ImageRenderTarget, RenderTarget, ScalingMode};
 use bevy::core_pipeline::core_2d::Transparent2d;
+use bevy::ecs::schedule::SystemCondition;
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_phase::sort_phase_system;
@@ -48,6 +53,7 @@ use bevy::sprite_render::{Material2d, Material2dPlugin};
 use bevy::transform::TransformSystems;
 use bevy::window::{PrimaryWindow, WindowRef};
 
+use crate::shadow::{Over, Written};
 use crate::smooth::Sampling;
 use crate::stage::{View, WorldCamera};
 
@@ -85,7 +91,15 @@ enum Route {
     Grid,
     /// The easu image, at the map rect's pixels: RCAS reads it.
     Physical,
+    /// At the art grid as [`Route::Grid`], its shadows resolved into the
+    /// shown camera's main texture where the quad would put them: sharp at
+    /// one texel a pixel, where the quad would copy the image unchanged.
+    Straight,
 }
+
+/// The route this frame: [`Route`] while it changes, for [`route`].
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+struct Routed(Route);
 
 impl ViewUpscale {
     /// How the art's texels are read.
@@ -97,9 +111,13 @@ impl ViewUpscale {
         }
     }
 
-    const fn route(self) -> Route {
+    /// Where the world camera draws at `ppu` physical pixels a world unit
+    /// (zoom times display scale). Sharp at an art pixel no larger than a
+    /// physical pixel is one texel a pixel ([`texel`]): straight.
+    fn route(self, ppu: f32) -> Route {
         match self {
             ViewUpscale::Nearest | ViewUpscale::SharpSprite => Route::Window,
+            ViewUpscale::Sharp if ppu <= 1.0 => Route::Straight,
             ViewUpscale::Sharp | ViewUpscale::Fsr => Route::Grid,
             ViewUpscale::FsrSprite => Route::Physical,
         }
@@ -410,13 +428,20 @@ impl Grid {
     /// blends; a pan moves the picture a pixel at a time.
     #[must_use]
     pub fn mapping(&self, middle: Vec2) -> Mapping {
-        let corner = (middle - self.start * self.factor).round();
+        let corner = self.corner(middle);
 
         Mapping {
             origin: middle,
             start: (middle - corner) / self.factor,
             factor: self.factor,
         }
+    }
+
+    /// The image's corner on the window, a whole pixel ([`Grid::mapping`]):
+    /// at one texel a pixel, window pixel `p` shows texel `p − corner`.
+    #[must_use]
+    pub fn corner(&self, middle: Vec2) -> Vec2 {
+        (middle - self.start * self.factor).round()
     }
 }
 
@@ -496,6 +521,7 @@ fn spawn(
 
     commands.spawn((
         Shown,
+        Over,
         Camera2d,
         Msaa::Off,
         idle(SHOWN_ORDER),
@@ -541,9 +567,9 @@ fn spawn(
     });
 }
 
-/// Point the cameras where `ViewUpscale` says, on its change: the world
+/// Point the cameras where the route says, on its change: the world
 /// camera at the window or the world image, the others on or off, and
-/// the shown camera's quad: sharp's or RCAS's.
+/// the shown camera's quad: sharp's, RCAS's, or none while straight.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -555,7 +581,7 @@ fn spawn(
 #[allow(clippy::type_complexity, reason = "a query names what it reads")]
 fn route(
     mut commands: Commands,
-    mode: Res<ViewUpscale>,
+    (mode, routed): (Res<ViewUpscale>, Res<Routed>),
     targets: Res<Targets>,
     view: Res<View>,
     mut quads: Query<(&mut Visibility, Has<RcasQuad>), Or<(With<ShownQuad>, With<RcasQuad>)>>,
@@ -565,15 +591,16 @@ fn route(
 ) {
     let (entity, mut camera, mut target, mut projection) = world.into_inner();
     let (mut shown, mut easu) = (shown.into_inner(), easu.into_inner());
-    let route = mode.route();
+    let route = routed.0;
     let scaled = route != Route::Window;
+    let straight = route == Route::Straight;
 
     // The map rect's viewport stays with whichever camera draws it.
     if scaled {
-        let image = if route == Route::Grid {
-            &targets.world
-        } else {
+        let image = if route == Route::Physical {
             &targets.easu
+        } else {
+            &targets.world
         };
 
         shown.viewport = camera.viewport.take().or(shown.viewport.take());
@@ -599,17 +626,49 @@ fn route(
         }
     }
 
+    // Straight, the resolve writes the shown camera's main texture
+    // (`follow` places it), and the shown camera draws over it, as it drew
+    // over the quad.
+    let (written, cleared) = if straight {
+        (Written::Under(IVec2::ZERO), ClearColorConfig::None)
+    } else {
+        (Written::Output, ClearColorConfig::Default)
+    };
+
+    commands.entity(entity).insert(written);
+    shown.clear_color = cleared;
     shown.is_active = scaled;
     easu.is_active = *mode == ViewUpscale::Fsr;
 
-    // Sharp shows the world, fsr RCAS's pass over the easu image.
+    // Sharp shows the world, fsr RCAS's pass over the easu image; straight
+    // shows no quad.
     for (mut visibility, rcas) in &mut quads {
-        *visibility = if rcas == mode.sharpened() {
+        let drawn = if rcas {
+            mode.sharpened()
+        } else {
+            !mode.sharpened() && !straight
+        };
+
+        *visibility = if drawn {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         };
     }
+}
+
+/// This frame's route, written on change.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+fn choose(
+    mode: Res<ViewUpscale>,
+    view: Res<View>,
+    window: Single<&Window, With<PrimaryWindow>>,
+    mut routed: ResMut<Routed>,
+) {
+    routed.set_if_neq(Routed(mode.route(view.zoom * window.scale_factor())));
 }
 
 /// Each quad's material on while its mode is shown, off otherwise: Bevy
@@ -662,14 +721,22 @@ fn wear<M: Material2d>(commands: &mut Commands, entity: Entity, material: Option
 )]
 #[allow(clippy::type_complexity, reason = "a query names what it reads")]
 fn follow(
-    mode: Res<ViewUpscale>,
+    (mode, routed): (Res<ViewUpscale>, Res<Routed>),
     view: Res<View>,
     targets: Res<Targets>,
     window: Single<&Window, With<PrimaryWindow>>,
     mut images: ResMut<Assets<Image>>,
     (mut sharps, mut passes, mut rcases): Materials,
     mut cameras: ParamSet<(
-        Single<(&mut Camera, &mut Transform, &mut Projection), With<WorldCamera>>,
+        Single<
+            (
+                &mut Camera,
+                &mut Transform,
+                &mut Projection,
+                Option<&mut Written>,
+            ),
+            With<WorldCamera>,
+        >,
         Single<(&mut Camera, &mut Transform, &mut Projection), With<Shown>>,
     )>,
     mut quads: ParamSet<(
@@ -677,7 +744,10 @@ fn follow(
         Single<&mut Transform, (With<EasuQuad>, Without<Camera>)>,
     )>,
 ) {
-    let Some(rect) = view.rect.filter(|_| mode.route() == Route::Grid) else {
+    let Some(rect) = view
+        .rect
+        .filter(|_| matches!(routed.0, Route::Grid | Route::Straight))
+    else {
         return;
     };
     let scale = window.scale_factor();
@@ -708,7 +778,7 @@ fn follow(
     }
 
     {
-        let (_, mut transform, mut projection) = cameras.p0().into_inner();
+        let (_, mut transform, mut projection, written) = cameras.p0().into_inner();
 
         transform.translation = grid.camera.extend(transform.translation.z);
 
@@ -720,6 +790,15 @@ fn follow(
                 height: side.y,
             };
             ortho.scale = 1.0;
+        }
+
+        // Straight: window pixel p takes texel p − corner, as the quad.
+        let under = Written::Under(grid.corner(rect.center() * scale).as_ivec2());
+
+        if routed.0 == Route::Straight
+            && let Some(mut written) = written
+        {
+            written.set_if_neq(under);
         }
     }
 
@@ -845,7 +924,7 @@ fn sprites(
     let ppu = view.zoom * scale;
 
     // As nearest: the world camera's own viewport, given by the panels.
-    if mode.route() == Route::Window {
+    if mode.route(ppu) == Route::Window {
         let (camera, mut transform, _) = cameras.p0().into_inner();
         let size = camera
             .viewport
@@ -939,6 +1018,7 @@ impl bevy::app::Plugin for Plugin {
             Material2dPlugin::<RcasPass>::default(),
         ))
         .init_resource::<ViewUpscale>()
+        .insert_resource(Routed(Route::Window))
         .configure_sets(
             PostUpdate,
             Present
@@ -950,7 +1030,9 @@ impl bevy::app::Plugin for Plugin {
         .add_systems(
             PostUpdate,
             (
-                (route, equip).run_if(resource_changed::<ViewUpscale>),
+                choose,
+                route.run_if(resource_changed::<ViewUpscale>.or_else(resource_changed::<Routed>)),
+                equip.run_if(resource_changed::<ViewUpscale>),
                 follow,
                 sprites,
             )
@@ -1182,6 +1264,62 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Sharp alone goes straight, and only at one texel a pixel: an art
+    /// pixel no larger than a physical pixel.
+    #[test]
+    fn only_sharp_at_one_texel_a_pixel_goes_straight() {
+        let cases = [
+            (ViewUpscale::Sharp, 0.5, Route::Straight),
+            (ViewUpscale::Sharp, 1.0, Route::Straight),
+            (ViewUpscale::Sharp, 1.25, Route::Grid),
+            (ViewUpscale::Fsr, 1.0, Route::Grid),
+            (ViewUpscale::Nearest, 1.0, Route::Window),
+            (ViewUpscale::SharpSprite, 1.0, Route::Window),
+            (ViewUpscale::FsrSprite, 1.0, Route::Physical),
+        ];
+
+        for (mode, ppu, route) in cases {
+            assert_eq!(mode.route(ppu), route, "{mode:?} at {ppu}");
+        }
+    }
+
+    /// Straight, window pixel p takes texel p − corner: where the quad's
+    /// mapping puts that texel, at every zoom that goes straight.
+    #[test]
+    fn straight_puts_each_texel_where_the_quad_does() {
+        for (zoom, scale) in [(1.0, 1.0), (0.75, 1.0), (0.5, 2.0), (0.8, 1.25), (0.3, 1.8)] {
+            for pan in [
+                Vec2::ZERO,
+                Vec2::new(10.3, -7.61),
+                Vec2::new(-333.5, 812.25),
+            ] {
+                let view = view(zoom, pan);
+                let rect = view.rect.unwrap();
+                let grid = Grid::of(rect.size() * scale, (zoom, scale), pan, UVec2::ZERO);
+                let middle = rect.center() * scale;
+                let mapping = grid.mapping(middle);
+                let corner = grid.corner(middle);
+
+                assert_eq!(mode_at(zoom, scale), Route::Straight);
+
+                for texel in [UVec2::ZERO, UVec2::new(17, 3), grid.size - 1] {
+                    let middle_of = texel.as_vec2() + 0.5;
+                    let quad = mapping.pixel(middle_of);
+
+                    assert!(
+                        (quad - (middle_of + corner)).abs().max_element() < 1e-2,
+                        "zoom {zoom}, scale {scale}, pan {pan}: texel {texel} at {quad}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Sharp's route at `zoom` and `scale`.
+    fn mode_at(zoom: f32, scale: f32) -> Route {
+        ViewUpscale::Sharp.route(zoom * scale)
     }
 
     /// `FsrRcasCon`: stops to `2^-stops`; 0 the most, 1.
