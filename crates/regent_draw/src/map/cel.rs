@@ -173,18 +173,24 @@ fn picture(
         .enumerate()
         .any(|(i, drawn)| *drawn && matches!(frame.ink(i, Blit::World), Ink::Shade(_)))
         .then(|| {
-            store.bands.add(material::Band {
+            let ramps = soft::Ramps::of(frame.mode);
+            let feet = crate::lie::feet(store.images.get(&indices)?, ramps);
+            let feet = store.images.add(feet);
+
+            Some(store.bands.add(material::Band {
                 indices: indices.clone(),
                 rows: crate::lie::ROWS,
                 // `shadow::follow` sets the wanted one.
                 shadows: crate::shadow::Shadows::default(),
-                ramps: soft::Ramps::of(frame.mode),
+                ramps,
                 sway: Sway::Still,
                 gust: Gust::STILL,
+                feet,
                 sampling: Sampling::Nearest,
                 painted: crate::material::Painted::Kept,
-            })
-        });
+            }))
+        })
+        .flatten();
 
     let body = store.bodies.add(material::Body {
         indices,
@@ -210,7 +216,7 @@ pub struct Cel {
     /// The band's indices where a model casts the ground shadow: what is
     /// left to draw, a flag or a fire's smoke ([`keep_parts`]). Absent if
     /// nothing is.
-    pub aloft: Option<Handle<Image>>,
+    pub aloft: Option<Aloft>,
     /// A translucent frame's lift, clearing the shadow's coverage under it
     /// ([`crate::soft::lifts`]); absent on an opaque one.
     pub lift: Option<Handle<material::Body>>,
@@ -220,6 +226,14 @@ pub struct Cel {
     pub anchor: Vec2,
     /// The tile drawn: archive, index.
     pub tile: (usize, usize),
+}
+
+/// A band's pictures where a model casts the ground shadow ([`Cel::aloft`]).
+#[derive(Clone)]
+pub struct Aloft {
+    pub indices: Handle<Image>,
+    /// `indices`' feet ([`crate::lie::feet`]): holes cut runs short.
+    pub feet: Handle<Image>,
 }
 
 /// One layer of a descriptor's picture, ready to place.
@@ -446,9 +460,14 @@ pub fn keep_parts(
 
         for cel in drawing.cels.iter_mut().flatten() {
             let Some(band) = &cel.band else { continue };
+            let band = store.bands.get(band);
+            let ramps = band.map(|band| band.ramps).unwrap_or_default();
 
             cel.aloft = if overlay {
-                store.bands.get(band).map(|band| band.indices.clone())
+                band.map(|band| Aloft {
+                    indices: band.indices.clone(),
+                    feet: band.feet.clone(),
+                })
             } else {
                 stands
                     .and_then(|stands| {
@@ -461,7 +480,10 @@ pub fn keep_parts(
 
                         texture::without_shadow(&frame, |i| frame.aloft(i, stands, shift))
                     })
-                    .map(|image| store.images.add(image))
+                    .map(|image| Aloft {
+                        feet: store.images.add(crate::lie::feet(&image, ramps)),
+                        indices: store.images.add(image),
+                    })
             };
         }
     }

@@ -105,6 +105,12 @@ shadow is drawn after it and never darkened. `soft` alone
   change; the shader writes `frag_depth`. Pieces between two placed rows
   sort by row within them (`Depth::at`), so the comparison holds between
   rows too.
+- **The foot found once a picture.** As a band is made, `lie::feet`
+  gives each darkening pixel its rows down to its run's foot (one byte a
+  pixel, two in a tile with a run taller than 255): `Band::feet`, the
+  shader reads it and searches nothing. A model-casting band's tile
+  without its ground shadow has its own (`cel::Aloft`): holes there cut
+  runs short.
 - **Glows and untagged bands** test at their caster's depth: a band with
   no `Footing` (effects, trails, the placing preview) keeps no `MeshTag`.
 

@@ -229,6 +229,9 @@ each frame:
   (`minimap::Cache::changed`).
 - `lie::tag` tags no parked band; one coming out is tagged that frame
   (after `cull`).
+- A soft band's fragment reads its run's foot from `Band::feet`, made on
+  the CPU with the band (`lie::feet`), in place of searching the column
+  below it.
 - A `map::things::Thing` carries the unit quad's `Aabb` and
   `NoAutoAabb`, so Bevy computes no bounds for it. Ground meshes (veil,
   ground patches, area, reach) are culled by their `Aabb`, for each

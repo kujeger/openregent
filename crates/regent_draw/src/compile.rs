@@ -589,6 +589,7 @@ mod tests {
                                 ramps,
                                 sway,
                                 gust: gust(sway),
+                                feet: Handle::default(),
                                 sampling,
                                 painted,
                             };

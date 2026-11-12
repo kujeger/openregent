@@ -18,6 +18,8 @@ import regent_draw::shaders::smooth::{lattice, snapped};
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var indices: texture_2d<u32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(1) var rows: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(2) var<uniform> wind: Gust;
+// Each darkening pixel's rows down to its run's foot (`lie::feet`).
+@group(constants::MATERIAL_BIND_GROUP) @binding(3) var feet: texture_2d<u32>;
 
 const FACTORS = array<u32, 8>(
     constants::FACTOR_247, constants::FACTOR_248, constants::FACTOR_249, constants::FACTOR_250,
@@ -90,28 +92,16 @@ fn darkens(index: u32) -> bool {
 }
 
 @if(SOFT)
-/// The depth darkening pixel `at` of a `size` tile tests at: the nearer
+/// The depth darkening pixel `at` tests at: the nearer
 /// of its caster's and that of the ground at its run's foot, the lowest
-/// darkening pixel below it before a hole. Its caster's where it has no
-/// footing or glows.
-fn lying(in: Out, at: vec2<u32>, size: vec2<u32>, index: u32) -> f32 {
+/// darkening pixel below it before a hole, found on the CPU (`feet`).
+/// Its caster's where it has no footing or glows.
+fn lying(in: Out, at: vec2<u32>, index: u32) -> f32 {
     if in.top == 0u || !darkens(index) {
         return in.position.z;
     }
 
-    var foot = at.y;
-
-    for (var y = at.y + 1u; y < size.y; y++) {
-        let below = textureLoad(indices, vec2<u32>(at.x, y), 0).r;
-
-        if below == 255u {
-            break;
-        }
-
-        if below >= 247u && darkens(below) {
-            foot = y;
-        }
-    }
+    let foot = at.y + textureLoad(feet, at, 0).r;
 
     // The foot's ground row, then the depth a thing standing there draws at.
     let row = bitcast<f32>(in.top) + (f32(foot) + 0.5) * 1000.0 / f32(constants::ROW);
@@ -157,7 +147,7 @@ fn fragment(in: Out) -> Drawn {
     var alphas = ALPHAS;
 
     out.colour = vec4<f32>(vec3<f32>(max(factor - 1.0, 0.0)), f32(alphas[index - 247u]) / 255.0);
-    out.depth = lying(in, at, size, index);
+    out.depth = lying(in, at, index);
 }
 @else {
     // The blend gives dst × (rgb + a): a factor under one in alpha, the

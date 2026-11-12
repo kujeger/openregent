@@ -41,7 +41,7 @@ pub(crate) struct Shared(Handle<Band>);
 /// ground shadow, to draw while a model casts
 /// ([`Cel::aloft`](regent_draw::map::cel::Cel::aloft)).
 #[derive(Component)]
-pub(crate) struct Aloft(pub(crate) Handle<Image>);
+pub(crate) struct Aloft(pub(crate) regent_draw::map::cel::Aloft);
 
 /// O hides the sprites of the buildings casting from a model, or draws
 /// them again, with `[enhancements] debug_keys`, while models cast: a
@@ -144,7 +144,8 @@ pub(crate) fn casting(
                         // A part's darkening stays; the ground's goes.
                         let copy = materials.add(match aloft {
                             Some(aloft) => Band {
-                                indices: aloft.0.clone(),
+                                indices: aloft.0.indices.clone(),
+                                feet: aloft.0.feet.clone(),
                                 ..copy
                             },
                             None => Band {
@@ -234,6 +235,7 @@ mod tests {
             ramps: Ramps::of(Mode::Band),
             sway: Sway::Still,
             gust: Gust::STILL,
+            feet: Handle::default(),
             sampling: Sampling::Nearest,
             painted: Painted::Kept,
         }
@@ -275,6 +277,7 @@ mod tests {
                 ramps: Ramps::of(Mode::Band),
                 sway: Sway::Still,
                 gust: Gust::STILL,
+                feet: Handle::default(),
                 sampling: Sampling::Nearest,
                 painted: Painted::Kept,
             });
@@ -337,7 +340,12 @@ mod tests {
         let building = piece(world, 1, SetKind::Inactive, shared);
         let child = world.get::<Children>(building).expect("a band")[0];
 
-        world.entity_mut(child).insert(Aloft(flag.clone()));
+        world
+            .entity_mut(child)
+            .insert(Aloft(regent_draw::map::cel::Aloft {
+                indices: flag.clone(),
+                feet: Handle::default(),
+            }));
         world.run_system_once(casting).expect("ran");
         world.flush();
 

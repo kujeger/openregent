@@ -243,6 +243,10 @@ pub struct Band {
     pub sway: Sway,
     #[uniform(2)]
     pub gust: Gust,
+    /// Each pixel's rows down to its run's foot ([`lie::feet`]), made
+    /// from `indices` under `ramps`.
+    #[texture(3, sample_type = "u_int")]
+    pub feet: Handle<Image>,
     /// As its body's: under [`Sampling::Sharp`] snapped with it.
     pub sampling: Sampling,
     /// Whether its darkening draws: dropped where a model casts the

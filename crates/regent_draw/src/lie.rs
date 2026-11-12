@@ -105,8 +105,8 @@ pub fn darkens(ramps: Ramps, index: u8) -> bool {
 
 /// The row of the foot of darkening pixel `at`'s run, in a tile of
 /// `width` holding `indices` ([`TRANSPARENT`] a hole): the lowest
-/// darkening pixel below it in its column before a hole, as `band.wesl`
-/// finds it.
+/// darkening pixel below it in its column before a hole: one pixel's
+/// [`drops`].
 #[must_use]
 pub fn foot(indices: &[u8], width: usize, at: (usize, usize), ramps: Ramps) -> usize {
     let (x, y) = at;
@@ -121,6 +121,76 @@ pub fn foot(indices: &[u8], width: usize, at: (usize, usize), ramps: Ramps) -> u
         .filter(|(_, i)| darkens(ramps, **i))
         .last()
         .map_or(y, |(row, _)| row)
+}
+
+/// Each pixel's rows down to its run's [`foot`], in a tile of `width`
+/// holding `indices`; 0 where it does not darken. Found once a picture,
+/// a column bottom up, so `band.wesl` reads it and searches nothing.
+///
+/// ```text
+///  column  247  10  248  251  255  249
+///  drops     2   ·    0    ·    ·    0
+/// ```
+#[must_use]
+pub fn drops(indices: &[u8], width: usize, ramps: Ramps) -> Vec<u16> {
+    let mut out = vec![0; indices.len()];
+    let height = indices.len().checked_div(width).unwrap_or(0);
+
+    for x in 0..width {
+        // The lowest darkening row of the run below, none past a hole.
+        let mut run: Option<usize> = None;
+
+        for y in (0..height).rev() {
+            let index = indices[y * width + x];
+
+            if index == TRANSPARENT {
+                run = None;
+            } else if darkens(ramps, index) {
+                let foot = *run.get_or_insert(y);
+
+                out[y * width + x] = u16::try_from(foot - y).unwrap_or(u16::MAX);
+            }
+        }
+    }
+
+    out
+}
+
+/// [`drops`] of an index texture as a texture `band.wesl` reads: a byte
+/// a pixel where every drop fits one, else two.
+#[must_use]
+pub fn feet(indices: &Image, ramps: Ramps) -> Image {
+    let size = indices.size();
+    let data = indices.data.as_deref().unwrap_or_default();
+    let drops = drops(data, size.x as usize, ramps);
+
+    let (format, bytes): (TextureFormat, Vec<u8>) =
+        if drops.iter().all(|d| u8::try_from(*d).is_ok()) {
+            (
+                TextureFormat::R8Uint,
+                drops.iter().map(|d| d.to_le_bytes()[0]).collect(),
+            )
+        } else {
+            (
+                TextureFormat::R16Uint,
+                drops.iter().flat_map(|d| d.to_le_bytes()).collect(),
+            )
+        };
+
+    let mut image = Image::new(
+        Extent3d {
+            width: size.x,
+            height: size.y,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        bytes,
+        format,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+
+    image.sampler = ImageSampler::nearest();
+    image
 }
 
 /// The depth a darkening pixel tests at, its caster at depth `caster`,
@@ -297,6 +367,67 @@ mod tests {
         assert_eq!(foot(&column, 1, (0, 0), Ramps::Band), 2);
         assert_eq!(foot(&column, 1, (0, 5), Ramps::Band), 5);
         assert!(!darkens(Ramps::Band, 251));
+    }
+
+    /// Each darkening pixel's drop is the rows down to the foot the
+    /// search finds; the doc's column first.
+    #[test]
+    fn a_drop_reaches_the_foot_the_search_finds() {
+        let column = [247, 10, 248, 251, TRANSPARENT, 249];
+
+        assert_eq!(drops(&column, 1, Ramps::Band), [2, 0, 0, 0, 0, 0]);
+
+        // Every index a pixel can hold, mixed over a 7 x 9 tile.
+        let (width, height) = (7, 9);
+        let tile: Vec<u8> = (0..width * height)
+            .map(|i| [247, 248, 251, 254, 10, TRANSPARENT][(i * 7 + i / 5) % 6])
+            .collect();
+
+        for ramps in [Ramps::Band, Ramps::Shadow] {
+            let drops = drops(&tile, width, ramps);
+
+            for (i, index) in tile.iter().enumerate() {
+                let (x, y) = (i % width, i / width);
+                let want = if darkens(ramps, *index) {
+                    foot(&tile, width, (x, y), ramps) - y
+                } else {
+                    0
+                };
+
+                assert_eq!(usize::from(drops[i]), want, "{ramps:?} at {x},{y}");
+            }
+        }
+    }
+
+    /// A drop past a byte takes two bytes a pixel; else one.
+    #[test]
+    fn feet_take_two_bytes_only_past_a_byte() {
+        let image = |height: u32| {
+            Image::new(
+                Extent3d {
+                    width: 1,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                TextureDimension::D2,
+                vec![247; height as usize],
+                TextureFormat::R8Uint,
+                RenderAssetUsages::RENDER_WORLD,
+            )
+        };
+
+        let short = feet(&image(256), Ramps::Band);
+        let tall = feet(&image(257), Ramps::Band);
+
+        assert_eq!(short.texture_descriptor.format, TextureFormat::R8Uint);
+        assert_eq!(short.data.as_deref().map(|d| d[0]), Some(255));
+        assert_eq!(tall.texture_descriptor.format, TextureFormat::R16Uint);
+        assert_eq!(
+            tall.data
+                .as_deref()
+                .map(|d| u16::from_le_bytes([d[0], d[1]])),
+            Some(256)
+        );
     }
 
     /// A row of 0 is a footing, not none.
