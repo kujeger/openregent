@@ -37,6 +37,7 @@ pub mod relief;
 use std::collections::HashMap;
 
 use bevy::asset::{AssetEventSystems, RenderAssetUsages};
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::camera::visibility::RenderLayers;
 use bevy::light::cascade::Cascade;
 use bevy::light::{
@@ -44,7 +45,7 @@ use bevy::light::{
     SimulationLightSystems,
 };
 use bevy::math::Vec3A;
-use bevy::mesh::{Mesh, MeshTag, PrimitiveTopology};
+use bevy::mesh::{Indices, Mesh, MeshTag, PrimitiveTopology};
 use bevy::prelude::*;
 use regent_core::data::fourcc::FourCc;
 
@@ -54,7 +55,7 @@ use crate::instance::Tag;
 use crate::lie::Footing;
 use crate::map::Maps;
 use crate::material::Body;
-use crate::plain::{Lay, Plain, Shade};
+use crate::plain::{Alpha, Lay, Plain, Shade};
 use crate::smooth::{Sheet, touched};
 use crate::stage::{self, WorldCamera};
 use bare::{Bare, Sprites};
@@ -395,6 +396,7 @@ fn receive(
         MessageReader<AssetEvent<Sheet>>,
     ),
     (mut plains, mut sheets): (ResMut<Assets<Plain>>, ResMut<Assets<Sheet>>),
+    warm: Res<Warm>,
     mut was: Local<Shade>,
 ) {
     let shade = if casting(&sun, &casters, &world) {
@@ -409,7 +411,8 @@ fn receive(
     for id in touched(&mut made, &plains, changed) {
         let stale = plains
             .get(id)
-            .is_some_and(|p| p.lay == Lay::Ground && p.shade != shade);
+            .is_some_and(|p| p.lay == Lay::Ground && p.shade != shade)
+            && !warm.plains.contains(&id);
 
         if stale && let Some(mut plain) = plains.get_mut(id) {
             plain.shade = shade;
@@ -417,12 +420,72 @@ fn receive(
     }
 
     for id in touched(&mut laid, &sheets, changed) {
-        let stale = sheets.get(id).is_some_and(|s| s.shade != shade);
+        let stale = sheets.get(id).is_some_and(|s| s.shade != shade) && !warm.sheets.contains(&id);
 
         if stale && let Some(mut sheet) = sheets.get_mut(id) {
             sheet.shade = shade;
         }
     }
+}
+
+/// The ground's pipelines of both [`Shade`]s, kept specialised: as models
+/// start or stop casting the ground switches to one already compiled,
+/// or Bevy would skip it while the new one compiles, a frame or more
+/// without ground. [`receive`] leaves their materials be.
+#[derive(Resource, Default)]
+struct Warm {
+    plains: Vec<AssetId<Plain>>,
+    sheets: Vec<AssetId<Sheet>>,
+}
+
+/// A mesh of the ground's attributes that draws nothing: its one
+/// triangle has no area.
+fn unseen() -> Mesh {
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0_f32; 3]; 3]);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0_f32; 2]; 3]);
+    mesh.insert_indices(Indices::U32(vec![0, 1, 2]));
+    mesh
+}
+
+/// Each ground material's pipeline of each [`Shade`] specialised, on an
+/// [`unseen`] mesh every view draws: the patches' and the inset's, the
+/// floor's, the sharp patches'.
+fn warm(
+    mut commands: Commands,
+    (mut images, mut meshes): (ResMut<Assets<Image>>, ResMut<Assets<Mesh>>),
+    (mut plains, mut sheets): (ResMut<Assets<Plain>>, ResMut<Assets<Sheet>>),
+) {
+    let mesh = Mesh3d(meshes.add(unseen()));
+    let picture = images.add(Image::default());
+    let mut warm = Warm::default();
+
+    for shade in [Shade::Bare, Shade::Cast] {
+        for alpha in [Alpha::MaskFirst, Alpha::Mask] {
+            let plain = plains.add(Plain {
+                alpha,
+                shade,
+                ..Plain::ground(picture.clone())
+            });
+
+            warm.plains.push(plain.id());
+            commands.spawn((mesh.clone(), MeshMaterial3d(plain), NoFrustumCulling));
+        }
+
+        let sheet = sheets.add(Sheet {
+            picture: picture.clone(),
+            shade,
+        });
+
+        warm.sheets.push(sheet.id());
+        commands.spawn((mesh.clone(), MeshMaterial3d(sheet), NoFrustumCulling));
+    }
+
+    commands.insert_resource(warm);
 }
 
 /// A camera, as [`fitted`] reads it.
@@ -678,7 +741,8 @@ impl bevy::app::Plugin for Plugin {
         app.init_resource::<Sun>()
             .init_resource::<Casters>()
             .init_resource::<Proxies>()
-            .add_systems(Startup, rig)
+            .init_resource::<Warm>()
+            .add_systems(Startup, (rig, warm))
             .add_systems(
                 PostUpdate,
                 (
