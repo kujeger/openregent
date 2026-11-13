@@ -18,6 +18,7 @@ use regent_core::view::menu::quest_map::Progress;
 use super::*;
 use crate::game::clock::tick;
 use crate::game::seen::{Frame, News};
+use crate::game::thread::PRIMING;
 
 /// Reward settings a save test raises, none the start's.
 const REWARD_ATTACK: i32 = 450;
@@ -677,8 +678,9 @@ fn waited(app: &mut App) {
     app.update();
 }
 
-/// A quest made is put in under its loading page, Start Quest offered,
-/// and waits there, its clock held, until that is pressed.
+/// A quest made is put in under its loading page, takes its first steps
+/// there, Start Quest offered, and waits, its clock held, until that is
+/// pressed.
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn a_made_quest_waits_for_start_quest() {
@@ -702,19 +704,24 @@ fn a_made_quest_waits_for_start_quest() {
     assert_eq!(screen(&app), Screen::Playing);
     assert!(draped(&app), "under its loading page");
     assert!(app.world().resource::<crate::menu::Menu>().offered());
-    assert_eq!(frames(app.world()), 0, "the clock held");
+    assert_eq!(
+        frames(app.world()),
+        PRIMING,
+        "its first steps, the clock held"
+    );
 
     for _ in 0..STEPPED {
         step(&mut app);
     }
 
     assert!(!draped(&app));
-    assert!(frames(app.world()) > 0, "game frames ran");
+    assert!(frames(app.world()) > PRIMING, "game frames ran");
 }
 
-/// The page over a new game goes by itself once its drawing settles,
-/// not before; Start Quest on a held one is offered only then. Under
-/// it, the clock does not run. An app that draws: settled only after
+/// The page over a new game goes by itself once its first steps are
+/// taken and its drawing settles, not before; Start Quest on a held one
+/// is offered only then. Under it the clock does not run: the game
+/// stops at its first steps. An app that draws: settled only after
 /// quiet frames (`regent_draw::settle`).
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
@@ -765,8 +772,13 @@ fn a_new_games_loading_page_waits_for_its_drawing_to_settle() {
             };
             let offered = app.world().resource::<crate::menu::Menu>().offered();
 
-            assert_eq!(frames(app.world()), 0, "the clock held");
-            assert!(!offered || settled(), "Start Quest offered unsettled");
+            let stepped = frames(app.world());
+
+            assert!(stepped <= PRIMING, "the clock held: {stepped}");
+            assert!(
+                !offered || (settled() && stepped == PRIMING),
+                "Start Quest offered unsettled"
+            );
 
             if offered {
                 app.world_mut().resource_mut::<crate::menu::Menu>().go();
@@ -780,7 +792,10 @@ fn a_new_games_loading_page_waits_for_its_drawing_to_settle() {
                 .resource::<regent_draw::settle::Settle>()
                 .settled();
 
-            assert!(draped(&app) || settled, "gone unsettled");
+            assert!(
+                draped(&app) || (settled && frames(app.world()) == PRIMING),
+                "gone unsettled"
+            );
         }
 
         assert!(!draped(&app), "{wait:?}: still up after {MOST} frames");
@@ -790,8 +805,78 @@ fn a_new_games_loading_page_waits_for_its_drawing_to_settle() {
             waited(&mut app);
         }
 
-        assert!(frames(app.world()) > 0, "{wait:?}: game frames ran");
+        assert!(frames(app.world()) > PRIMING, "{wait:?}: game frames ran");
     }
+}
+
+/// A quest whose start relays its ground in its first three steps (The
+/// Day of Reckoning) has done so under its loading page: the steps after
+/// the page goes lay no ground, add no piece and show none newly through
+/// the fog; the drawn map's ground is the world's as the page goes.
+#[test]
+#[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+fn a_new_games_start_is_done_under_its_loading_page() {
+    // Steps after the page: the quest's first spawn comes at step 11.
+    const AFTER: u32 = 6;
+
+    let (quests, maker) = commanding_maker(None, &["--quest", "QU06"]);
+    let mut settings = Settings::default();
+    let mut menu = crate::menu::Opened::new(quests, crate::menu::Art::default());
+
+    settings.audio.muted = true;
+    menu.with(|m| {
+        m.menu
+            .command(crate::menu::LoadKind::Quest(FourCc(*b"QU06")));
+    });
+
+    let mut app = menu_app(menu, (maker, nobody()), 1.0, settings, Display::Headless);
+    let frame = Duration::from_millis(MS_PER_FRAME.into());
+    let began = std::time::Instant::now();
+    let playing = |app: &App| *app.world().resource::<State<Screen>>().get() == Screen::Playing;
+    let start = |app: &App| {
+        run(app.world(), |sim| {
+            let world = sim.world();
+            let mask = regent_core::view::map::fog::mask(sim.local());
+            let shown: Vec<(u32, bool)> = world
+                .shown()
+                .iter()
+                .map(|s| {
+                    (
+                        s.agent,
+                        regent_core::view::map::fog::drawn(world.seen_level(s.agent, mask)),
+                    )
+                })
+                .collect();
+
+            (world.board().relaid(), shown)
+        })
+    };
+
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(frame));
+
+    while (!playing(&app) || draped(&app)) && began.elapsed() < MAKING {
+        waited(&mut app);
+    }
+
+    let gone = start(&app);
+    let drawn = app
+        .world()
+        .resource::<regent_draw::map::Maps>()
+        .current()
+        .and_then(|l| l.source.generation);
+
+    assert_eq!(frames(app.world()), PRIMING);
+    assert_eq!(drawn, Some(gone.0), "the ground drawn is the world's");
+    assert!(
+        gone.1.iter().any(|(_, seen)| *seen),
+        "pieces seen as the page goes"
+    );
+
+    while frames(app.world()) < PRIMING + AFTER && began.elapsed() < MAKING {
+        waited(&mut app);
+    }
+
+    assert_eq!(start(&app), gone, "no start's work after the page");
 }
 
 /// How a test's game leaves its loading page.
@@ -1615,8 +1700,9 @@ fn a_pipelined_game_plays_as_a_sync_one() {
     let at: HashMap<u32, [usize; 3]> = sync.at.iter().copied().collect();
     let digests = (FRAMES / crate::game::record::DIGEST_EVERY) as usize;
 
-    // The first drawn frame steps the first game frame.
-    let missing: Vec<u32> = (1..FRAMES).filter(|f| !at.contains_key(f)).collect();
+    // The first steps come at once, under the loading page; then a
+    // drawn frame each.
+    let missing: Vec<u32> = (PRIMING..FRAMES).filter(|f| !at.contains_key(f)).collect();
 
     assert!(missing.is_empty(), "sync shows every frame: {missing:?}");
 

@@ -8,6 +8,9 @@ a hidden display.
 
 What a shot holds fixed:
 
+- A new game has taken its first three steps under its loading page
+  (`thread::PRIMING`) before the view is framed: a shot of one shows game
+  frame 3, not 0, its `--frames` counted on from there.
 - The fog is lifted, as the captures' reveal cheat did. The game is paused
   and muted, settings are the defaults, rings are the art's (`--rings`
   picks another), no side ring (`--side-ring true`).

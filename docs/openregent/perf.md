@@ -447,7 +447,10 @@ in under its loading page (`menu::drape`) and drawn beneath it until
  made ──> draw::install, page up ──> Screen::Playing: Settle::restart
  each drawn frame, under the page: the world drawn; the clock held
    (game::thread::Start::Held), no keys, picks or game sound
- Last: nothing pending QUIET (3) frames in a row, or 30 s up
+ the page's second frame on: a new game steps to PRIMING (3) frames at
+   once, clock held (Start::Primed): its start's work drawn unseen
+ Last: those steps taken, nothing pending QUIET (3) frames in a row,
+   or 30 s up
    ──> a held game's Start Quest offered; else the page goes
  page gone ──> the next tick starts the clock
 ```
@@ -457,6 +460,15 @@ Pending: pipelines queued or compiling as the render world last stood
 wants, sprite page jobs queued or running and pages put on that frame.
 Interface pictures upscaling (`art::busy`) are not waited for: they take
 minutes on a slow machine.
+
+A new game's first steps lay its start: the quests' placements relay the
+ground and clear scatter by step 3, new pieces come, and the fog shows
+no piece before step 2 (**Measured**, every shipped quest and freestyle
+but XQ01, which shows some at frame 0). Taken under the page, all at
+once, the drawing redoes the ground once and play starts without the
+pop-in. They are the steps the clock would take: no input comes, the
+day-0 autosave falls on step 1 as before, their sounds play as the page
+goes. A save, or a game warmed past frame 3, takes none.
 Without a renderer (`Display::Headless`) it is settled at once. A wait
 past 10 s logs what is pending, and again each 10 s. A LAN game is never
 covered.

@@ -603,9 +603,11 @@ world drawn beneath it, until its drawing's start-up work settles
 (`regent_draw::settle`: no pipeline compiling, ground patch wanted,
 sprite page made or on its way, picture upscaling, three frames in a
 row; 30 s at
-most): the first frames' cost is paid before play. Under it the game
-clock does not start, no input reaches the game and no game sound
-starts. Then a held game offers Start Quest, the others' page goes by
+most): the first frames' cost is paid before play. A new game takes its
+first three steps under it (`thread::PRIMING`): its start's placements
+and fog, so nothing pops in as play starts. Under it the game clock does
+not start, no input reaches the game and no game sound starts; the
+steps' sounds play as it goes. Then a held game offers Start Quest, the others' page goes by
 itself. A LAN game is never covered: its peers start as they did.
 
 ### The game's end

@@ -161,8 +161,8 @@ impl Motion {
 /// interface reads until the next (`seen`), with the snapshot the
 /// drawing reads and the news. The slide is worked out for now: the
 /// clock goes on between states. Under the loading page
-/// (`menu::drape`) the clock does not start: the game is drawn, not
-/// stepped.
+/// (`menu::drape`) the clock does not start: a new game takes its first
+/// steps (`thread::PRIMING`), then is drawn, not stepped.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -178,10 +178,12 @@ pub(crate) fn tick(
 ) {
     #[allow(clippy::cast_precision_loss, reason = "50")]
     let frame = MS_PER_FRAME as f32;
-    let start = if drape.is_up() {
-        Start::Held
-    } else {
-        Start::Free
+    // The page's first frame hands the interface's standing asks over
+    // (the autosave's days) before any step.
+    let start = match drape.frames() {
+        None => Start::Free,
+        Some(0) => Start::Held,
+        Some(_) => Start::Primed,
     };
     let pace = Pace {
         paused: paused.0,

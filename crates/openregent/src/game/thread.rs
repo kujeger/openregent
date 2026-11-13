@@ -90,11 +90,20 @@ pub struct Pace {
     pub start: Start,
 }
 
+/// Game frames a new game steps under its loading page, its clock held,
+/// before play: its start's work done unseen. **Measured** on every shipped
+/// quest and freestyle: the start's ground and scatter changes and new
+/// pieces come by step 3, and no piece is seen through the fog before
+/// step 2 (one quest, XQ01, sees some at frame 0).
+pub const PRIMING: u32 = 3;
+
 /// Whether the game's clock may start: held while the loading page
-/// covers a game just put in (`menu::drape`), its drawing settling.
+/// covers a game just put in (`menu::drape`), its drawing settling; held
+/// and primed, the game stepped to [`PRIMING`] frames meanwhile.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Start {
     Held,
+    Primed,
     Free,
 }
 
@@ -620,12 +629,29 @@ impl Stepper {
         self.sim.peer_mut().set_local(pace.paused, pace.speed);
 
         // The clock starts with the first drawn frame not held: until
-        // then no time is owed.
-        if pace.start == Start::Free {
-            self.clock.start();
+        // then no time is owed. Primed, a new game takes its first
+        // steps meanwhile, the same as with its clock: no input comes.
+        match pace.start {
+            Start::Free => self.clock.start(),
+            Start::Primed => self.prime(),
+            Start::Held => {}
         }
 
         self.clock.drawn(elapsed);
+    }
+
+    /// A new game stepped to [`PRIMING`] frames, its clock held: each
+    /// step's pieces taken, as a timed step's ([`Drive::after`]).
+    fn prime(&mut self) {
+        while self.sim.frames() < PRIMING && self.sim.stopped.is_none() {
+            self.sim.step();
+
+            let last = self.steps.as_ref().unwrap_or(&self.taken.steps);
+
+            self.steps = Some(last.after(self.sim.world()));
+            self.stepped += 1;
+            self.fresh = Fresh::Yes;
+        }
     }
 
     /// The game's stop, said once: the clock stops with it.
@@ -931,6 +957,34 @@ mod tests {
         let frames = piped.run(|sim| sim.frames()).expect("frames");
 
         assert!((3..=7).contains(&frames), "{frames}");
+    }
+
+    /// Primed, a new game takes its first PRIMING steps at once, its clock
+    /// still held: no more however long the drawn frames, nothing owed
+    /// from them once freed.
+    #[test]
+    #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+    fn a_primed_game_takes_its_first_steps_alone() {
+        const PRIMED: Pace = Pace {
+            start: Start::Primed,
+            ..RUNNING
+        };
+
+        let mut thread = spawned(Mode::Sync);
+
+        for _ in 0..4 {
+            let state = thread
+                .frame(Interest::default(), PRIMED, 1.0)
+                .expect("a state");
+
+            assert_eq!(state.frame.frames, PRIMING);
+        }
+
+        let freed = thread
+            .frame(Interest::default(), RUNNING, DRAWN)
+            .expect("a state");
+
+        assert_eq!(freed.frame.frames, PRIMING, "nothing owed while primed");
     }
 
     /// An order handed over is reported with the frame the game took it
