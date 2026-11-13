@@ -26,6 +26,7 @@
 //!  MAJ_PERF_HELD=<file> with MAJ_PERF: the art service's pictures written out (held)
 //!  MAJ_PERF_PIPELINED=1 a screenshot's game in pipelined mode, as played
 //!                       (`game::thread::Mode`): game frames by the wall clock
+//!  MAJ_PERF_PRELOAD=all every sprite made under the loading page; else those seen
 //! ```
 
 mod gpu;
@@ -53,6 +54,10 @@ pub const UNCAPPED: &str = "MAJ_PERF_UNCAPPED";
 /// The environment variable that runs a screenshot's game pipelined,
 /// e.g. `MAJ_PERF_PIPELINED=1`.
 pub const PIPELINED: &str = "MAJ_PERF_PIPELINED";
+
+/// The environment variable that says which sprites a game's loading
+/// page waits for, e.g. `MAJ_PERF_PRELOAD=all`.
+pub const PRELOAD: &str = "MAJ_PERF_PRELOAD";
 
 /// The log target the reports go to: `RUST_LOG=warn,maj_perf=info`
 /// shows them.
@@ -201,6 +206,26 @@ pub fn on() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
 
     *ON.get_or_init(|| std::env::var_os(ENV).is_some())
+}
+
+/// Which sprites a game's loading page waits for ([`PRELOAD`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Preload {
+    /// Those its start shows; the rest as play needs them.
+    Seen,
+    /// Every sprite of the game: a longer wait and more memory, none
+    /// made in play.
+    All,
+}
+
+/// [`PRELOAD`]'s value, read once: `all`, else `seen`.
+pub fn preload() -> Preload {
+    static PRELOADED: OnceLock<Preload> = OnceLock::new();
+
+    *PRELOADED.get_or_init(|| match std::env::var(PRELOAD).as_deref() {
+        Ok("all") => Preload::All,
+        _ => Preload::Seen,
+    })
 }
 
 /// The window's present mode: without vsync when [`UNCAPPED`] is set,
@@ -368,50 +393,44 @@ struct Drawn {
     part: Part,
 }
 
-/// A drawn run's part. A game's first frames compose the ground and read
-/// art, sounds and pipelines for the first time: reported apart, so
-/// `drawn` holds play alone.
+/// A drawn run's part. A game's first frames, under its loading page
+/// (`menu::drape`), compose the ground and read art, sounds and pipelines
+/// for the first time: reported apart, so `drawn` holds play alone.
 ///
 /// ```text
-///  menus, loading ──> the game's first frame + OPENING frames ──> play
-///  └──────────────── "opening" ─────────────────────────────┘     "drawn"
+///  menus, loading ──> the game under its loading page ──> the page gone: play
+///  └──────────────────── "opening" ─────────────────┘     "drawn"
 /// ```
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Part {
-    /// No game drawn yet.
     #[default]
-    Loading,
-    /// The game drawn; this many frames of its opening left.
-    Opening(u32),
+    Opening,
     Play,
 }
 
-/// The drawn frames after a game's first that its opening takes in: the
-/// render thread draws that frame while the next ones wait.
-const OPENING: u32 = 4;
-
-/// Whether a game's first frame has drawn ([`startup`]'s `game`).
+/// What a frame showed.
 #[derive(Clone, Copy)]
-enum Game {
-    Unseen,
-    Drawn,
+enum Shows {
+    /// No game yet ([`startup`]'s `game` not said), or the game under its
+    /// loading page.
+    Opening,
+    /// The game, its page gone.
+    Game,
 }
 
 impl Part {
-    /// The part after one more frame.
-    const fn after(self, game: Game) -> Part {
-        match (self, game) {
-            (Part::Loading, Game::Drawn) => Part::Opening(OPENING),
-            (Part::Opening(0), _) => Part::Play,
-            (Part::Opening(left), _) => Part::Opening(left - 1),
-            (Part::Loading | Part::Play, _) => self,
+    /// The part after a frame that showed `shows`: play stays.
+    const fn after(self, shows: Shows) -> Part {
+        match (self, shows) {
+            (Part::Play, _) | (_, Shows::Game) => Part::Play,
+            (Part::Opening, Shows::Opening) => Part::Opening,
         }
     }
 
     /// The name its reports go by.
     const fn name(self) -> &'static str {
         match self {
-            Part::Loading | Part::Opening(_) => "opening",
+            Part::Opening => "opening",
             Part::Play => "drawn",
         }
     }
@@ -551,7 +570,7 @@ const WORK: [&str; 6] = [
 /// The frame's main schedule, interval and churn noted; each [`WINDOW`]
 /// frames, the entity counts and a report, named by the run's [`Part`].
 fn ended(
-    mut drawn: ResMut<Drawn>,
+    (mut drawn, drape): (ResMut<Drawn>, Option<Res<crate::menu::Drape>>),
     (entities, meshes): (Query<()>, Meshes),
     (settle, mut uploads): (Option<Res<regent_draw::settle::Settle>>, ResMut<Uploads>),
 ) {
@@ -613,13 +632,14 @@ fn ended(
     }
 
     let was = drawn.part;
-    let game = if SAID.lock().is_ok_and(|said| said.contains(&"game")) {
-        Game::Drawn
+    let game = SAID.lock().is_ok_and(|said| said.contains(&"game"));
+    let shows = if game && crate::menu::undraped(drape) {
+        Shows::Game
     } else {
-        Game::Unseen
+        Shows::Opening
     };
 
-    drawn.part = was.after(game);
+    drawn.part = was.after(shows);
 
     // A window's report, or the opening's as play begins.
     if drawn.frames == WINDOW || (was != Part::Play && drawn.part == Part::Play) {
@@ -715,19 +735,11 @@ mod tests {
         assert_eq!(stats(&mut []), None);
     }
 
-    /// The opening ends OPENING frames after a game's first; play stays.
+    /// The opening ends as the game shows, its page gone; play stays.
     #[test]
-    fn a_games_opening_ends_after_its_frames() {
-        assert_eq!(Part::Loading.after(Game::Unseen).name(), "opening");
-
-        let mut part = Part::Loading.after(Game::Drawn);
-
-        for _ in 0..OPENING {
-            assert_eq!(part.name(), "opening");
-            part = part.after(Game::Drawn);
-        }
-
-        assert_eq!(part.after(Game::Drawn).name(), "drawn");
-        assert_eq!(Part::Play.after(Game::Drawn).name(), "drawn");
+    fn a_games_opening_ends_as_its_page_goes() {
+        assert_eq!(Part::Opening.after(Shows::Opening).name(), "opening");
+        assert_eq!(Part::Opening.after(Shows::Game).name(), "drawn");
+        assert_eq!(Part::Play.after(Shows::Opening).name(), "drawn");
     }
 }

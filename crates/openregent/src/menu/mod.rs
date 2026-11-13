@@ -1079,7 +1079,7 @@ impl bevy::app::Plugin for Plugin {
 
         app.init_resource::<Returning>()
             .per_game::<Drape>()
-            .add_systems(OnEnter(Screen::Playing), drape::began)
+            .add_systems(OnEnter(Screen::Playing), (drape::began, drape::preload))
             .add_systems(Last, lift.after(regent_draw::settle::Noted).run_if(in_game))
             .add_systems(First, drape::width)
             .add_systems(

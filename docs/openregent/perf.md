@@ -19,6 +19,11 @@ on the hidden display with `--running`, in sync mode and (`p*`, with
 sides, `levels` toggles 1:1 and 2:1 each 30 frames, `wheel` steps smooth
 zoom a notch each 30 frames.
 
+The `preload` cases (`pl-*`) run a late 512-cell game and a fresh QU06
+with `MAJ_PERF_PRELOAD=seen` and `=all` (`all`: every sprite made
+under the loading page; anything else: those the start shows): page up
+ms, memory, and whether play makes pages (`drawn pages`) or pipelines.
+
 The `battle` cases (`d-battle`, `d-battle-4x`, `t-battle`) play
 `assets/scenes/battle.toml`, 40 heroes and 40 monsters fighting in view
 on a flat 128-cell map, on two cores without vsync, with the line a
@@ -69,10 +74,11 @@ hitch moves the mean, not the median. A drawn frame whose `main` or
 the start) with its `main`, `interval`, `wait`, `step` and start-up work; with
 `MAJ_PERF_GPU`, a render schedule past it logs `spike render frame <n>`.
 `startup game` falls between the spike lines of the game's first frame.
-A drawn run's reports go by `opening` until 4 frames past the game's
-first (menus, loading, and the first frame's ground compose and first
-reads), then by `drawn`: play alone. The summary merges the `drawn`
-reports and gives the opening's longest interval as `opening max ms`.
+A drawn run's reports go by `opening` until the game's loading page
+goes (menus, loading, and the start's work under the page), then by
+`drawn`: play alone. The summary merges the `drawn` reports and gives
+the opening's longest interval as `opening max ms`, and how long the
+page was up as `page up ms`.
 `summary.py` merges a drawn run's
 reports by sample weight (p50 too: an approximation) and reads logs without
 `p50`.
@@ -489,8 +495,8 @@ covered.
 
 With `MAJ_PERF`, the page's going logs `drape frame <n> ms <ms> frames
 <count>`: the drawn frame it went on, how long and how many frames it
-was up. The `opening` report still ends 4 frames after the game's
-first, under the page; spike lines past `<n>` are play's. A shot
+was up. The `opening` report ends there; spike lines past `<n>` are
+play's. A shot
 (`draw::shot`) counts its `--frames` from the page's going. The game's
 first drawn frame no longer gives the clock its 1/60 s before the count,
 so a `--running` shot of `--frames N` shows what one of `N - 1` showed

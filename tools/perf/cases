@@ -67,6 +67,15 @@ cw-pan        drawn MAJ_PERF_PIPELINED=1 --map-seed 7 --scenario dliW --bot 5 --
 s-menu        startup --menu main
 s-game        startup --map-seed 7 --side 128
 
+#= preload
+# MAJ_PERF_PRELOAD: the sprites made under the loading
+# page, `seen` those the start shows, `all` every one; page up ms, memory,
+# and whether play makes any (drawn pages). A late game and a fresh quest.
+pl-seen-512   drawn MAJ_PERF_PRELOAD=seen MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+pl-all-512    drawn MAJ_PERF_PRELOAD=all MAJ_PERF_GPU=1 --map-seed 7 --side 512 --bot 5 --warm 14000 --frames 1800 --running --select ABJ1
+pl-seen-qu06  drawn MAJ_PERF_PRELOAD=seen MAJ_PERF_GPU=1 --quest QU06 --frames 1800 --running
+pl-all-qu06   drawn MAJ_PERF_PRELOAD=all MAJ_PERF_GPU=1 --quest QU06 --frames 1800 --running
+
 #= lan
 # LAN: deep digests every 100 frames.
 lan512        lan --players 2 --map-seed 7 --side 512 --bot 5 --frames 4000

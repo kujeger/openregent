@@ -22,7 +22,7 @@
 //! shared by every piece, scatter and ring drawing them. A variant
 //! swaps the palette alone. Nothing is scaled (`docs/openregent/enhancements.md`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use bevy::asset::AssetId;
 use bevy::prelude::*;
@@ -248,6 +248,27 @@ impl Sprites {
 
         if let Some(sheet) = sheet {
             sheet.ask(&corpus.catalogue, (set, Need::Early), jobs);
+        }
+    }
+
+    /// Every world set of every `IMAG` record of `corpus` asked for as
+    /// drawn: what is waited for holds them all.
+    pub fn ask_every(&mut self, corpus: &Corpus) {
+        let records: BTreeSet<FourCc> = corpus
+            .catalogue
+            .tagged(b"IMAG")
+            .map(|(_, record)| record.id)
+            .collect();
+        let Held { sheets, jobs, .. } = self.entries.held(corpus.source());
+
+        for record in records {
+            let sheet = sheets
+                .entry(record)
+                .or_insert_with(|| Sheet::make(corpus, record));
+
+            if let Some(sheet) = sheet {
+                sheet.ask_every(&corpus.catalogue, Need::Drawn, jobs);
+            }
         }
     }
 

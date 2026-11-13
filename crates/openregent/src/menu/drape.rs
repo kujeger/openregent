@@ -16,12 +16,15 @@
 //!  the egui pass: the page over the game; Start Quest ──> Hold::Free
 //!  down: the clock starts at the next tick; input and game sound on
 //!  each frame: page jobs as wide as the compute pool while up, sheet::JOBS while down
+//!  MAJ_PERF_PRELOAD=all: every sprite asked for as it goes up, waited for
 //! ```
 
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
+use regent_draw::art::Sprites;
+use regent_draw::data::Corpus;
 use regent_draw::map::sheet::{Width, widen};
 use regent_draw::settle::Settle;
 
@@ -31,6 +34,7 @@ use super::{Art, Hold, Menu, Quests, Start};
 use crate::audio::ClickSounds;
 use crate::game::seen::Frame;
 use crate::game::thread::PRIMING;
+use crate::perf::Preload;
 
 /// How long the page waits for the drawing to settle before it goes
 /// anyway: a pipeline whose shader never loads stays pending.
@@ -85,6 +89,22 @@ pub fn undraped(drape: Option<Res<Drape>>) -> bool {
 pub fn began(drape: Res<Drape>, mut settle: ResMut<Settle>) {
     if drape.is_up() {
         settle.restart();
+    }
+}
+
+/// Every sprite of the game asked for as the page goes up, under
+/// `MAJ_PERF_PRELOAD=all` ([`crate::perf::preload`]): the page waits for
+/// them, and play makes none. A perf run's control: frames with no page
+/// work.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+pub fn preload(drape: Res<Drape>, corpus: Option<Res<Corpus>>, sprites: Option<ResMut<Sprites>>) {
+    if let (true, Preload::All, Some(corpus), Some(mut sprites)) =
+        (drape.is_up(), crate::perf::preload(), corpus, sprites)
+    {
+        sprites.ask_every(&corpus);
     }
 }
 

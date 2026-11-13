@@ -592,6 +592,15 @@ impl Sheet {
         }
     }
 
+    /// Every set asked of `jobs` for `need`, those asked already too.
+    pub fn ask_every(&mut self, catalogue: &Arc<Catalogue<'static>>, need: Need, jobs: &mut Jobs) {
+        let sets: Vec<u16> = self.sets.keys().chain(self.asked.keys()).copied().collect();
+
+        for set in sets {
+            self.ask(catalogue, (set, need), jobs);
+        }
+    }
+
     /// Set `set`'s pages, landed from its job, put on the sheet; let go
     /// where its ask was forgotten since. How many pages were put.
     pub fn put(&mut self, set: u16, laid: Laid, images: &mut Assets<Image>) -> usize {
