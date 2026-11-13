@@ -54,8 +54,8 @@ The game's own timers are opt-in: `MAJ_PERF=1`
   the first time (`missiles`). With `RUST_LOG=warn,maj_perf=debug`,
   a line a frame sets its number, main and interval ms beside its churn.
 - each drawn frame's start-up work (`regent_draw::settle`): sprite pages
-  put on their sheets (`pages`, `map::sheet`), sprite page jobs queued or
-  running (`jobs`), pipelines queued or compiling as the
+  put on their sheets for what is drawn (`pages`, `map::sheet`), page jobs
+  queued or running for it (`jobs`) and asked early (`early`), pipelines queued or compiling as the
   render world last stood (`compiling`; `pipelines` is those a frame
   draws with), ground patches the view wants
   and not yet made (`patches`), and KiB of new or changed images handed
@@ -332,6 +332,16 @@ each frame:
   loading page; a ground re-lay moves it, and a new drawing of a map
   reuses the pages built. A shot holds its clock while pages are on
   their way.
+- Pages are asked for before they are drawn (`map::early`): a building
+  first shown, a start's too, asks for its own sets
+  but its damage and fall, its upgrade's alike, and every set of each
+  unit it makes (`Produces`: the palace's peasants, tax collectors and
+  guards, a guild's heroes, a guardhouse's guards, a trading post's
+  caravan), its lair data names or its script spawns
+  (`regent_core::gpl::spawns` over the game's program), each with its slot effects' sets
+  (`Sprites::ask_unit`). A unit's missile and spells are named by
+  scripts, not data: not asked. They load behind play, a drawn set's job
+  first (`map::sheet::Need`); one drawn while asked goes ahead.
 - An ended effect's drawing is despawned: parking it for the next
   effect of its kind saves no instructions once a drawing is a few
   entities (the battle at 1x: 41.87 G parked, 41.75 G not).
@@ -457,7 +467,9 @@ in under its loading page (`menu::drape`) and drawn beneath it until
 
 Pending: pipelines queued or compiling as the render world last stood
 (a failed one leaves Bevy's waiting list), the ground patches the view
-wants, sprite page jobs queued or running and pages put on that frame.
+wants, sprite page jobs queued or running for what is drawn and their
+pages put on that frame. Pages asked early (`map::early`, the build list)
+are not waited for: they load behind play, after the page.
 Interface pictures upscaling (`art::busy`) are not waited for: they take
 minutes on a slow machine.
 

@@ -29,13 +29,14 @@ use bevy::prelude::*;
 
 use crate::data::Corpus;
 use crate::map::cel::{self, Cel, Drawing, Owner, Paint, Palettes, Store};
-use crate::map::sheet::{Jobs, Paged, Sheet};
+use crate::map::sheet::{Jobs, Need, Paged, Sheet, world as world_set};
 use crate::material::{Body, Pass};
 use crate::plain::Plain;
 use crate::{soft, texture};
-use regent_core::content::imagery::FrameSource;
+use regent_core::content::imagery::{self, FrameSource};
 use regent_core::content::unit::Unit;
 use regent_core::data::fourcc::FourCc;
+use regent_core::data::imag::{SetKind, set_number};
 use regent_core::data::payload::{Palette, Rgb};
 use regent_core::sim::footprint;
 use regent_core::sim::world::draw::Tint;
@@ -138,6 +139,8 @@ pub struct Sprites {
     pinned: Pinned,
     /// The unit quad every sprite scales.
     quad: Option<Handle<Mesh>>,
+    /// Pages put on sheets, wrapping: for what is drawn, and asked early.
+    put: (u32, u32),
 }
 
 impl Sprites {
@@ -244,7 +247,41 @@ impl Sprites {
             .or_insert_with(|| Sheet::make(corpus, record));
 
         if let Some(sheet) = sheet {
-            sheet.ask(&corpus.catalogue, set, jobs);
+            sheet.ask(&corpus.catalogue, (set, Need::Early), jobs);
+        }
+    }
+
+    /// Every world set of unit `code` asked for, but sets of the `skip`
+    /// kinds; with each set's slot effects' sets, which its drawing
+    /// draws (`Drawing::layers`). Nothing for a code with no art.
+    pub fn ask_unit(&mut self, corpus: &Corpus, code: FourCc, skip: &[SetKind]) {
+        let unit = corpus.unit(code);
+        let sets = unit
+            .iter()
+            .flat_map(|u| u.animations.iter())
+            .filter(|set| world_set(set.kind) && !skip.contains(&set.kind));
+        let own = unit
+            .as_ref()
+            .and_then(|u| u.art.as_ref())
+            .map(|link| link.id);
+        let mut owners: Vec<Owner> = Vec::new();
+
+        for set in sets {
+            owners.extend(own.map(|record| (record, set_number(set.id))));
+
+            let effects = set.poses.iter().flat_map(|pose| pose.effects.iter());
+
+            for entry in effects {
+                let effect = imagery::effect(&corpus.catalogue, entry);
+
+                if let (Some(effect), Some(image)) = (effect, entry.image()) {
+                    owners.push((image, set_number(effect.id)));
+                }
+            }
+        }
+
+        for owner in owners {
+            self.ask(corpus, owner);
         }
     }
 
@@ -252,11 +289,27 @@ impl Sprites {
     /// pages; queued ones started in their place.
     pub fn land(&mut self, images: &mut Assets<Image>) {
         for held in self.entries.0.values_mut() {
-            for (record, set, laid) in held.jobs.landed() {
+            for (record, set, laid, need) in held.jobs.landed() {
                 if let Some(Some(sheet)) = held.sheets.get_mut(&record) {
-                    sheet.put(set, laid, images);
+                    let put = sheet.put(set, laid, images);
+                    let count = u32::try_from(put).unwrap_or(u32::MAX);
+
+                    match need {
+                        Need::Drawn => self.put.0 = self.put.0.wrapping_add(count),
+                        Need::Early => self.put.1 = self.put.1.wrapping_add(count),
+                    }
                 }
             }
+        }
+    }
+
+    /// Pages put on sheets for `need` since the service began, wrapping:
+    /// what a frame put is the change ([`crate::settle`]).
+    #[must_use]
+    pub const fn pages_put(&self, need: Need) -> u32 {
+        match need {
+            Need::Drawn => self.put.0,
+            Need::Early => self.put.1,
         }
     }
 
@@ -271,10 +324,27 @@ impl Sprites {
             .sum()
     }
 
-    /// Page jobs queued or running, every source's.
+    /// Whether set `owner` of `corpus` is still to ask for: its sheet
+    /// not yet made, or the set neither asked for nor put.
     #[must_use]
-    pub fn jobs(&self) -> usize {
-        self.entries.0.values().map(|held| held.jobs.len()).sum()
+    pub fn unasked(&self, corpus: &Corpus, (record, set): Owner) -> bool {
+        let sheet = self
+            .entries
+            .0
+            .get(&corpus.source())
+            .and_then(|held| held.sheets.get(&record));
+
+        match sheet {
+            Some(Some(sheet)) => sheet.unasked(set),
+            Some(None) => false,
+            None => true,
+        }
+    }
+
+    /// Page jobs queued or running for `need`, every source's.
+    #[must_use]
+    pub fn jobs(&self, need: Need) -> usize {
+        self.entries.0.values().map(|held| held.jobs.of(need)).sum()
     }
 
     /// What `source`'s sprites hold: every piece made and every tile made

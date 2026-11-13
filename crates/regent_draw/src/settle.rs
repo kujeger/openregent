@@ -1,6 +1,8 @@
 //! The start-up draw work still pending, frame by frame: pipelines
 //! compiling, the ground's patches the view wants, sprite pages asked
-//! for and not yet put on their sheets, pages put on this frame.
+//! for something drawn and not yet put on their sheets, such pages put
+//! on this frame. Pages asked early ([`Need::Early`]) are counted
+//! apart and not waited for: they load behind play.
 //! Settled: nothing pending [`QUIET`] frames in a row; at once without a
 //! renderer. Interface pictures upscaling (`art::busy`) are not waited
 //! for: they take minutes on a slow machine, and play needs none.
@@ -23,7 +25,7 @@ use bevy::render::render_resource::PipelineCache;
 use bevy::render::{Render, RenderApp, RenderSystems};
 
 use crate::map::Maps;
-use crate::map::sheet;
+use crate::map::sheet::Need;
 
 /// What one frame left pending.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -32,9 +34,12 @@ pub struct Pending {
     pub pipelines: usize,
     /// Ground patches the view wants, not yet made.
     pub patches: usize,
-    /// Sprite page jobs queued or running ([`crate::map::sheet::Jobs`]).
+    /// Sprite page jobs queued or running for something drawn
+    /// ([`crate::map::sheet::Jobs`]).
     pub jobs: usize,
-    /// Sprite pages put on their sheets this frame.
+    /// Sprite page jobs asked early, queued or running: not waited for.
+    pub early: usize,
+    /// Sprite pages put on their sheets this frame for something drawn.
     pub pages: u32,
 }
 
@@ -44,10 +49,11 @@ impl Pending {
         pipelines: 0,
         patches: 0,
         jobs: 0,
+        early: 0,
         pages: 0,
     };
 
-    /// Whether nothing is.
+    /// Whether nothing waited for is: the early jobs are not.
     #[must_use]
     pub const fn none(&self) -> bool {
         self.pipelines == 0 && self.patches == 0 && self.jobs == 0 && self.pages == 0
@@ -75,7 +81,8 @@ enum Renderer {
 #[derive(Resource)]
 pub struct Settle {
     pending: Pending,
-    /// [`sheet::pages_made`] as the last frame left it.
+    /// [`crate::art::Sprites::pages_put`] for what is drawn, as the last frame
+    /// left it.
     made: u32,
     renderer: Renderer,
     /// Frames in a row with nothing pending.
@@ -201,11 +208,13 @@ fn note(
     waiting: Res<Waiting>,
     (maps, sprites): (Option<Res<Maps>>, Option<Res<crate::art::Sprites>>),
 ) {
-    let made = sheet::pages_made();
+    let jobs = |need| sprites.as_ref().map_or(0, |s| s.jobs(need));
+    let made = sprites.as_ref().map_or(0, |s| s.pages_put(Need::Drawn));
     let pending = Pending {
         pipelines: waiting.0.load(Ordering::Relaxed),
         patches: maps.map_or(0, |m| m.pending()),
-        jobs: sprites.map_or(0, |s| s.jobs()),
+        jobs: jobs(Need::Drawn),
+        early: jobs(Need::Early),
         pages: made.wrapping_sub(settle.made),
     };
 
@@ -280,6 +289,23 @@ mod tests {
 
         settle.restart();
         settle.take(paged(1));
+
+        assert!(settle.settled());
+    }
+
+    /// Pages asked early, on their way, are not waited for.
+    #[test]
+    fn early_pages_are_not_waited_for() {
+        let mut settle = Settle::new(Renderer::Present);
+
+        settle.restart();
+
+        for _ in 0..QUIET {
+            settle.take(Pending {
+                early: 9,
+                ..Pending::NONE
+            });
+        }
 
         assert!(settle.settled());
     }

@@ -23,6 +23,8 @@
 //! pool, at most [`JOBS`] at once of every source's, and put on the sheet
 //! as they land ([`Jobs::landed`], [`Sheet::put`]). Its frames are
 //! [`Paged::Pending`] until then. Nothing makes them on the main thread.
+//! A set something draws ([`Need::Drawn`]) goes before one asked early
+//! ([`Need::Early`]), and one asked early is drawn's once drawn.
 //!
 //! ```text
 //!  cel, or ask ──unlaid set──> asked: Jobs queued ──landed──> running (compute pool)
@@ -31,7 +33,7 @@
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
@@ -76,13 +78,12 @@ pub const JOBS: usize = 2;
 /// Page jobs running now, every [`Jobs`]'.
 static RUNNING: AtomicUsize = AtomicUsize::new(0);
 
-/// Pages put on sheets since the process started, every sheet's: what
-/// a frame put is the change ([`crate::settle`]).
-static MADE: AtomicU32 = AtomicU32::new(0);
-
-/// Pages put on sheets since the process started, wrapping.
-pub fn pages_made() -> u32 {
-    MADE.load(Ordering::Relaxed)
+/// Why a set's pages are asked for: something draws them, or something
+/// may soon ([`crate::art::Sprites::ask`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Need {
+    Drawn,
+    Early,
 }
 
 /// One page: its indices, and each pixel's rows to its run's foot
@@ -184,11 +185,19 @@ struct Job {
     catalogue: Arc<Catalogue<'static>>,
 }
 
+impl Job {
+    /// Whether it is set `set` of `record`'s.
+    fn of(&self, (record, set): (FourCc, u16)) -> bool {
+        (self.record, self.set) == (record, set)
+    }
+}
+
 /// A job on the compute pool, counted in [`RUNNING`] while it lives:
 /// dropped, its task is cancelled.
 struct Running {
     record: FourCc,
     set: u16,
+    need: Need,
     task: Task<Laid>,
 }
 
@@ -202,7 +211,10 @@ impl Drop for Running {
 /// on the compute pool, at most [`JOBS`] at once of every source's.
 #[derive(Default)]
 pub struct Jobs {
-    queued: VecDeque<Job>,
+    /// Sets something draws, started first.
+    drawn: VecDeque<Job>,
+    /// Sets asked early.
+    early: VecDeque<Job>,
     running: Vec<Running>,
 }
 
@@ -210,7 +222,42 @@ impl Jobs {
     /// Jobs queued or running.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.queued.len() + self.running.len()
+        self.drawn.len() + self.early.len() + self.running.len()
+    }
+
+    /// Jobs queued or running for `need`.
+    #[must_use]
+    pub fn of(&self, need: Need) -> usize {
+        let queued = match need {
+            Need::Drawn => self.drawn.len(),
+            Need::Early => self.early.len(),
+        };
+
+        queued + self.running.iter().filter(|r| r.need == need).count()
+    }
+
+    /// A job queued for `need`.
+    fn queue(&mut self, job: Job, need: Need) {
+        match need {
+            Need::Drawn => self.drawn.push_back(job),
+            Need::Early => self.early.push_back(job),
+        }
+    }
+
+    /// Set `set` of `record`, asked early, now drawn: queued ahead of the
+    /// early ones, or counted drawn's where it runs.
+    fn drawn_now(&mut self, owner: (FourCc, u16)) {
+        if let Some(at) = self.early.iter().position(|job| job.of(owner)) {
+            let job = self.early.remove(at);
+
+            self.drawn.extend(job);
+        }
+
+        for run in &mut self.running {
+            if (run.record, run.set) == owner {
+                run.need = Need::Drawn;
+            }
+        }
     }
 
     /// Whether none is.
@@ -219,30 +266,38 @@ impl Jobs {
         self.len() == 0
     }
 
-    /// The jobs finished, taken; queued ones started in their place.
-    pub fn landed(&mut self) -> Vec<(FourCc, u16, Laid)> {
+    /// The jobs finished, taken, with why each was asked; queued ones
+    /// started in their place, the drawn's first.
+    pub fn landed(&mut self) -> Vec<(FourCc, u16, Laid, Need)> {
         let mut landed = Vec::new();
 
         self.running.retain_mut(
             |run| match bevy::tasks::futures::check_ready(&mut run.task) {
                 Some(laid) => {
-                    landed.push((run.record, run.set, laid));
+                    landed.push((run.record, run.set, laid, run.need));
                     false
                 }
                 None => true,
             },
         );
 
-        while RUNNING.load(Ordering::Relaxed) < JOBS
-            && let Some(job) = self.queued.pop_front()
-        {
+        while RUNNING.load(Ordering::Relaxed) < JOBS {
+            let next = match self.drawn.pop_front() {
+                Some(job) => Some((job, Need::Drawn)),
+                None => self.early.pop_front().map(|job| (job, Need::Early)),
+            };
+            let Some((job, need)) = next else {
+                break;
+            };
             let pool = ComputeTaskPool::get_or_init(TaskPool::default);
+            let (record, set) = (job.record, job.set);
             let task = pool.spawn(async move { laid(&job.catalogue, job.tiles) });
 
             RUNNING.fetch_add(1, Ordering::Relaxed);
             self.running.push(Running {
-                record: job.record,
-                set: job.set,
+                record,
+                set,
+                need,
                 task,
             });
         }
@@ -253,7 +308,7 @@ impl Jobs {
 
 /// Whether a set is drawn on the map: not a panel's, the minimap's or
 /// the ground's.
-const fn world(kind: SetKind) -> bool {
+pub(crate) const fn world(kind: SetKind) -> bool {
     !matches!(
         kind,
         SetKind::Interface | SetKind::Minimap | SetKind::MapTexture { .. } | SetKind::UnitTexture
@@ -487,37 +542,49 @@ impl Sheet {
             .collect()
     }
 
-    /// Set `set` asked of `jobs`: its tiles' pages made off the main
-    /// thread from `catalogue`. Nothing where it is laid or asked.
-    pub fn ask(&mut self, catalogue: &Arc<Catalogue<'static>>, set: u16, jobs: &mut Jobs) {
+    /// Set `set` asked of `jobs` for `need`: its tiles' pages made off
+    /// the main thread from `catalogue`. Nothing where it is laid; where
+    /// asked early and now drawn, its job goes ahead.
+    pub fn ask(
+        &mut self,
+        catalogue: &Arc<Catalogue<'static>>,
+        (set, need): (u16, Need),
+        jobs: &mut Jobs,
+    ) {
         if self.sets.contains_key(&set) {
             let tiles = self.take(set);
-
-            self.asked.insert(set, tiles.clone());
-            jobs.queued.push_back(Job {
+            let job = Job {
                 record: self.record,
                 set,
-                tiles,
+                tiles: tiles.clone(),
                 catalogue: catalogue.clone(),
-            });
+            };
+
+            self.asked.insert(set, tiles);
+            jobs.queue(job, need);
+        } else if need == Need::Drawn && self.asked.contains_key(&set) {
+            jobs.drawn_now((self.record, set));
         }
     }
 
     /// Set `set`'s pages, landed from its job, put on the sheet; let go
-    /// where its ask was forgotten since.
-    pub fn put(&mut self, set: u16, laid: Laid, images: &mut Assets<Image>) {
+    /// where its ask was forgotten since. How many pages were put.
+    pub fn put(&mut self, set: u16, laid: Laid, images: &mut Assets<Image>) -> usize {
         if self.asked.remove(&set).is_some() {
-            self.keep(laid, images);
+            self.keep(laid, images)
+        } else {
+            0
         }
     }
 
     /// `laid`'s pages kept: their images added to `images`, their frames
     /// and looks kept; a frame already on a page stays there.
-    fn keep(&mut self, laid: Laid, images: &mut Assets<Image>) {
+    fn keep(&mut self, laid: Laid, images: &mut Assets<Image>) -> usize {
+        let made = laid.pages.len();
+
         for (indices, feet, members) in laid.pages {
             let at = self.pages.len();
 
-            MADE.fetch_add(1, Ordering::Relaxed);
             self.pages.push(Page {
                 indices: images.add(indices),
                 feet: feet.map(|f| images.add(f)).unwrap_or_default(),
@@ -531,6 +598,8 @@ impl Sheet {
         for (tile, look) in laid.looks {
             self.looks.entry(tile).or_insert(look);
         }
+
+        made
     }
 
     /// The asked set holding `tile`, if any.
@@ -540,6 +609,12 @@ impl Sheet {
             .filter(|(_, tiles)| tiles.contains(&tile))
             .map(|(s, _)| *s)
             .min()
+    }
+
+    /// Whether set `set` is still to lay: neither asked for nor put.
+    #[must_use]
+    pub fn unasked(&self, set: u16) -> bool {
+        self.sets.contains_key(&set)
     }
 
     /// Whether set `set` is asked for and not yet put.
@@ -584,11 +659,15 @@ impl Sheet {
         let laying = unlaid.then(|| self.naming(tile, set)).flatten();
         let awaited = unlaid.then(|| self.awaited(tile)).flatten();
 
-        // One asked for first: another set naming the tile is not asked too.
+        // One asked for first: another set naming the tile is not asked
+        // too; asked early, it is drawn's now.
         match (awaited, laying) {
-            (Some(_), _) => Paged::Pending,
+            (Some(awaited), _) => {
+                jobs.drawn_now((self.record, awaited));
+                Paged::Pending
+            }
             (None, Some(laying)) => {
-                self.ask(&corpus.catalogue, laying, jobs);
+                self.ask(&corpus.catalogue, (laying, Need::Drawn), jobs);
                 Paged::Pending
             }
             (None, None) => Paged::Ready(self.drawn(store, palettes, tile)),
@@ -933,8 +1012,8 @@ mod tests {
             match sheet.cel(corpus, store, palettes, key, &mut jobs) {
                 Paged::Ready(cel) => break cel,
                 Paged::Pending => {
-                    for (_, set, laid) in jobs.landed() {
-                        sheet.put(set, laid, store.images);
+                    for (_, set, laid, _) in jobs.landed() {
+                        let _ = sheet.put(set, laid, store.images);
                     }
 
                     std::thread::yield_now();
@@ -974,37 +1053,57 @@ mod tests {
             .min_by_key(|(_, set)| *set)
             .expect("a set");
         let mut jobs = Jobs::default();
-        let mut asked = |sheet: &mut Sheet, store: &mut Store, jobs: &mut Jobs| {
+        let mut drawn = |sheet: &mut Sheet, store: &mut Store, jobs: &mut Jobs, key| {
             sheet.cel(&corpus, store, &mut palettes, key, jobs)
         };
 
         assert!(matches!(
-            asked(&mut sheet, &mut store, &mut jobs),
+            drawn(&mut sheet, &mut store, &mut jobs, key),
             Paged::Pending
         ));
         assert!(matches!(
-            asked(&mut sheet, &mut store, &mut jobs),
+            drawn(&mut sheet, &mut store, &mut jobs, key),
             Paged::Pending
         ));
         assert_eq!(jobs.len(), 1, "asked once");
+        assert_eq!(jobs.of(Need::Drawn), 1, "drawn's");
+
+        // Another set asked early, then drawn: its job goes ahead.
+        let early = sheet
+            .sets
+            .keys()
+            .copied()
+            .find(|s| *s != key.1)
+            .expect("another set");
+        let tile = *sheet.sets[&early]
+            .iter()
+            .find(|t| !sheet.asked[&key.1].contains(t))
+            .expect("a tile of its own");
+
+        sheet.ask(&corpus.catalogue, (early, Need::Early), &mut jobs);
+        assert_eq!(jobs.of(Need::Early), 1);
+
+        let _ = drawn(&mut sheet, &mut store, &mut jobs, (tile, early));
+
+        assert_eq!((jobs.of(Need::Early), jobs.of(Need::Drawn)), (0, 2));
 
         // Shelved: the ask forgotten, the job let go.
         sheet.forget();
         drop(std::mem::take(&mut jobs));
 
         while jobs.is_empty() || !sheet.pending(key.1) {
-            let _ = asked(&mut sheet, &mut store, &mut jobs);
+            let _ = drawn(&mut sheet, &mut store, &mut jobs, key);
         }
 
         assert_eq!(jobs.len(), 1, "asked again");
 
         let cel = loop {
-            if let Paged::Ready(cel) = asked(&mut sheet, &mut store, &mut jobs) {
+            if let Paged::Ready(cel) = drawn(&mut sheet, &mut store, &mut jobs, key) {
                 break cel;
             }
 
-            for (_, set, laid) in jobs.landed() {
-                sheet.put(set, laid, store.images);
+            for (_, set, laid, _) in jobs.landed() {
+                let _ = sheet.put(set, laid, store.images);
             }
 
             std::thread::yield_now();

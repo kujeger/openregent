@@ -62,6 +62,20 @@ pub(super) fn artifice(entry: &LairEntry) -> Option<(i32, i32)> {
 }
 
 impl World {
+    /// The units spawner `handle`'s lair data names: its entries'
+    /// codes, then its special codes, `NONE` left out. Empty where it has
+    /// no data: then its script names what it spawns.
+    #[must_use]
+    pub fn lair_units(&self, handle: u32) -> Vec<FourCc> {
+        let picked = self.lairs.entries(handle).into_iter().flatten();
+
+        picked
+            .map(|e| e.code)
+            .chain(self.lairs.special(handle).iter().copied())
+            .filter(|code| *code != NONE)
+            .collect()
+    }
+
     /// `FillSpecialLairList(agent, list)`: the lair's special codes as
     /// descriptor names into `list`, their count returned.
     pub(super) fn special_lair(

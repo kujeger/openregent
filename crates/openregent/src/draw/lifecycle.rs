@@ -19,6 +19,7 @@ use super::*;
 use crate::game::clock::tick;
 use crate::game::seen::{Frame, News};
 use crate::game::thread::PRIMING;
+use regent_draw::map::sheet::Need;
 
 /// Reward settings a save test raises, none the start's.
 const REWARD_ATTACK: i32 = 450;
@@ -1041,7 +1042,11 @@ fn a_command_line_game_restarts_to_its_start_page() {
 /// frame it was, a frame a drawn frame after.
 fn landed(app: &mut App) {
     let began = std::time::Instant::now();
-    let jobs = |app: &App| app.world().resource::<regent_draw::art::Sprites>().jobs();
+    let jobs = |app: &App| {
+        let sprites = app.world().resource::<regent_draw::art::Sprites>();
+
+        sprites.jobs(Need::Drawn) + sprites.jobs(Need::Early)
+    };
     let frame = Duration::from_millis(MS_PER_FRAME.into());
 
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));

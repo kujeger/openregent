@@ -3,6 +3,7 @@
 
 pub(crate) mod cast;
 pub(crate) mod cursor;
+pub(crate) mod early;
 pub(crate) mod effects;
 pub(crate) mod fog;
 pub(crate) mod ground;

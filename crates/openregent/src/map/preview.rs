@@ -113,7 +113,6 @@ pub fn listed(
     orders: Res<Orders>,
     corpus: Res<Corpus>,
     mut sprites: ResMut<Sprites>,
-    mut stores: Assets2,
     mut asked: Local<Option<crate::input::orders::Rows>>,
 ) {
     let fresh = match (&orders.listed, &*asked) {
@@ -122,8 +121,16 @@ pub fn listed(
     };
 
     if fresh {
+        // Asked early: the list loads behind play.
         for (_, offer) in orders.listed.iter().flat_map(|l| l.iter()) {
-            let _ = sprites.piece(&corpus, &mut stores, standing(&corpus, offer.code));
+            let piece = standing(&corpus, offer.code);
+            let art = corpus
+                .unit(offer.code)
+                .and_then(|u| u.art.as_ref().map(|a| a.id));
+
+            if let Some(record) = art {
+                sprites.ask(&corpus, (record, piece.set));
+            }
         }
 
         asked.clone_from(&orders.listed);
@@ -295,6 +302,9 @@ pub fn plugin(app: &mut bevy::prelude::App) {
     use crate::game::scope::Scoped as _;
 
     app.per_game::<PreviewDrawn>();
+
+    // The other early asks: what a placed building will show.
+    crate::map::early::plugin(app);
 }
 
 #[cfg(test)]

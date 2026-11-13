@@ -514,9 +514,10 @@ fn uploads(
 }
 
 /// The frame's start-up work, noted as series and returned for its
-/// lines: sprite pages put on, sprite page jobs waiting, pipelines
-/// waiting, ground patches pending, KiB of images uploaded.
-fn work(settle: Option<&regent_draw::settle::Settle>, uploads: &mut Uploads) -> [f64; 5] {
+/// lines: sprite pages put on for what is drawn, page jobs for it and
+/// asked early, pipelines waiting, ground patches pending, KiB of images
+/// uploaded.
+fn work(settle: Option<&regent_draw::settle::Settle>, uploads: &mut Uploads) -> [f64; 6] {
     let pending = settle
         .map(regent_draw::settle::Settle::pending)
         .unwrap_or_default();
@@ -524,6 +525,7 @@ fn work(settle: Option<&regent_draw::settle::Settle>, uploads: &mut Uploads) -> 
     let work = [
         f64::from(pending.pages),
         pending.jobs as f64,
+        pending.early as f64,
         pending.pipelines as f64,
         pending.patches as f64,
         std::mem::take(&mut uploads.0) as f64 / KIB,
@@ -537,7 +539,14 @@ fn work(settle: Option<&regent_draw::settle::Settle>, uploads: &mut Uploads) -> 
 }
 
 /// [`work`]'s series, in its order.
-const WORK: [&str; 5] = ["pages", "jobs", "compiling", "patches", "upload_kb"];
+const WORK: [&str; 6] = [
+    "pages",
+    "jobs",
+    "early",
+    "compiling",
+    "patches",
+    "upload_kb",
+];
 
 /// The frame's main schedule, interval and churn noted; each [`WINDOW`]
 /// frames, the entity counts and a report, named by the run's [`Part`].
@@ -574,11 +583,11 @@ fn ended(
     }
 
     let [spawned, despawned, respawns, rekeys, missiles, swaps] = churned;
-    let [pages, jobs, pipelines, patches, upload_kb] = work(settle.as_deref(), &mut uploads);
+    let [pages, jobs, early, pipelines, patches, upload_kb] = work(settle.as_deref(), &mut uploads);
 
     debug!(
         target: TARGET,
-        "frame {} main {:.3} interval {:.3} spawned {spawned} despawned {despawned} respawns {respawns} rekeys {rekeys} missiles {missiles} swaps {swaps} pages {pages} jobs {jobs} compiling {pipelines} patches {patches} upload_kb {upload_kb:.0}",
+        "frame {} main {:.3} interval {:.3} spawned {spawned} despawned {despawned} respawns {respawns} rekeys {rekeys} missiles {missiles} swaps {swaps} pages {pages} jobs {jobs} early {early} compiling {pipelines} patches {patches} upload_kb {upload_kb:.0}",
         drawn.total,
         main.unwrap_or(0.0),
         interval.unwrap_or(0.0)
@@ -589,7 +598,7 @@ fn ended(
     if main.into_iter().chain(interval).any(|t| t > SPIKE) {
         info!(
             target: TARGET,
-            "spike frame {} main {:.1} interval {:.1} wait {:.1} step {:.1} ground {:.1} pages {pages} jobs {jobs} compiling {pipelines} patches {patches} upload_kb {upload_kb:.0}",
+            "spike frame {} main {:.1} interval {:.1} wait {:.1} step {:.1} ground {:.1} pages {pages} jobs {jobs} early {early} compiling {pipelines} patches {patches} upload_kb {upload_kb:.0}",
             drawn.total,
             main.unwrap_or(0.0),
             interval.unwrap_or(0.0),
@@ -623,7 +632,7 @@ fn ended(
 /// The named series that count things, not ms: [`counted`]'s, [`Churn`]'s,
 /// `fog_moved`, 1 for a fog take whose explored ground changed, and
 /// [`WORK`]'s.
-const COUNTS: [&str; 13] = [
+const COUNTS: [&str; 14] = [
     "entities",
     "meshes",
     "visible",
@@ -634,6 +643,7 @@ const COUNTS: [&str; 13] = [
     "missiles",
     "pages",
     "jobs",
+    "early",
     "compiling",
     "patches",
     "upload_kb",
