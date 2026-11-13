@@ -23,6 +23,7 @@ pub mod cull;
 pub mod data;
 pub mod frame;
 pub mod instance;
+pub mod kept;
 pub mod lie;
 pub mod map;
 pub mod material;

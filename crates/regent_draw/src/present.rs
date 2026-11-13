@@ -1056,7 +1056,7 @@ impl bevy::app::Plugin for Plugin {
                 .in_set(Present),
         )
         // The shown camera's picture reaches the window by the compose pass.
-        .add_plugins((Rekeyed, crate::compose::Plugin));
+        .add_plugins((Rekeyed, crate::compose::Plugin, crate::kept::Plugin));
     }
 }
 

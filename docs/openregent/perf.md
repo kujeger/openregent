@@ -275,6 +275,14 @@ each frame:
 - The ground reads the models' shadow map only while they cast
   (`plain::Shade`, `sun::receive`): compiled out otherwise, the same
   pixels.
+- egui's texture is kept between frames (`regent_draw::kept`): only the
+  16-pixel tiles whose triangles, or the pictures they show, changed are
+  cleared and drawn again, egui's paint cut to them; all of it after a
+  change of size or scale, an egui texture freed, or a frame not drawn.
+  A job (mesh) whose hash is last frame's keeps its tiles unread; only a
+  changed one is read triangle by triangle.
+  In a late game the message line typing out and the minimap change; in
+  a battle the names over the map.
 - `regent_draw::cull` parks the map's things far from the screen and the
   tracking window's ground: buckets of 512 world units, parked past
   half a view's span, back within a quarter. A parked thing has no

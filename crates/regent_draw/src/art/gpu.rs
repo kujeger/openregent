@@ -218,10 +218,12 @@ impl bevy::app::Plugin for Plugin {
 fn lend(
     art: Option<ResMut<Art>>,
     side: Option<Res<Side>>,
-    (mut images, mut textures): (ResMut<Assets<Image>>, Option<ResMut<EguiUserTextures>>),
+    (mut images, textures): (ResMut<Assets<Image>>, Option<ResMut<EguiUserTextures>>),
     mut sent: ResMut<Sent>,
 ) {
-    if let (Some(mut art), Some(side), Some(textures)) = (art, side, textures.as_deref_mut()) {
+    // `textures` taken mutably only to add: else egui's user textures
+    // read as changed each frame, and `kept` draws all of egui again.
+    if let (Some(mut art), Some(side), Some(mut textures)) = (art, side, textures) {
         let gpu = art.gpu();
 
         gpu.side = side.0;

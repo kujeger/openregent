@@ -26,6 +26,7 @@ use bevy::camera::{CameraMainTextureUsages, CameraOutputMode};
 use bevy::core_pipeline::Core2d;
 use bevy::core_pipeline::blit::{BlitPipeline, BlitPipelineKey};
 use bevy::core_pipeline::upscaling::upscaling;
+use bevy::diagnostic::FrameCount;
 use bevy::ecs::lifecycle::HookContext;
 use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
@@ -39,11 +40,10 @@ use bevy::render::render_resource::{
 use bevy::render::renderer::{RenderContext, RenderDevice, ViewQuery};
 use bevy::render::view::{ResolvedCompositingSpace, ViewTarget};
 use bevy::render::{Render, RenderApp, RenderSystems};
-use bevy_egui::egui;
-use bevy_egui::egui::epaint::Primitive;
 use bevy_egui::render::egui_pass;
 use bevy_egui::{EguiOutput, EguiRenderOutput};
 
+use crate::kept;
 use crate::present::OVERLAY;
 use crate::shadow::{self, Over, Resolve, Resolver, Shift, Written};
 
@@ -56,11 +56,13 @@ const MARGIN: f32 = 2.0;
 
 /// The last camera: its pass writes the window ([`compose`]). Its own
 /// copy is skipped, and its main texture is its own (an extra usage keys
-/// it apart from the other cameras on the window): egui clears it.
+/// it apart from the other cameras on the window), kept between frames
+/// ([`kept`]).
 #[derive(Component, Clone, Copy, Default, ExtractComponent)]
 #[extract_app(RenderApp)]
 #[extract_component_filter(With<Camera>)]
 #[require(Marks)]
+#[require(kept::Wipe)]
 #[component(on_add = own_texture)]
 pub struct Compose;
 
@@ -84,15 +86,15 @@ fn own_texture(mut world: DeferredWorld, context: HookContext) {
 pub struct Marks(pub Vec<URect>);
 
 /// A grid of tiles over a picture, each marked or not.
-struct Tiles {
-    size: UVec2,
+pub(crate) struct Tiles {
+    pub(crate) size: UVec2,
     across: u32,
-    marked: Vec<bool>,
+    pub(crate) marked: Vec<bool>,
 }
 
 impl Tiles {
     /// No tile marked, over `size` pixels.
-    fn new(size: UVec2) -> Tiles {
+    pub(crate) fn new(size: UVec2) -> Tiles {
         let across = size.x.div_ceil(TILE);
 
         Tiles {
@@ -103,31 +105,36 @@ impl Tiles {
     }
 
     /// Every tile `rect` (pixels) touches, and [`MARGIN`] past it.
+    fn mark(&mut self, rect: Rect) {
+        for at in self.touched(rect) {
+            self.marked[at] = true;
+        }
+    }
+
+    /// The indices of the tiles `rect` (pixels) touches, and [`MARGIN`]
+    /// past it.
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         clippy::cast_precision_loss,
         reason = "clamped to the picture, non-negative; a tile's side"
     )]
-    fn mark(&mut self, rect: Rect) {
+    pub(crate) fn touched(&self, rect: Rect) -> impl Iterator<Item = usize> + use<> {
         let size = self.size.as_vec2();
         let min = (rect.min - MARGIN).clamp(Vec2::ZERO, size);
         let max = (rect.max + MARGIN).clamp(Vec2::ZERO, size);
         let tile = TILE as f32;
         let (x0, y0) = ((min.x / tile) as u32, (min.y / tile) as u32);
         let (x1, y1) = ((max.x / tile).ceil() as u32, (max.y / tile).ceil() as u32);
+        let across = self.across;
 
-        for y in y0..y1 {
-            for x in x0..x1 {
-                self.marked[(y * self.across + x) as usize] = true;
-            }
-        }
+        (y0..y1).flat_map(move |y| (x0..x1).map(move |x| (y * across + x) as usize))
     }
 
     /// The marked tiles as pixel rects: runs along each row, each grown
     /// down while the rows below hold the same run.
     #[allow(clippy::cast_possible_truncation, reason = "a picture's tile rows")]
-    fn rects(&self) -> Vec<URect> {
+    pub(crate) fn rects(&self) -> Vec<URect> {
         let mut open: Vec<URect> = Vec::new();
         let mut done: Vec<URect> = Vec::new();
 
@@ -183,54 +190,47 @@ fn runs(row: &[bool]) -> Vec<(u32, u32)> {
 }
 
 /// The compose camera's marks: egui's paint, each mesh's bounds within
-/// its clip rect, at egui's pixels a point.
+/// its clip rect, at egui's pixels a point. Then what of egui's texture
+/// to draw again ([`kept`]): its paint cut to the tiles that changed.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
 )]
+#[allow(clippy::type_complexity, reason = "a query names what it reads")]
 fn interface(
-    mut cameras: Query<(&Camera, &EguiRenderOutput, &EguiOutput, &mut Marks), With<Compose>>,
+    mut cameras: Query<
+        (
+            &Camera,
+            &mut EguiRenderOutput,
+            &EguiOutput,
+            &mut Marks,
+            &mut kept::Wipe,
+        ),
+        With<Compose>,
+    >,
+    versions: Res<kept::Versions>,
+    steady: Res<kept::Steady>,
+    frames: Res<FrameCount>,
+    mut held: Local<kept::Held>,
 ) {
-    for (camera, output, egui, mut marks) in &mut cameras {
+    for (camera, mut output, egui, mut marks, mut wipe) in &mut cameras {
         let Some(size) = camera.physical_target_size() else {
             continue;
         };
-        let mut tiles = Tiles::new(size);
         let scale = egui.pixels_per_point;
-
-        // Each triangle apart: a mesh holds every shape of a texture and
-        // clip rect, the labels strewn across the map in one.
-        for job in &output.paint_jobs {
-            let drawn: Vec<egui::Rect> = match &job.primitive {
-                Primitive::Mesh(mesh) => mesh
-                    .indices
-                    .as_chunks::<3>()
-                    .0
-                    .iter()
-                    .map(|corners| {
-                        let pos = |at: usize| mesh.vertices[corners[at] as usize].pos;
-
-                        egui::Rect::from_points(&[pos(0), pos(1), pos(2)])
-                    })
-                    .collect(),
-                Primitive::Callback(callback) => vec![callback.rect],
-            };
-            let clipped = drawn
-                .into_iter()
-                .map(|r| r.intersect(job.clip_rect))
-                .filter(egui::Rect::is_positive);
-
-            for r in clipped {
-                tiles.mark(Rect::new(
-                    r.min.x * scale,
-                    r.min.y * scale,
-                    r.max.x * scale,
-                    r.max.y * scale,
-                ));
-            }
-        }
+        let (tiles, now) = held.frame(
+            &output.paint_jobs,
+            (size, scale),
+            (&versions, frames.0, steady.get()),
+        );
 
         marks.set_if_neq(Marks(tiles.rects()));
+
+        if let kept::Wipe::Rects(rects) = &now {
+            output.paint_jobs = kept::cut(&output.paint_jobs, rects, scale);
+        }
+
+        wipe.set_if_neq(now);
     }
 }
 
@@ -499,7 +499,7 @@ impl bevy::app::Plugin for Plugin {
             ExtractComponentPlugin::<Marks>::default(),
         ))
         // After the frame's paint, transforms and cameras: as extracted.
-        .add_systems(Last, (interface, overlays));
+        .add_systems(Last, (interface.in_set(Marking), overlays));
 
         if let Some(render) = app.get_sub_app_mut(RenderApp) {
             // After egui's pass, in place of the final copy.
@@ -517,6 +517,11 @@ impl bevy::app::Plugin for Plugin {
         }
     }
 }
+
+/// The compose camera's marks made and egui's paint cut ([`kept`]):
+/// what reads egui's whole paint runs before.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Marking;
 
 /// The compose pass in its camera's schedule, for others to order by.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]

@@ -12,6 +12,8 @@
 //!  gpu_egui_<n>       (time spans: no frag_)
 //!  render             ms, the render world's schedule (its own thread)
 //!  draws_*, items     draw calls and phase items, per frame (count)
+//!  egui_redrawn       pixels of egui's texture drawn again (kept), and
+//!  egui_whole         1 where all of it
 //!  area_egui          pixels egui's triangles cover in their clip rects,
 //!                     overlaps each time: about its pass's fragments
 //!  pipelines, binds   pipeline and material bind group changes (count)
@@ -49,7 +51,8 @@ use bevy::render::renderer::{
 };
 use bevy::render::renderer::{RenderContext, ViewQuery};
 use bevy_egui::render::{EguiCameraView, egui_pass, prepare_egui_pass};
-use regent_draw::compose::Composing;
+use regent_draw::compose::{Composing, Marking};
+use regent_draw::kept::{Wipe, Wiping};
 // Renamed: regent_draw's art_service test bans the module's path followed
 // by `::` in openregent, where it would mean regent_draw's texture module.
 use bevy::platform::collections::{HashMap, HashSet};
@@ -93,8 +96,10 @@ pub fn install(app: &mut App) {
             app.add_plugins(DiagnosticsPlugin);
         }
 
-        app.add_plugins(RenderDiagnosticsPlugin)
-            .add_systems(Last, (passes, egui, art).before(super::ended));
+        app.add_plugins(RenderDiagnosticsPlugin).add_systems(
+            Last,
+            (passes, egui.before(Marking), redrawn.after(Marking), art).before(super::ended),
+        );
 
         app.sub_app_mut(RenderApp)
             .add_systems(RenderStartup, stamps)
@@ -114,6 +119,7 @@ pub fn install(app: &mut App) {
                 Core2d,
                 (
                     egui_opened
+                        .before(Wiping)
                         .after(Core2dSystems::MainPass)
                         .after(prepare_egui_pass)
                         .before(egui_pass),
@@ -309,6 +315,25 @@ fn egui(
 
     if dump_at() == Some(*frames) {
         dumped(&outputs, &mut contexts, art.as_deref());
+    }
+}
+
+/// The pixels of egui's texture drawn again this frame
+/// (`regent_draw::kept`): `egui_redrawn`, and `egui_whole` 1 where all.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+fn redrawn(cameras: Query<(&Camera, &Wipe)>) {
+    for (camera, wipe) in &cameras {
+        let size = camera.physical_target_size().unwrap_or_default();
+        let (pixels, whole) = match wipe {
+            Wipe::All => (size.element_product(), 1.0),
+            Wipe::Rects(rects) => (rects.iter().map(|r| r.size().element_product()).sum(), 0.0),
+        };
+
+        named("egui_redrawn", f64::from(pixels));
+        named("egui_whole", whole);
     }
 }
 

@@ -699,7 +699,9 @@ fn cameras(mut commands: Commands, mut egui: ResMut<EguiGlobalSettings>) {
         RenderLayers::none(),
         Camera {
             order: present::TOP_ORDER,
-            clear_color: ClearColorConfig::Custom(Color::NONE),
+            // Kept between frames: cleared where egui draws again
+            // (`regent_draw::kept`).
+            clear_color: ClearColorConfig::None,
             ..default()
         },
         compose::Compose,
