@@ -15,12 +15,14 @@
 //!      Hold::Making  ──> Hold::Made: Start Quest offered
 //!  the egui pass: the page over the game; Start Quest ──> Hold::Free
 //!  down: the clock starts at the next tick; input and game sound on
+//!  each frame: page jobs as wide as the compute pool while up, sheet::JOBS while down
 //! ```
 
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
+use regent_draw::map::sheet::{Width, widen};
 use regent_draw::settle::Settle;
 
 use super::cinema::Layer;
@@ -84,6 +86,22 @@ pub fn began(drape: Res<Drape>, mut settle: ResMut<Settle>) {
     if drape.is_up() {
         settle.restart();
     }
+}
+
+/// Page jobs as wide as the compute pool while the page is up: nothing
+/// is played under it. Back to play's width once it went, or no game.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+pub fn width(drape: Option<Res<Drape>>) {
+    let width = if undraped(drape) {
+        Width::Play
+    } else {
+        Width::Pool
+    };
+
+    widen(width);
 }
 
 /// The page's next step, once the drawing settled or the wait passed

@@ -20,7 +20,7 @@
 //! picture is unchanged. The quad keeps its size and place.
 //!
 //! A set's pages are asked for: decoded, packed and built on the compute
-//! pool, at most [`JOBS`] at once of every source's, and put on the sheet
+//! pool, at most [`JOBS`] at once of every source's ([`Width`]), and put on the sheet
 //! as they land ([`Jobs::landed`], [`Sheet::put`]). Its frames are
 //! [`Paged::Pending`] until then. Nothing makes them on the main thread.
 //! A set something draws ([`Need::Drawn`]) goes before one asked early
@@ -77,6 +77,31 @@ pub const JOBS: usize = 2;
 
 /// Page jobs running now, every [`Jobs`]'.
 static RUNNING: AtomicUsize = AtomicUsize::new(0);
+
+/// Page jobs allowed at once now ([`widen`]).
+static WIDTH: AtomicUsize = AtomicUsize::new(JOBS);
+
+/// How many page jobs may run at once.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Width {
+    /// [`JOBS`]: play's frames keep the rest of the pool.
+    Play,
+    /// The compute pool's threads, at least [`JOBS`]: nothing is played,
+    /// e.g. under the loading page.
+    Pool,
+}
+
+/// Page jobs allowed at once from now: jobs running past it finish.
+pub fn widen(width: Width) {
+    let jobs = match width {
+        Width::Play => JOBS,
+        Width::Pool => ComputeTaskPool::get_or_init(TaskPool::default)
+            .thread_num()
+            .max(JOBS),
+    };
+
+    WIDTH.store(jobs, Ordering::Relaxed);
+}
 
 /// Why a set's pages are asked for: something draws them, or something
 /// may soon ([`crate::art::Sprites::ask`]).
@@ -281,7 +306,7 @@ impl Jobs {
             },
         );
 
-        while RUNNING.load(Ordering::Relaxed) < JOBS {
+        while RUNNING.load(Ordering::Relaxed) < WIDTH.load(Ordering::Relaxed) {
             let next = match self.drawn.pop_front() {
                 Some(job) => Some((job, Need::Drawn)),
                 None => self.early.pop_front().map(|job| (job, Need::Early)),
@@ -822,6 +847,19 @@ mod tests {
                 look: None,
             })
             .collect()
+    }
+
+    /// Under the page as many jobs as the pool has threads, at least
+    /// play's; back to play's after.
+    #[test]
+    fn the_pools_width_is_its_threads_then_plays() {
+        let threads = ComputeTaskPool::get_or_init(TaskPool::default).thread_num();
+
+        widen(Width::Pool);
+        assert_eq!(WIDTH.load(Ordering::Relaxed), threads.max(JOBS));
+
+        widen(Width::Play);
+        assert_eq!(WIDTH.load(Ordering::Relaxed), JOBS);
     }
 
     /// A page holds each tile's texels at its rectangle, and 255

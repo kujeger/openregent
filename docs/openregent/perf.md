@@ -320,7 +320,9 @@ each frame:
   instructions at 1x.
 - Every sprite page is made on the compute pool, at most
   `map::sheet::JOBS` sets at once of every source's (`Sprites::piece`,
-  `Sprites::frame`, `art::world::land`), never on the main thread. Until
+  `Sprites::frame`, `art::world::land`), never on the main thread; under
+  the loading page, as many as the compute pool has threads
+  (`sheet::Width`, `menu::drape::width`). Until
   a thing's pages land it is not drawn; then at the frame it is on now.
   A piece keeps the drawing it had, each layer held on its frame
   (`map::pieces::Awaited`); a missile is first drawn where it flies
