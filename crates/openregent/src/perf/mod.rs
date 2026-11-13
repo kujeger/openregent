@@ -30,6 +30,7 @@
 mod gpu;
 mod held;
 mod hide;
+mod repaint;
 
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU32, Ordering};

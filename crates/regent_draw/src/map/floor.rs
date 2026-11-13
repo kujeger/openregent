@@ -210,7 +210,9 @@ mod tests {
         };
 
         indices
-            .chunks_exact(3)
+            .as_chunks::<3>()
+            .0
+            .iter()
             .map(|t| [corner(t[0]), corner(t[1]), corner(t[2])])
             .collect()
     }

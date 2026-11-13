@@ -145,6 +145,15 @@ The renderer's cases (`g-*`, and the weak machines' `lvp-*`, `e1-*`,
   (Bevy's `upscaling`) and egui's pass: time spans, so no `frag_`; a copy
   shades its scissor rect. The window is written by one pass,
   `compose` (`regent_draw::compose`): the world, then egui's tiles.
+  `MAJ_PERF_VIEWS=1` also times each camera's whole graph,
+  `gpu_view_<n>`, its passes under it (`gpu_view_<n>_<pass>`): what a
+  view's passes leave is its clears and barriers.
+  With `MAJ_PERF_EGUI=1` (they cost main-thread time, so not otherwise),
+  `area_egui`: the pixels egui's triangles cover in their clip rects,
+  about its pass's fragments; `egui_same` (`perf::repaint`): 1 where
+  egui's primitives equal the frame before's, `egui_tiles` the compose
+  tiles whose triangles changed, and every 600 frames the regions that
+  changed most.
   egui's draws: `draws_egui`, `binds_egui` (texture changes),
   `clips_egui` (draws a clip rect alone splits) and `textures_egui`
   (distinct textures). `MAJ_PERF_EGUI_DUMP=<frame>` logs that frame's
