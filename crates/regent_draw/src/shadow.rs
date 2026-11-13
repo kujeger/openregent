@@ -9,7 +9,8 @@
 //!  Bevy's     main pass ──> main texture ──resolve──> main texture ──upscaling──> output
 //!  this pass  main pass ──> main texture ──resolve──> output
 //!  under      main pass ──> main texture ──resolve──> another camera's
-//!                                                     main texture
+//!                                                     main texture, its marks
+//!  composed   main pass ──> main texture ──(the compose pass resolves it)
 //! ```
 //!
 //! The shader holds only the sRGB transfer and the resolve's one line;
@@ -18,9 +19,10 @@
 use std::collections::HashMap;
 
 use bevy::asset::{embedded_asset, load_embedded_asset};
-use bevy::camera::{Camera, CameraOutputMode};
+use bevy::camera::{Camera, CameraOutputMode, Viewport};
 use bevy::core_pipeline::{Core3d, Core3dSystems, FullscreenShader};
 use bevy::ecs::lifecycle::HookContext;
+use bevy::ecs::system::SystemParam;
 use bevy::ecs::world::DeferredWorld;
 use bevy::prelude::*;
 use bevy::render::camera::{ExtractedCamera, NormalizedRenderTargetExt};
@@ -30,11 +32,12 @@ use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
 use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_resource::binding_types::{texture_2d, uniform_buffer};
 use bevy::render::render_resource::{
-    BindGroupEntries, BindGroupLayoutDescriptor, Buffer, BufferInitDescriptor, BufferUsages,
-    CachedRenderPipelineId, ColorTargetState, ColorWrites, DynamicBindGroupLayoutEntries,
-    FragmentState, LoadOp, Operations, PipelineCache, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipelineDescriptor, ShaderStages, SpecializedRenderPipeline,
-    SpecializedRenderPipelines, StoreOp, TextureFormat, TextureSampleType,
+    BindGroup, BindGroupEntries, BindGroupLayoutDescriptor, Buffer, BufferInitDescriptor,
+    BufferUsages, CachedRenderPipelineId, ColorTargetState, ColorWrites,
+    DynamicBindGroupLayoutEntries, FragmentState, LoadOp, Operations, PipelineCache,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    ShaderStages, SpecializedRenderPipeline, SpecializedRenderPipelines, StoreOp, TextureFormat,
+    TextureSampleType, TextureView,
 };
 use bevy::render::renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery};
 use bevy::render::sync_world::MainEntity;
@@ -46,6 +49,7 @@ use bevy::render::view::{
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
 use bevy::shader::{Shader, ShaderDefVal, load_shader_library};
 
+use crate::compose::{Compose, Marks};
 use crate::material::Band;
 use crate::soft;
 
@@ -132,16 +136,22 @@ pub enum Written {
     /// The camera's output: the window, or an image.
     #[default]
     Output,
-    /// The [`Over`] camera's main texture, in its viewport: its pixel `p`
-    /// takes this camera's pixel `p − at` (`present`'s straight route).
+    /// The [`Over`] camera's main texture, in its viewport and within its
+    /// [`Marks`] (all of the viewport without): its pixel `p` takes this
+    /// camera's pixel `p − at` (`present`'s straight route). The compose
+    /// pass resolves the rest straight into the window.
     Under(IVec2),
+    /// Nothing: the compose pass resolves into the window
+    /// ([`crate::compose`]).
+    Composed,
 }
 
 /// The camera a [`Written::Under`] resolve writes into: it draws over the
-/// world and copies it out.
+/// world, and the compose pass copies it out.
 #[derive(Component, Clone, Copy, Default, ExtractComponent)]
 #[extract_app(RenderApp)]
 #[extract_component_filter(With<Camera>)]
+#[require(Marks)]
 pub struct Over;
 
 /// The camera's output left to the resolve.
@@ -153,7 +163,7 @@ fn skip_output(mut world: DeferredWorld, context: HookContext) {
 
 /// What the resolve pass is built from, once.
 #[derive(Resource)]
-struct Pass {
+pub(crate) struct Pass {
     layout: BindGroupLayoutDescriptor,
     fullscreen: FullscreenShader,
     fragment: Handle<Shader>,
@@ -238,11 +248,12 @@ fn init(
     });
 }
 
-/// The output of each resolving camera: Bevy makes none for a camera
-/// that skips its copy, and drops the views of a camera with none, as
-/// for an image only the world camera draws into.
+/// The output of each resolving or composing camera: Bevy makes none for
+/// a camera that skips its copy, and drops the views of a camera with
+/// none, as for an image only the world camera draws into.
+#[allow(clippy::type_complexity, reason = "a query names what it reads")]
 fn attach(
-    cameras: Query<&ExtractedCamera, With<Resolve>>,
+    cameras: Query<&ExtractedCamera, Or<(With<Resolve>, With<Compose>)>>,
     windows: Query<(MainEntity, &ExtractedWindow)>,
     (images, manual): (Res<RenderAssets<GpuImage>>, Res<ManualTextureViews>),
     mut attachments: ResMut<ViewTargetAttachments>,
@@ -263,35 +274,114 @@ fn attach(
     }
 }
 
+/// How far back each output pixel reads its pixel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Shift {
+    /// Its own pixel.
+    None,
+    /// Pixel `p − at`: the one [`Written::Under`] camera's.
+    Under(IVec2),
+}
+
+/// What a resolve draw needs: the pass, its pipelines, and the one last
+/// drawn for each format ([`Drawn`]).
+#[derive(SystemParam)]
+pub(crate) struct Resolver<'w, 's> {
+    pass: Res<'w, Pass>,
+    queue: Res<'w, RenderQueue>,
+    pipelines: ResMut<'w, SpecializedRenderPipelines<Pass>>,
+    drawn: Local<'s, Drawn>,
+    shadows: Res<'w, Shadows>,
+}
+
+impl Resolver<'_, '_> {
+    /// The pipeline and bind group that resolve `screen` into `format`,
+    /// read `shift` back: while a variant compiles, the last drawn; none
+    /// at the first frames.
+    pub(crate) fn draw<'c>(
+        &mut self,
+        (device, cache): (&RenderDevice, &'c PipelineCache),
+        format: TextureFormat,
+        screen: &TextureView,
+        shift: Shift,
+    ) -> Option<(&'c RenderPipeline, BindGroup)> {
+        // One camera at most is under another: its shift has the one buffer.
+        let buffer = match shift {
+            Shift::None => &self.pass.unshifted,
+            Shift::Under(at) => {
+                let words = [at.x, at.y, 0, 0];
+
+                self.queue
+                    .write_buffer(&self.pass.under, 0, bytemuck::cast_slice(&words));
+                &self.pass.under
+            }
+        };
+
+        let id = self
+            .pipelines
+            .specialize(cache, &self.pass, (format, *self.shadows));
+        let bind_group = device.create_bind_group(
+            None,
+            &cache.get_bind_group_layout(&self.pass.layout),
+            &BindGroupEntries::with_indices(((0, screen), (1, buffer.as_entire_binding()))),
+        );
+        let ready = |id| cache.get_render_pipeline(id).is_some();
+
+        self.drawn
+            .pick(format, id, ready)
+            .and_then(|id| cache.get_render_pipeline(id))
+            .map(|pipeline| (pipeline, bind_group))
+    }
+}
+
+/// `rect` within `viewport`, or `rect` alone without one; `None` when
+/// they do not meet.
+pub(crate) fn within(rect: URect, viewport: Option<&Viewport>) -> Option<URect> {
+    let cut = viewport.map_or(rect, |v| {
+        rect.intersect(URect::from_corners(
+            v.physical_position,
+            v.physical_position + v.physical_size,
+        ))
+    });
+
+    (!cut.is_empty()).then_some(cut)
+}
+
 /// Resolve the coverage the bands left, or only present, into the
 /// camera's output: cleared to the clear colour first, as Bevy's copy
 /// clears it, and only the camera's viewport drawn. Or, [`Written::Under`],
-/// into the [`Over`] camera's main texture, as a copy would put it there.
+/// into the [`Over`] camera's main texture within its marks, as a copy
+/// would put it there. [`Written::Composed`]: nothing here.
 #[expect(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value; that is the contract"
 )]
 fn resolve(
     view: ViewQuery<(&ViewTarget, &ExtractedCamera, Option<&Written>), With<Resolve>>,
-    over: Query<(&ViewTarget, &ExtractedCamera), With<Over>>,
-    (pass, queue): (Res<Pass>, Res<RenderQueue>),
-    (mut pipelines, mut drawn): (ResMut<SpecializedRenderPipelines<Pass>>, Local<Drawn>),
+    over: Query<(&ViewTarget, &ExtractedCamera, Option<&Marks>), With<Over>>,
+    mut resolver: Resolver,
     cache: Res<PipelineCache>,
-    (shadows, clear): (Res<Shadows>, Res<ClearColor>),
+    clear: Res<ClearColor>,
     mut ctx: RenderContext,
 ) {
     let (target, camera, written) = view.into_inner();
     let written = written.copied().unwrap_or_default();
 
     // Into the output, cleared, in the camera's viewport; or into the over
-    // camera's main texture in its viewport, loaded, read `at` back. One
-    // camera at most is under another: its shift has the one buffer.
-    let (format, out, viewport, shift) = match (written, over.single()) {
-        (Written::Under(at), Ok((over, overs))) => {
-            let words = [at.x, at.y, 0, 0];
-
-            queue.write_buffer(&pass.under, 0, bytemuck::cast_slice(&words));
-
+    // camera's main texture within its marks and viewport, loaded, read
+    // `at` back.
+    let (format, out, rects, shift) = match (written, over.single()) {
+        (Written::Composed, _) => return,
+        (Written::Under(at), Ok((over, overs, marks))) => {
+            let viewport = overs.viewport.as_ref();
+            let rects: Vec<URect> = match marks {
+                Some(marks) => marks
+                    .0
+                    .iter()
+                    .filter_map(|r| within(*r, viewport))
+                    .collect(),
+                None => area(overs).into_iter().collect(),
+            };
             let out = RenderPassColorAttachment {
                 view: over.main_texture_view(),
                 depth_slice: None,
@@ -305,32 +395,28 @@ fn resolve(
             (
                 Some(over.main_texture_format()),
                 Some(out),
-                overs.viewport.as_ref(),
-                &pass.under,
+                rects,
+                Shift::Under(at),
             )
         }
         _ => (
             target.out_texture_view_format(),
             target.out_texture_color_attachment(Some(clear.0.into())),
-            camera.viewport.as_ref(),
-            &pass.unshifted,
+            area(camera).into_iter().collect(),
+            Shift::None,
         ),
     };
 
+    // Under no overlay, nothing to write.
     let (Some(format), Some(out)) = (format, out) else {
         return;
     };
+    if rects.is_empty() && shift != Shift::None {
+        return;
+    }
 
-    let key = (format, *shadows);
-    let id: CachedRenderPipelineId = pipelines.specialize(&cache, &pass, key);
-    let bind_group = ctx.render_device().create_bind_group(
-        None,
-        &cache.get_bind_group_layout(&pass.layout),
-        &BindGroupEntries::with_indices((
-            (0, target.main_texture_view()),
-            (1, shift.as_entire_binding()),
-        )),
-    );
+    let device = ctx.render_device().clone();
+    let drawn = resolver.draw((&device, &cache), format, target.main_texture_view(), shift);
 
     // Timed when Bevy's render diagnostics are on (openregent's perf runs).
     let diagnostics = ctx.diagnostic_recorder();
@@ -346,28 +432,45 @@ fn resolve(
             multiview_mask: None,
         });
 
-    // While a variant compiles, the last drawn; none at the first
-    // frames: the output only cleared.
-    let ready = |id| cache.get_render_pipeline(id).is_some();
-    let Some(pipeline) = drawn
-        .pick(format, id, ready)
-        .and_then(|id| cache.get_render_pipeline(id))
-    else {
+    // None at the first frames: the output only cleared.
+    let Some((pipeline, bind_group)) = drawn else {
         return;
     };
 
     let span = diagnostics.pass_span(&mut render_pass, "resolve_shadows");
 
-    if let Some(viewport) = viewport {
-        let (at, size) = (viewport.physical_position, viewport.physical_size);
-
-        render_pass.set_scissor_rect(at.x, at.y, size.x, size.y);
-    }
-
     render_pass.set_pipeline(pipeline);
     render_pass.set_bind_group(0, &bind_group, &[]);
-    render_pass.draw(0..3, 0..1);
+
+    for rect in rects {
+        scissored(&mut render_pass, rect);
+        render_pass.draw(0..3, 0..1);
+    }
+
     span.end(&mut render_pass);
+}
+
+/// The camera's viewport, else its whole target; `None` before its size
+/// is known.
+pub(crate) fn area(camera: &ExtractedCamera) -> Option<URect> {
+    let whole = camera
+        .physical_target_size
+        .map(|size| URect::from_corners(UVec2::ZERO, size));
+
+    match &camera.viewport {
+        Some(v) => Some(URect::from_corners(
+            v.physical_position,
+            v.physical_position + v.physical_size,
+        )),
+        None => whole,
+    }
+}
+
+/// `pass` drawing only within `rect`.
+pub(crate) fn scissored(pass: &mut wgpu::RenderPass, rect: URect) {
+    let size = rect.size();
+
+    pass.set_scissor_rect(rect.min.x, rect.min.y, size.x, size.y);
 }
 
 /// The pipeline each output format last drew with: a variant asked for

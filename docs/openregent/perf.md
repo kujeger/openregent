@@ -141,6 +141,10 @@ The renderer's cases (`g-*`, and the weak machines' `lvp-*`, `e1-*`,
   (`draws_*`, `items`, `pipelines`, `binds`; egui's from its paint jobs);
   and every 600 frames the GPU memory: wgpu's allocator report, Bevy's
   images, the art service's upscaled and plain textures.
+  `gpu_copy_<n>` and `gpu_egui_<n>` time camera order n's final copy
+  (Bevy's `upscaling`) and egui's pass: time spans, so no `frag_`; a copy
+  shades its scissor rect. The window is written by one pass,
+  `compose` (`regent_draw::compose`): the world, then egui's tiles.
   egui's draws: `draws_egui`, `binds_egui` (texture changes),
   `clips_egui` (draws a clip rect alone splits) and `textures_egui`
   (distinct textures). `MAJ_PERF_EGUI_DUMP=<frame>` logs that frame's
@@ -196,6 +200,9 @@ Memory:
   blocks held far more than the live allocations.
 - The xBRZ main menu holds its 8 running strips' 231 frames at window
   size; leaving the page keeps one frame a strip (`art::ui`'s `trim`).
+- egui's camera keeps a main texture of its own, two window-sized
+  textures (Bevy's a and b), apart from the shown camera's: the compose
+  pass reads both (`compose::Compose`).
 - Bevy checks each material type with an entity for specialization every
   frame, a parallel pass costing about as much for one entity as for
   thousands, so the idle upscale quads keep no material

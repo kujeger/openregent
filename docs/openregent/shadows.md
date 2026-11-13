@@ -120,14 +120,19 @@ shadow is drawn after it and never darkened. `soft` alone
    transparency.
 2. **Shadows**, in the later `Transparent3d`, depth-tested against bodies,
    writing no depth.
-3. **One full-screen pass** (`shadow::resolve`), straight into the camera's
-   output (window or world image), cleared to the clear colour and cut to
-   its viewport: Bevy's own copy (`upscaling`) is skipped for that camera
+3. **The resolve** (`shadow::resolve`), into the camera's output when that
+   is an image (`view_upscale` sharp above one texel a pixel, fsr,
+   fsr-sprite), cleared to the clear colour and cut to its viewport:
+   Bevy's own copy (`upscaling`) is skipped for that camera
    (`CameraOutputMode::Skip`), and `shadow::attach` gives it the output
-   Bevy gives only a camera that copies. Under sharp at one texel a pixel
-   it writes the shown camera's main texture instead, shifted to where the
-   quad would put the image (`shadow::Written::Under`). On the menus the
-   world camera is off (`draw::world_shown`); egui's clears the window.
+   Bevy gives only a camera that copies. Into the window, it is the
+   compose pass's first draw (`regent_draw::compose`): the one pass that
+   writes the window, last, egui's camera's. Under sharp at one texel a
+   pixel it reads the image shifted to where the quad would put it, and
+   also writes the shown camera's main texture under the hit point bars,
+   which that camera draws over and the compose pass copies out
+   (`shadow::Written::Under`). On the menus the world camera is off
+   (`draw::world_shown`).
 
 Order comes from the depth test, not a sort key: a shadow is rejected where
 something nearer stands, nearer than its caster or, under `soft`, than

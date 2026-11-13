@@ -18,6 +18,7 @@
 
 pub mod art;
 pub mod compile;
+pub mod compose;
 pub mod cull;
 pub mod data;
 pub mod frame;

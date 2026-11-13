@@ -1146,10 +1146,17 @@ into the map's rect: sharp-bilinear, or FSR 1.
   columns between odd and even cels. The image's corner rounds to a whole
   pixel: a pan steps a pixel.
 - Sharp at one texel a pixel (zoom times scale at most 1) would copy the
-  image unchanged, so no quad draws: the shadow resolve writes the shown
-  camera's main texture, each pixel reading the texel the quad would
+  image unchanged, so no quad draws: the shadow resolve writes the
+  window, each pixel reading the texel the quad would
   (`present::Route::Straight`, `shadow::Written::Under`;
   `straight_puts_each_texel_where_the_quad_does`).
+- One pass writes the window, last (`regent_draw::compose`): the world
+  (resolved, or the shown camera's picture), then egui's camera's picture
+  blended over the tiles egui painted (`compose::Marks`), each with the
+  pipeline and blend of the pass it replaces, so the picture is the same.
+  Under sharp at one texel a pixel the hit point bars' tiles come from
+  the shown camera, which draws them over the world resolved under them
+  (`each_route_composes_its_own_base`).
 - `--view-upscale` and `--scale` (pixels a logical point; `--size` stays
   the PNG's) set it for a screenshot.
 - FSR above 2× looks painted: EASU's kernel is fixed in texels.

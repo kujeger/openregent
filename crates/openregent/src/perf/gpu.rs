@@ -47,6 +47,7 @@ use bevy::render::renderer::{
 };
 use bevy::render::renderer::{RenderContext, ViewQuery};
 use bevy_egui::render::{EguiCameraView, egui_pass, prepare_egui_pass};
+use regent_draw::compose::Composing;
 // Renamed: regent_draw's art_service test bans the module's path followed
 // by `::` in openregent, where it would mean regent_draw's texture module.
 use bevy::platform::collections::{HashMap, HashSet};
@@ -114,9 +115,13 @@ pub fn install(app: &mut App) {
                         .after(Core2dSystems::MainPass)
                         .after(prepare_egui_pass)
                         .before(egui_pass),
-                    egui_closed.after(egui_pass).before(copy_opened),
+                    egui_closed
+                        .after(egui_pass)
+                        .before(copy_opened)
+                        .before(Composing),
                     copy_opened
                         .after(Core2dSystems::PostProcess)
+                        .after(Composing)
                         .before(upscaling),
                     copy_closed.after(upscaling),
                 ),

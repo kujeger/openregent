@@ -9,8 +9,10 @@
 //!             then the overlays (OVERLAY: hit point bars)
 //!    at one texel a pixel (Straight), where the quad would copy:
 //!           WorldCamera ──> its main texture at the art grid, shadows
-//!             resolved straight into the Shown camera's main texture
+//!             resolved straight into the window, and into the Shown
+//!             camera's main texture under the overlays
 //!           Shown camera ──> the overlays over it
+//!  every route: the compose pass writes the window ([`crate::compose`])
 //!  fsr      WorldCamera ──> world image
 //!           Easu camera ──> easu image, the map rect's pixels: EASU quad
 //!           Shown camera ──> RCAS quad, the easu image 1:1, then the
@@ -38,7 +40,9 @@
 
 use bevy::asset::{AssetPath, RenderAssetUsages, embedded_asset, embedded_path};
 use bevy::camera::visibility::RenderLayers;
-use bevy::camera::{CameraUpdateSystems, ImageRenderTarget, RenderTarget, ScalingMode};
+use bevy::camera::{
+    CameraOutputMode, CameraUpdateSystems, ImageRenderTarget, RenderTarget, ScalingMode,
+};
 use bevy::core_pipeline::core_2d::Transparent2d;
 use bevy::ecs::schedule::SystemCondition;
 use bevy::image::ImageSampler;
@@ -95,6 +99,21 @@ enum Route {
     /// shown camera's main texture where the quad would put them: sharp at
     /// one texel a pixel, where the quad would copy the image unchanged.
     Straight,
+}
+
+impl Route {
+    /// Where the world camera's resolve writes, and how the shown camera
+    /// clears. Straight, the resolve writes the shown camera's main
+    /// texture under the overlays (`follow` places it), and the shown
+    /// camera draws over it, as it drew over the quad; the compose pass
+    /// resolves the rest. At the window, the compose pass resolves it all.
+    const fn written(self) -> (Written, ClearColorConfig) {
+        match self {
+            Route::Straight => (Written::Under(IVec2::ZERO), ClearColorConfig::None),
+            Route::Window => (Written::Composed, ClearColorConfig::Default),
+            Route::Grid | Route::Physical => (Written::Output, ClearColorConfig::Default),
+        }
+    }
 }
 
 /// The route this frame: [`Route`] while it changes, for [`route`].
@@ -519,12 +538,16 @@ fn spawn(
         ..default()
     };
 
+    // Its picture copied out by the compose pass, not by Bevy's copy.
     commands.spawn((
         Shown,
         Over,
         Camera2d,
         Msaa::Off,
-        idle(SHOWN_ORDER),
+        Camera {
+            output_mode: CameraOutputMode::Skip,
+            ..idle(SHOWN_ORDER)
+        },
         RenderLayers::from_layers(&[SHOWN_LAYER, OVERLAY]),
     ));
     commands.spawn((
@@ -626,14 +649,7 @@ fn route(
         }
     }
 
-    // Straight, the resolve writes the shown camera's main texture
-    // (`follow` places it), and the shown camera draws over it, as it drew
-    // over the quad.
-    let (written, cleared) = if straight {
-        (Written::Under(IVec2::ZERO), ClearColorConfig::None)
-    } else {
-        (Written::Output, ClearColorConfig::Default)
-    };
+    let (written, cleared) = route.written();
 
     commands.entity(entity).insert(written);
     shown.clear_color = cleared;
@@ -1039,7 +1055,8 @@ impl bevy::app::Plugin for Plugin {
                 .chain()
                 .in_set(Present),
         )
-        .add_plugins(Rekeyed);
+        // The shown camera's picture reaches the window by the compose pass.
+        .add_plugins((Rekeyed, crate::compose::Plugin));
     }
 }
 
@@ -1314,6 +1331,23 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    /// The compose pass resolves the world into the window at the
+    /// window's pixels and straight; a scaled route resolves into its
+    /// image, and the shown camera's picture is copied out.
+    #[test]
+    fn each_route_resolves_where_the_compose_pass_reads() {
+        let cases = [
+            (Route::Window, Written::Composed),
+            (Route::Straight, Written::Under(IVec2::ZERO)),
+            (Route::Grid, Written::Output),
+            (Route::Physical, Written::Output),
+        ];
+
+        for (route, written) in cases {
+            assert_eq!(route.written().0, written, "{route:?}");
         }
     }
 
