@@ -8,7 +8,7 @@
 //!     └── regent_draw
 //!           both:          data, frame, material, plain, shadow, stage,
 //!                          terrain, texture
-//!           openregent only: map, art, present, ring, smooth, veil, cull, wind, sun,
+//!           openregent only: map, art, present, ring, smooth, veil, cull, wind, sun, settle,
 //!                          lie, soft (the last three also under map and
 //!                          material)
 //!           tests:         compile
@@ -30,6 +30,7 @@ pub mod material;
 pub mod plain;
 pub mod present;
 pub mod ring;
+pub mod settle;
 pub mod shadow;
 pub mod smooth;
 pub mod soft;

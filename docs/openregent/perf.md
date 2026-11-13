@@ -53,12 +53,19 @@ The game's own timers are opt-in: `MAJ_PERF=1`
   not (`swaps`: another sheet page, palette or pass) and missiles drawn
   the first time (`missiles`). With `RUST_LOG=warn,maj_perf=debug`,
   a line a frame sets its number, main and interval ms beside its churn.
+- each drawn frame's start-up work (`regent_draw::settle`): sprite pages
+  made (`pages`, `map::sheet`), pipelines queued or compiling as the
+  render world last stood (`compiling`; `pipelines` is those a frame
+  draws with), ground patches the view wants
+  and not yet made (`patches`), and KiB of new or changed images handed
+  to the render world (`upload_kb`). A spike line carries them, and the
+  frame's `ground` ms.
 
 Each series logs `n`, `mean`, `p50` (median), `p99`, `max` and its samples
 past 25 ms (`over`, `perf::SPIKE`): a stutter is the tail, not the mean; one
 hitch moves the mean, not the median. A drawn frame whose `main` or
 `interval` is past `SPIKE` also logs `spike frame <n>` (drawn frames from
-the start) with its `main`, `interval`, `wait` and `step`; with
+the start) with its `main`, `interval`, `wait`, `step` and start-up work; with
 `MAJ_PERF_GPU`, a render schedule past it logs `spike render frame <n>`.
 `startup game` falls between the spike lines of the game's first frame.
 A drawn run's reports go by `opening` until 4 frames past the game's

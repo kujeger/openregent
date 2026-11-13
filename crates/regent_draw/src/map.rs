@@ -144,6 +144,13 @@ impl Maps {
         self.current()?.terrain()
     }
 
+    /// The ground's patches the view wants and not yet made: a few are
+    /// made a frame.
+    #[must_use]
+    pub const fn pending(&self) -> usize {
+        self.patches.pending()
+    }
+
     /// One line naming the map drawn, for the status line.
     pub fn summary(&self) -> String {
         match self.current() {

@@ -399,8 +399,9 @@ pub fn uninstall(world: &mut World) {
 
 /// The drawing's resources, a game's: the view and what is drawn; the
 /// game's thread, its corpus, map and save's records, which it is made
-/// with ([`install`]).
+/// with ([`install`]). Its start-up work, the app's.
 fn plugin(app: &mut App) {
+    app.add_plugins(regent_draw::settle::Plugin);
     app.per_game_as(|| stage::View {
         zoom: START_ZOOM,
         ..default()

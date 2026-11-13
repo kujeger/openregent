@@ -97,6 +97,9 @@ pub(super) struct Patches {
     leaving: Vec<Leaving>,
     /// How those up are read: made for it, with or without an [`APRON`].
     sampling: Sampling,
+    /// The wanted region's patches still to make, as the last [`keep`]
+    /// left them.
+    pending: usize,
 }
 
 /// A patch replaced, drawn under the new ones until their textures are
@@ -126,6 +129,7 @@ impl Patches {
             shown: None,
             leaving: Vec::new(),
             sampling: Sampling::Nearest,
+            pending: 0,
         }
     }
 
@@ -134,6 +138,11 @@ impl Patches {
         self.shown
             .and_then(|r| self.up.get(&r))
             .map_or(0, BTreeMap::len)
+    }
+
+    /// The wanted region's patches still to make.
+    pub(super) const fn pending(&self) -> usize {
+        self.pending
     }
 
     /// Every patch taken down: those drawn kept under the new ones a few
@@ -399,6 +408,11 @@ pub(super) fn keep(
             up.insert(made.at, entity.id());
         }
     }
+
+    // Those left for the next frames: start-up's work still to do.
+    patches.pending = grid(want.from, want.to, cells)
+        .filter(|at| !up.contains_key(at))
+        .count();
 
     maps.patches = patches;
     maps.composed = Some(want);

@@ -20,6 +20,7 @@
 //! picture is unchanged. The quad keeps its size and place.
 
 use std::collections::{BTreeSet, HashMap};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
@@ -54,6 +55,15 @@ pub const SIDE: u32 = 4096;
 
 /// Archive and index of a `TILE`.
 pub type Tile = (usize, usize);
+
+/// Pages made since the process started, every sheet's: what a frame
+/// made is the change ([`crate::settle`]).
+static MADE: AtomicU32 = AtomicU32::new(0);
+
+/// Pages made since the process started, wrapping.
+pub fn pages_made() -> u32 {
+    MADE.load(Ordering::Relaxed)
+}
 
 /// One page: its indices, and each pixel's rows to its run's foot
 /// ([`crate::lie::feet`]) at the same places.
@@ -316,6 +326,7 @@ impl Sheet {
             let at = self.pages.len();
             let (indices, feet) = page(&decoded, laid);
 
+            MADE.fetch_add(1, Ordering::Relaxed);
             self.pages.push(Page {
                 indices: store.images.add(indices),
                 feet: feet.map(|f| store.images.add(f)).unwrap_or_default(),

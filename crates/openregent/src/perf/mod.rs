@@ -9,8 +9,9 @@
 //!            thread step, steps, publish, asked, clone (each world copy);
 //!            LAN: snapshot (sim thread), fold (its worker); entities,
 //!            meshes and visible meshes counted; each frame the entities
-//!            spawned and despawned, pieces and missiles drawn anew
-//!            (maj_perf=debug: a line a frame)
+//!            spawned and despawned, pieces and missiles drawn anew, its
+//!            start-up work (regent_draw::settle; uploads) (maj_perf=debug:
+//!            a line a frame)
 //!  headless  at the end: step, and every PROBE_EVERY frames clone, deep, henchmen
 //!  startup   once each: ms from start to the first drawn frame, and to the game's
 //! ```
@@ -406,8 +407,12 @@ pub fn install(app: &mut App) {
     if on() {
         app.init_resource::<Drawn>()
             .init_resource::<GroundClock>()
+            .init_resource::<Uploads>()
             .add_systems(First, began)
-            .add_systems(Last, ended)
+            .add_systems(
+                Last,
+                (uploads, ended).chain().after(regent_draw::settle::Noted),
+            )
             .add_observer(|_: On<Add<Transform>>| churn(Churn::Spawned, 1))
             .add_observer(|_: On<Despawn<Transform>>| churn(Churn::Despawned, 1));
         gpu::install(app);
@@ -457,9 +462,71 @@ fn began(mut drawn: ResMut<Drawn>) {
     drawn.began = Some(Instant::now());
 }
 
+/// Bytes of images given to the render world this frame, new or
+/// changed: what it uploads next.
+#[derive(Resource, Default)]
+struct Uploads(u64);
+
+/// Bytes in a KiB.
+const KIB: f64 = 1024.0;
+
+/// This frame's new and changed images' bytes added to [`Uploads`].
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+fn uploads(
+    mut events: MessageReader<AssetEvent<Image>>,
+    images: Res<Assets<Image>>,
+    mut uploaded: ResMut<Uploads>,
+) {
+    use bevy::asset::RenderAssetUsages;
+
+    let bytes: usize = events
+        .read()
+        .filter_map(|e| match e {
+            AssetEvent::Added { id } | AssetEvent::Modified { id } => images.get(*id),
+            _ => None,
+        })
+        .filter(|i| i.asset_usage.contains(RenderAssetUsages::RENDER_WORLD))
+        .filter_map(|i| i.data.as_ref().map(Vec::len))
+        .sum();
+
+    uploaded.0 += bytes as u64;
+}
+
+/// The frame's start-up work, noted as series and returned for its
+/// lines: sprite pages made, pipelines waiting, ground patches pending,
+/// KiB of images uploaded.
+fn work(settle: Option<&regent_draw::settle::Settle>, uploads: &mut Uploads) -> [f64; 4] {
+    let pending = settle
+        .map(regent_draw::settle::Settle::pending)
+        .unwrap_or_default();
+    #[allow(clippy::cast_precision_loss, reason = "counts and bytes of a frame")]
+    let work = [
+        f64::from(pending.pages),
+        pending.pipelines as f64,
+        pending.patches as f64,
+        std::mem::take(&mut uploads.0) as f64 / KIB,
+    ];
+
+    for (name, value) in WORK.iter().zip(work) {
+        named(name, value);
+    }
+
+    work
+}
+
+/// [`work`]'s series, in its order.
+const WORK: [&str; 4] = ["pages", "compiling", "patches", "upload_kb"];
+
 /// The frame's main schedule, interval and churn noted; each [`WINDOW`]
 /// frames, the entity counts and a report, named by the run's [`Part`].
-fn ended(mut drawn: ResMut<Drawn>, entities: Query<()>, meshes: Meshes) {
+fn ended(
+    mut drawn: ResMut<Drawn>,
+    (entities, meshes): (Query<()>, Meshes),
+    (settle, mut uploads): (Option<Res<regent_draw::settle::Settle>>, ResMut<Uploads>),
+) {
     let now = Instant::now();
     let ms = |t: Instant| now.duration_since(t).as_secs_f64() * 1e3;
 
@@ -488,25 +555,28 @@ fn ended(mut drawn: ResMut<Drawn>, entities: Query<()>, meshes: Meshes) {
     }
 
     let [spawned, despawned, respawns, rekeys, missiles, swaps] = churned;
+    let [pages, pipelines, patches, upload_kb] = work(settle.as_deref(), &mut uploads);
 
     debug!(
         target: TARGET,
-        "frame {} main {:.3} interval {:.3} spawned {spawned} despawned {despawned} respawns {respawns} rekeys {rekeys} missiles {missiles} swaps {swaps}",
+        "frame {} main {:.3} interval {:.3} spawned {spawned} despawned {despawned} respawns {respawns} rekeys {rekeys} missiles {missiles} swaps {swaps} pages {pages} compiling {pipelines} patches {patches} upload_kb {upload_kb:.0}",
         drawn.total,
         main.unwrap_or(0.0),
         interval.unwrap_or(0.0)
     );
 
-    // A spike's frame named, so runs can be compared frame by frame.
+    // A spike's frame named, so runs can be compared frame by frame, with
+    // the start-up work it did.
     if main.into_iter().chain(interval).any(|t| t > SPIKE) {
         info!(
             target: TARGET,
-            "spike frame {} main {:.1} interval {:.1} wait {:.1} step {:.1}",
+            "spike frame {} main {:.1} interval {:.1} wait {:.1} step {:.1} ground {:.1} pages {pages} compiling {pipelines} patches {patches} upload_kb {upload_kb:.0}",
             drawn.total,
             main.unwrap_or(0.0),
             interval.unwrap_or(0.0),
             latest(Timer::Wait),
-            latest(Timer::Step)
+            latest(Timer::Step),
+            latest(Timer::Ground)
         );
     }
 
@@ -528,8 +598,9 @@ fn ended(mut drawn: ResMut<Drawn>, entities: Query<()>, meshes: Meshes) {
 }
 
 /// The named series that count things, not ms: [`counted`]'s, [`Churn`]'s,
-/// and `fog_moved`, 1 for a fog take whose explored ground changed.
-const COUNTS: [&str; 8] = [
+/// `fog_moved`, 1 for a fog take whose explored ground changed, and
+/// [`WORK`]'s.
+const COUNTS: [&str; 12] = [
     "entities",
     "meshes",
     "visible",
@@ -538,6 +609,10 @@ const COUNTS: [&str; 8] = [
     "despawned",
     "respawns",
     "missiles",
+    "pages",
+    "compiling",
+    "patches",
+    "upload_kb",
 ];
 
 /// Every mesh, and whether a camera drew it last frame.
