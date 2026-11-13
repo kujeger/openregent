@@ -47,6 +47,7 @@
 //!  panel    the in-game interface: selection, bars, minimap, tracking
 //!  menu     panels and their controls, and the pages around a game
 //!  sound    what a cue plays, how loud and where
+//!  pack     frames packed into one texture, and trimmed to what they draw
 //! ```
 //!
 //! The terrain model (blend slots, vertex classes) is
@@ -54,6 +55,7 @@
 
 pub mod map;
 pub mod menu;
+pub mod pack;
 pub mod panel;
 pub mod picture_file;
 pub mod raster;

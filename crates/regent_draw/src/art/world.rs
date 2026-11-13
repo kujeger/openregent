@@ -189,6 +189,21 @@ impl Sprites {
         })
     }
 
+    /// What `source`'s sprites hold: every piece made and every tile made
+    /// (with or without materials), for the perf runs' art dump.
+    #[must_use]
+    pub fn held(&self, source: ArtSource) -> (Vec<Piece>, Vec<Tile>) {
+        self.entries
+            .0
+            .get(&source)
+            .map_or_else(Default::default, |held| {
+                (
+                    held.pieces.keys().copied().collect(),
+                    held.cels.keys().copied().collect(),
+                )
+            })
+    }
+
     /// Frame `source` of `corpus` as materials (`map::cel::cel`); `None`
     /// where it draws nothing.
     pub fn frame(

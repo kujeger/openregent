@@ -89,6 +89,9 @@ A row is a sequence of segments; the gaps are the only transparency.
 With both, every tile parses (`every_v3_tile_decodes`, `every_mod_tile_decodes`).
 In HD `max(x_end) == width` on 28,733 of 29,304; 571 fall short (empty
 rightmost columns); none exceeds (`tile_width_bounds_every_run`).
+The indexed tiles' canvases are nearly their drawn boxes: the boxes hold
+98.7% of the canvas texels; ten tiles draw nothing
+(`a_tiles_canvas_is_nearly_its_drawn_box`).
 
 ### Bit 2 of the same word says 555 or 565
 

@@ -153,6 +153,7 @@ cargo run --bin regent_cli -- codesec    ~/Games/majesty/data/bytecode.bcd
 cargo run --bin regent_cli -- lair-spawns                 # what each lair's spawn script can spawn
 cargo run --bin regent_cli -- resolve    "$MAJESTY_HD/SDK/OriginalQuests"
 cargo run --bin regent_cli -- check-data ~/Games/majesty/data ~/Games/majesty/datamx
+cargo run --release --bin regent_cli -- atlas --held held.tsv  # sprites as atlases; MAJESTY_HD
 ```
 
 The GPL commands take directories as well as files, walking them for the
@@ -237,6 +238,7 @@ host and whether iroh uses a relay.
 | `sim::footprint`, `sim::placement` | The rect a thing stands on, and the ground a building takes |
 | `content::terrain::compass` | Which way is north, in GPL's terms and on the screen |
 | `data::text`, `view::raster::atlas` | The `STRT` tables that name things, and sprite packing |
+| `view::pack` | Frames packed into one texture (a shelf packer), and a frame's drawn bounds |
 | `view::sound` | Which wave a sound cue plays, and the engine's mixing law |
 | `view::map::fog` | Fog of war: unexplored ground black, unseen units hidden, part-seen ones darkened |
 | `gpl::vm` | The VM, its host interface, and the `gpl.log` trace it writes |

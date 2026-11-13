@@ -22,11 +22,13 @@
 //!  MAJ_PERF_GPU=1       with MAJ_PERF: GPU time per pass and per frame, draw calls,
 //!                       GPU memory (gpu)
 //!  MAJ_PERF_HIDE=a,b    with MAJ_PERF: classes of world meshes hidden (hide)
+//!  MAJ_PERF_HELD=<file> with MAJ_PERF: the art service's pictures written out (held)
 //!  MAJ_PERF_PIPELINED=1 a screenshot's game in pipelined mode, as played
 //!                       (`game::thread::Mode`): game frames by the wall clock
 //! ```
 
 mod gpu;
+mod held;
 mod hide;
 
 use std::collections::BTreeMap;
@@ -398,6 +400,7 @@ pub fn install(app: &mut App) {
             .add_observer(|_: On<Despawn<Transform>>| churn(Churn::Despawned, 1));
         gpu::install(app);
         hide::install(app);
+        held::install(app);
     }
 }
 

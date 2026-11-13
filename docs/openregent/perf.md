@@ -140,6 +140,11 @@ The renderer's cases (`g-*`, and the weak machines' `lvp-*`, `e1-*`,
   (distinct textures). `MAJ_PERF_EGUI_DUMP=<frame>` logs that frame's
   draws one a line: texture, picture, clip rect, bounds.
 
+- `MAJ_PERF_HELD=<file>` (`openregent/src/perf/held.rs`) writes the
+  art service's pieces, scatter pictures and tiles every 600 frames;
+  `regent_cli atlas --held <file>` reads it: what the run's sprites
+  take today, and as atlases of each grain.
+
 - `MAJ_PERF_HIDE=<class,...>` (`openregent/src/perf/hide.rs`) hides
   classes of world meshes each frame, so two runs' `frag_` counts differ
   by what a class drew: `floor`, `ground` (patches), `inset`, `veil`,
