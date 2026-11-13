@@ -567,10 +567,11 @@ enum Found {
 
 enum Stage {
     /// In a task: one reading from the cache is waited on where nothing
-    /// stands in.
-    Making(Task<Made>, Count, Found),
-    /// Tiles going up a few a frame: those up, and the rest.
-    Uploading(Made, Vec<(Piece, TextureHandle)>, Count),
+    /// stands in. Counted as pending work while the map's page wants it.
+    Making(Task<Made>, Option<Count>, Found),
+    /// Tiles going up a few a frame: those up, and the rest. Counted as
+    /// `Making` is.
+    Uploading(Made, Vec<(Piece, TextureHandle)>, Option<Count>),
     Shown(Shown),
 }
 
@@ -598,7 +599,10 @@ impl Levels {
 
         Levels {
             base,
-            made: HashMap::from([(Level::One, Stage::Uploading(one, Vec::new(), Count::new()))]),
+            made: HashMap::from([(
+                Level::One,
+                Stage::Uploading(one, Vec::new(), Some(Count::new())),
+            )]),
             upscale: Upscale::default(),
             dir,
         }
@@ -626,14 +630,52 @@ impl Levels {
         handles.fold([0, 0], |[n, bytes], t| [n + 1, bytes + area(t.size())])
     }
 
+    /// The levels counted as pending work (`art::busy`).
+    #[cfg(test)]
+    fn counted(&self) -> usize {
+        self.made
+            .values()
+            .filter(|s| {
+                matches!(
+                    s,
+                    Stage::Making(_, Some(_), _) | Stage::Uploading(_, _, Some(_))
+                )
+            })
+            .count()
+    }
+
     /// The levels not kept dropped (`Level::kept`): the page left the map.
+    /// Those kept count as pending no more.
     pub fn rest(&mut self) {
         self.made.retain(|l, _| l.kept());
+        self.uncount();
+    }
+
+    /// No level counted as pending work: off the map's pages a level
+    /// part made goes on only while a menu page draws, and no picture
+    /// waits for it.
+    fn uncount(&mut self) {
+        for stage in self.made.values_mut() {
+            if let Stage::Making(_, count, _) | Stage::Uploading(_, _, count) = stage {
+                *count = None;
+            }
+        }
+    }
+
+    /// `level` counted as pending work until it shows: the map's page
+    /// wants it.
+    fn count(&mut self, level: Level) {
+        if let Some(Stage::Making(_, count, _) | Stage::Uploading(_, _, count)) =
+            self.made.get_mut(&level)
+        {
+            count.get_or_insert_with(Count::new);
+        }
     }
 
     /// [`Level::AHEAD`] made, and uploaded a few tiles a frame, while the
-    /// map is not drawn.
+    /// map is not drawn: uncounted.
     pub fn ahead(&mut self, ctx: &egui::Context) {
+        self.uncount();
         self.ask(Level::AHEAD.within(self.upscale));
         self.poll(ctx, None);
     }
@@ -693,6 +735,7 @@ impl Levels {
 
         if self.made.iter().any(|(l, s)| standing(l, s)) {
             self.ask(wanted);
+            self.count(wanted);
             None
         } else {
             let dir = self.dir.clone();
@@ -705,18 +748,19 @@ impl Levels {
                     Found::Cached => {
                         let made = made(&self.base, wanted, dir.as_deref());
 
-                        Stage::Uploading(made, Vec::new(), Count::new())
+                        Stage::Uploading(made, Vec::new(), None)
                     }
                     Found::Missing => self.task(wanted, Found::Missing),
                 },
             };
 
             self.made.insert(wanted, stage);
+            self.count(wanted);
             Some(wanted)
         }
     }
 
-    /// `level` made in the background, if it is not.
+    /// `level` made in the background, if it is not: uncounted.
     fn ask(&mut self, level: Level) {
         if !self.made.contains_key(&level) {
             let found = self.base.cached(self.dir.as_deref(), level);
@@ -733,7 +777,7 @@ impl Levels {
         let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
         let task = pool.spawn(async move { made(&base, level, dir.as_deref()) });
 
-        Stage::Making(task, Count::new(), found)
+        Stage::Making(task, None, found)
     }
 
     /// Levels made since last pass uploaded: `now` whole, the others
@@ -1020,7 +1064,10 @@ mod tests {
 
         let base = base(&Original::new(map.clone()), quest, &table);
         let one = make(&base, Level::One);
-        let made = HashMap::from([(Level::One, Stage::Uploading(one, Vec::new(), Count::new()))]);
+        let made = HashMap::from([(
+            Level::One,
+            Stage::Uploading(one, Vec::new(), Some(Count::new())),
+        )]);
 
         let dir = disk::tests();
 
@@ -1127,6 +1174,37 @@ mod tests {
         assert_eq!(ahead.nearest(Level::Two), Level::Two);
     }
 
+    /// Off the map's pages nothing of it counts as pending work: a level
+    /// part made stays, uncounted, and work ahead adds no count. Wanted
+    /// for drawing again, it counts until it shows.
+    #[test]
+    fn off_the_map_no_level_counts_as_pending() {
+        let ctx = egui::Context::default();
+        let (mut levels, dir) = fresh(4);
+
+        super::made(&levels.base, Level::Two, Some(&dir));
+
+        assert_eq!(levels.want(Level::Two), Some(Level::Two));
+        assert_eq!(levels.counted(), 2, "the map's own and 2\u{d7}, wanted");
+
+        levels.rest();
+
+        assert!(levels.made.contains_key(&Level::Two), "kept");
+        assert_eq!(levels.counted(), 0, "off the map");
+
+        levels.ask(Level::Half);
+
+        assert_eq!(levels.counted(), 0, "made ahead");
+
+        let _ = levels.want(Level::Two);
+
+        assert_eq!(levels.counted(), 1, "wanted again");
+
+        levels.poll(&ctx, Some(Level::Two));
+
+        assert_eq!(levels.counted(), 0, "shown");
+    }
+
     /// Not wanted at once, a level goes up within the frame's bytes, one
     /// tile at least, and shows when all are up; off the map, 4× is let go.
     #[test]
@@ -1154,7 +1232,7 @@ mod tests {
 
         levels.made.insert(
             Level::Four,
-            Stage::Uploading(made, Vec::new(), Count::new()),
+            Stage::Uploading(made, Vec::new(), Some(Count::new())),
         );
 
         let up = |l: &Levels| match l.made.get(&Level::Four) {
