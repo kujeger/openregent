@@ -256,6 +256,13 @@ A late 512-cell game has 22,000 entities, of which a camera draws about
 200. Each measure below avoids visiting every entity, or every flag,
 each frame:
 
+- The floor (`map::floor`) is cut into pieces of 64 cells a side, each
+  culled for itself: a view shades the vertices of the pieces it meets,
+  not the map's 263,169, which each view (the tracking window's too)
+  shaded whatever it showed.
+- The ground reads the models' shadow map only while they cast
+  (`plain::Shade`, `sun::receive`): compiled out otherwise, the same
+  pixels.
 - `regent_draw::cull` parks the map's things far from the screen and the
   tracking window's ground: buckets of 512 world units, parked past
   half a view's span, back within a quarter. A parked thing has no

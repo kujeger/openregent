@@ -15,7 +15,8 @@
 //!             each view drawing it again before it draws
 //!  receivers  bodies and the ground sample the map at their metric point
 //!             (shaders/lit.wesl) and write coverage into alpha, as a band
-//!             does: shadows still do not stack. A body stands upright over
+//!             does: shadows still do not stack. The ground's shader reads
+//!             it only while models cast (plain::Shade, receive). A body stands upright over
 //!             its footing (its MeshTag, stood); a translucent one lifts
 //!             the coverage under it (material::Pass::Lift)
 //!  casters'   painted shadow dropped (`Band::painted`); their bodies
@@ -35,7 +36,7 @@ pub mod relief;
 
 use std::collections::HashMap;
 
-use bevy::asset::RenderAssetUsages;
+use bevy::asset::{AssetEventSystems, RenderAssetUsages};
 use bevy::camera::visibility::RenderLayers;
 use bevy::light::cascade::Cascade;
 use bevy::light::{
@@ -52,6 +53,8 @@ use crate::frame;
 use crate::lie::Footing;
 use crate::map::Maps;
 use crate::material::Body;
+use crate::plain::{Lay, Plain, Shade};
+use crate::smooth::{Sheet, touched};
 use crate::stage::{self, WorldCamera};
 use bare::{Bare, Sprites};
 use cast::Light;
@@ -376,6 +379,51 @@ fn aim(
     }
 }
 
+/// The ground's materials as models start or stop casting, and as they
+/// are made: [`Shade::Cast`] while they cast, else [`Shade::Bare`], so
+/// the ground reads the shadow map only while one is drawn.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value; that is the contract"
+)]
+fn receive(
+    (sun, casters): (Res<Sun>, Res<Casters>),
+    world: Single<&Camera, With<WorldCamera>>,
+    (mut made, mut laid): (
+        MessageReader<AssetEvent<Plain>>,
+        MessageReader<AssetEvent<Sheet>>,
+    ),
+    (mut plains, mut sheets): (ResMut<Assets<Plain>>, ResMut<Assets<Sheet>>),
+    mut was: Local<Shade>,
+) {
+    let shade = if casting(&sun, &casters, &world) {
+        Shade::Cast
+    } else {
+        Shade::Bare
+    };
+    let changed = *was != shade;
+
+    *was = shade;
+
+    for id in touched(&mut made, &plains, changed) {
+        let stale = plains
+            .get(id)
+            .is_some_and(|p| p.lay == Lay::Ground && p.shade != shade);
+
+        if stale && let Some(mut plain) = plains.get_mut(id) {
+            plain.shade = shade;
+        }
+    }
+
+    for id in touched(&mut laid, &sheets, changed) {
+        let stale = sheets.get(id).is_some_and(|s| s.shade != shade);
+
+        if stale && let Some(mut sheet) = sheets.get_mut(id) {
+            sheet.shade = shade;
+        }
+    }
+}
+
 /// A camera, as [`fitted`] reads it.
 type Viewed = (
     Entity,
@@ -635,6 +683,8 @@ impl bevy::app::Plugin for Plugin {
                 (
                     place,
                     aim.before(SimulationLightSystems::UpdateDirectionalLightCascades),
+                    // Told the frame the light is: both read `casting`.
+                    receive.after(aim).after(AssetEventSystems),
                     fitted
                         .after(SimulationLightSystems::UpdateDirectionalLightCascades)
                         .before(SimulationLightSystems::UpdateLightFrusta),

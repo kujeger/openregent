@@ -30,7 +30,7 @@ use bevy::render::render_resource::{
 use bevy::shader::ShaderRef;
 
 use crate::material::{Band, Body};
-use crate::plain::{self, GROUND};
+use crate::plain::{self, Shade};
 use crate::present::ViewUpscale;
 
 /// How the art's texels are read.
@@ -112,10 +112,18 @@ pub fn moved(corner: Vec2, pixel: impl Fn(Vec2) -> Vec2, factor: f32) -> Vec2 {
 /// uv, as `sharp.wesl`. Its vertices at their metric points, as the
 /// ground's ([`plain::Lay::Ground`]).
 #[derive(Asset, AsBindGroup, TypePath, Debug, Clone)]
+#[bind_group_data(Shade)]
 pub struct Sheet {
     #[texture(0)]
     #[sampler(1)]
     pub picture: Handle<Image>,
+    pub shade: Shade,
+}
+
+impl From<&Sheet> for Shade {
+    fn from(sheet: &Sheet) -> Shade {
+        sheet.shade
+    }
 }
 
 impl Material for Sheet {
@@ -147,9 +155,9 @@ impl Material for Sheet {
         _pipeline: &MaterialPipeline,
         descriptor: &mut RenderPipelineDescriptor,
         _layout: &MeshVertexBufferLayoutRef,
-        _key: MaterialPipelineKey<Self>,
+        key: MaterialPipelineKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
-        Sheet::shape(descriptor);
+        Sheet::shape(descriptor, key.bind_group_data);
 
         Ok(())
     }
@@ -158,9 +166,9 @@ impl Material for Sheet {
 impl Sheet {
     /// [`Material::specialize`]'s work, without Bevy's pipeline: the
     /// compile tests call it.
-    pub fn shape(descriptor: &mut RenderPipelineDescriptor) {
+    pub fn shape(descriptor: &mut RenderPipelineDescriptor, shade: Shade) {
         plain::unculled(descriptor);
-        plain::define(descriptor, &[GROUND.into()]);
+        plain::define(descriptor, &plain::grounded(shade));
     }
 }
 
@@ -174,7 +182,7 @@ fn choose(mode: Res<ViewUpscale>, mut wanted: ResMut<Sampling>) {
 }
 
 /// The assets an event reader saw added, or all of them on `changed`.
-fn touched<A: Asset>(
+pub(crate) fn touched<A: Asset>(
     made: &mut MessageReader<AssetEvent<A>>,
     assets: &Assets<A>,
     changed: bool,

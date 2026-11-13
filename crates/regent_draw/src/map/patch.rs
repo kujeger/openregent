@@ -46,7 +46,7 @@ use super::Maps;
 use super::depth::GROUND_DEPTH;
 use super::project::{Composed, MARGIN, Projection, visible, wanted};
 use super::redraw::{GroundSheet, RETIRE, art, grounded, relief};
-use crate::plain::Plain;
+use crate::plain::{Plain, Shade};
 use crate::smooth::{self, Sampling};
 use crate::stage::View;
 use crate::terrain::{Drawn, TileArt};
@@ -388,6 +388,7 @@ pub(super) fn keep(
                 image.sampler = ImageSampler::linear();
                 entity.insert(MeshMaterial3d(sheets.add(smooth::Sheet {
                     picture: images.add(image),
+                    shade: Shade::Bare,
                 })));
             } else {
                 let colour = Plain::ground(images.add(image));

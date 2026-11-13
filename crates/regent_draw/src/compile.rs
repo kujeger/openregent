@@ -472,7 +472,7 @@ mod tests {
 
     use super::*;
     use crate::material::{Band, Body, Key, Look, Painted, Pass};
-    use crate::plain::{Alpha, Key as PlainKey, Lay, Plain};
+    use crate::plain::{Alpha, Key as PlainKey, Lay, Plain, Shade};
     use crate::present::{EasuPass, RcasPass, Sharp};
     use crate::ring::{Ellipse, Ink};
     use crate::shadow::Shadows;
@@ -489,6 +489,7 @@ mod tests {
     const RAMPS: [Ramps; 2] = [Ramps::Band, Ramps::Shadow];
     const PAINTED: [Painted; 2] = [Painted::Kept, Painted::Dropped];
     const INKS: [Ink; 4] = [Ink::Glow, Ink::Lift, Ink::Colour, Ink::Line];
+    const SHADES: [Shade; 2] = [Shade::Bare, Shade::Cast];
 
     /// A sprite's quad: `Rectangle`'s positions, normals and uvs.
     fn quad() -> Mesh {
@@ -618,7 +619,7 @@ mod tests {
                 (quad(), Lay::Card),
                 (chunk(), Lay::Card),
             ] {
-                for pictured in [false, true] {
+                for (pictured, shade) in [false, true].map(|p| SHADES.map(|s| (p, s))).concat() {
                     let mut descriptor = world(&mesh, Cutout::of(alpha == Alpha::Mask));
 
                     Plain::shape(
@@ -627,6 +628,7 @@ mod tests {
                             alpha,
                             lay,
                             pictured,
+                            shade,
                         },
                     );
                     out.push(descriptor);
@@ -693,18 +695,22 @@ mod tests {
             );
         }
 
-        let mut sheet = world(&patch(), Cutout::Keep);
         let mut veil = world(&chunk(), Cutout::Keep);
 
-        Sheet::shape(&mut sheet);
         Veil::shape(&mut veil);
 
-        check(
-            &mut library,
-            sheet,
-            <Sheet as Material>::vertex_shader(),
-            <Sheet as Material>::fragment_shader(),
-        );
+        for shade in SHADES {
+            let mut sheet = world(&patch(), Cutout::Keep);
+
+            Sheet::shape(&mut sheet, shade);
+            check(
+                &mut library,
+                sheet,
+                <Sheet as Material>::vertex_shader(),
+                <Sheet as Material>::fragment_shader(),
+            );
+        }
+
         check(
             &mut library,
             veil,
@@ -764,7 +770,7 @@ mod tests {
             }
         }
 
-        assert_eq!(checked, 77, "pipeline variants");
+        assert_eq!(checked, 96, "pipeline variants");
         assert!(failures.is_empty(), "{failures:#?}");
     }
 
