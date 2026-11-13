@@ -471,7 +471,7 @@ mod tests {
     use bevy::pbr::Material;
 
     use super::*;
-    use crate::material::{Band, Body, Key, Look, Painted, Pass};
+    use crate::material::{Band, Body, Key, Look, On, Painted, Pass};
     use crate::plain::{Alpha, Key as PlainKey, Lay, Plain, Shade};
     use crate::present::{EasuPass, RcasPass, Sharp};
     use crate::ring::{Ellipse, Ink};
@@ -488,6 +488,7 @@ mod tests {
     const SHADOWS: [Shadows; 2] = [Shadows::Blend, Shadows::Soft];
     const RAMPS: [Ramps; 2] = [Ramps::Band, Ramps::Shadow];
     const PAINTED: [Painted; 2] = [Painted::Kept, Painted::Dropped];
+    const ONS: [On; 2] = [On::Own, On::Sheet];
     const INKS: [Ink; 4] = [Ink::Glow, Ink::Lift, Ink::Colour, Ink::Line];
     const SHADES: [Shade; 2] = [Shade::Bare, Shade::Cast];
 
@@ -553,19 +554,22 @@ mod tests {
         for pass in PASSES {
             for sway in SWAYS {
                 for sampling in SAMPLINGS {
-                    let body = Body {
-                        indices: Handle::default(),
-                        palette: Handle::default(),
-                        pass,
-                        sway,
-                        gust: gust(sway),
-                        sampling,
-                        ..Body::default()
-                    };
-                    let mut descriptor = world(&quad(), Cutout::of(pass == Pass::Solid));
+                    for on in ONS {
+                        let body = Body {
+                            indices: Handle::default(),
+                            palette: Handle::default(),
+                            pass,
+                            sway,
+                            gust: gust(sway),
+                            sampling,
+                            on,
+                            ..Body::default()
+                        };
+                        let mut descriptor = world(&quad(), Cutout::of(pass == Pass::Solid));
 
-                    Body::shape(&mut descriptor, Look::from(&body));
-                    out.push(descriptor);
+                        Body::shape(&mut descriptor, Look::from(&body));
+                        out.push(descriptor);
+                    }
                 }
             }
         }
@@ -582,7 +586,7 @@ mod tests {
             for ramps in RAMPS {
                 for sway in SWAYS {
                     for sampling in SAMPLINGS {
-                        for painted in PAINTED {
+                        for (painted, on) in PAINTED.into_iter().flat_map(|p| ONS.map(|o| (p, o))) {
                             let band = Band {
                                 indices: Handle::default(),
                                 rows: Handle::default(),
@@ -593,6 +597,8 @@ mod tests {
                                 feet: Handle::default(),
                                 sampling,
                                 painted,
+                                table: Handle::default(),
+                                on,
                             };
                             let mut descriptor = world(&quad(), Cutout::Keep);
 
@@ -770,7 +776,7 @@ mod tests {
             }
         }
 
-        assert_eq!(checked, 96, "pipeline variants");
+        assert_eq!(checked, 140, "pipeline variants");
         assert!(failures.is_empty(), "{failures:#?}");
     }
 

@@ -22,7 +22,8 @@ use bevy::asset::AssetId;
 use bevy::prelude::*;
 
 use crate::data::Corpus;
-use crate::map::cel::{self, Cel, Drawing, Paint, Palettes, Store};
+use crate::map::cel::{self, Cel, Drawing, Owner, Paint, Palettes, Store};
+use crate::map::sheet::Sheet;
 use crate::material::{Body, Pass};
 use crate::plain::Plain;
 use crate::{soft, texture};
@@ -81,8 +82,10 @@ pub type Pointer = (Handle<Image>, (u16, u16));
 /// One source's sprites.
 #[derive(Default)]
 struct Held {
-    /// Each tile's materials.
-    cels: HashMap<Tile, Option<Cel>>,
+    /// Each tile's materials: on its record's sheet, or its own.
+    cels: HashMap<(Tile, Option<Owner>), Option<Cel>>,
+    /// Each `IMAG` record's sheet, made when it first draws.
+    sheets: HashMap<FourCc, Option<Sheet>>,
     /// Palette textures, shared by the tiles naming one.
     palettes: Palettes,
     pieces: HashMap<Piece, Vec<Drawing>>,
@@ -160,6 +163,7 @@ impl Sprites {
         let quad = self.quad(&mut stores.meshes);
         let Held {
             cels,
+            sheets,
             palettes,
             pieces,
             ..
@@ -167,7 +171,8 @@ impl Sprites {
 
         pieces.entry(piece).or_insert_with(|| {
             let mut store = store(stores, quad);
-            let mut cel = |s| cached((cels, palettes), corpus, &mut store, s);
+            let mut cel =
+                |s, record| cached((cels, sheets, palettes), corpus, &mut store, (s, record));
 
             match Unit::find(&corpus.catalogue, piece.code) {
                 Some(Ok(unit)) => {
@@ -199,23 +204,23 @@ impl Sprites {
             .map_or_else(Default::default, |held| {
                 (
                     held.pieces.keys().copied().collect(),
-                    held.cels.keys().copied().collect(),
+                    held.cels.keys().map(|(tile, _)| *tile).collect(),
                 )
             })
     }
 
-    /// Frame `source` of `corpus` as materials (`map::cel::cel`); `None`
-    /// where it draws nothing.
+    /// Frame `source` of `corpus` as materials, on `owner`'s sheet where
+    /// given (`map::cel::cel` else); `None` where it draws nothing.
     pub fn frame(
         &mut self,
         corpus: &Corpus,
         stores: &mut Assets2,
-        source: FrameSource,
+        (source, owner): (FrameSource, Option<Owner>),
     ) -> Option<Cel> {
         let quad = self.quad(&mut stores.meshes);
         let mut store = store(stores, quad);
 
-        self.cel(corpus, &mut store, source)
+        self.cel(corpus, &mut store, source, owner)
     }
 
     /// `body`, one of `corpus`'s, as `variant`: made once, then kept.
@@ -264,12 +269,30 @@ impl Sprites {
 }
 
 impl Paint for Sprites {
-    fn cel(&mut self, corpus: &Corpus, store: &mut Store, source: FrameSource) -> Option<Cel> {
-        let Held { cels, palettes, .. } = self.entries.held(corpus.source());
+    fn cel(
+        &mut self,
+        corpus: &Corpus,
+        store: &mut Store,
+        source: FrameSource,
+        record: Option<Owner>,
+    ) -> Option<Cel> {
+        let Held {
+            cels,
+            sheets,
+            palettes,
+            ..
+        } = self.entries.held(corpus.source());
 
-        cached((cels, palettes), corpus, store, source)
+        cached((cels, sheets, palettes), corpus, store, (source, record))
     }
 }
+
+/// What [`cached`] keeps: cels, sheets, palettes.
+type Kept<'a> = (
+    &'a mut HashMap<(Tile, Option<Owner>), Option<Cel>>,
+    &'a mut HashMap<FourCc, Option<Sheet>>,
+    &'a mut Palettes,
+);
 
 /// The stores a frame's materials are written into, as `map::cel::cel` takes
 /// them.
@@ -284,15 +307,28 @@ fn store<'a>(stores: &'a mut Assets2, quad: Handle<Mesh>) -> Store<'a> {
     }
 }
 
-/// Frame `source`'s materials, made once a tile.
+/// Frame `source`'s materials, made once a tile: on `record`'s sheet,
+/// made the first time it is asked, where that holds the frame; else on
+/// the frame's own texture.
 fn cached(
-    (cels, palettes): (&mut HashMap<Tile, Option<Cel>>, &mut Palettes),
+    (cels, sheets, palettes): Kept,
     corpus: &Corpus,
     store: &mut Store,
-    source: FrameSource,
+    (source, record): (FrameSource, Option<Owner>),
 ) -> Option<Cel> {
-    cels.entry(source.tile()?)
-        .or_insert_with(|| cel::cel(corpus, store, palettes, source))
+    let tile = source.tile()?;
+
+    cels.entry((tile, record))
+        .or_insert_with(|| {
+            let sheet = record.and_then(|(r, set)| {
+                let sheet = sheets.entry(r).or_insert_with(|| Sheet::make(corpus, r));
+
+                Some((sheet.as_mut()?, set))
+            });
+            let framed = sheet.and_then(|(s, set)| s.cel(corpus, store, palettes, (tile, set)));
+
+            framed.or_else(|| cel::cel(corpus, store, palettes, source))
+        })
         .clone()
 }
 
@@ -358,6 +394,7 @@ fn remade(
         sway: body.sway,
         gust: body.gust,
         sampling: body.sampling,
+        on: body.on,
         ..Body::default()
     })
 }

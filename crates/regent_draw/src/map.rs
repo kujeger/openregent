@@ -39,6 +39,7 @@ mod patch;
 pub mod project;
 pub mod redraw;
 pub mod reel;
+pub mod sheet;
 mod source;
 pub mod things;
 

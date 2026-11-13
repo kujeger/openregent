@@ -94,7 +94,7 @@ features no ring cleared, each in its set with its slot and frame
  tick:   owed game time ──> Game::frame per 50 ms ──> World::shown
  ground and scatter: regent_draw's map::redraw::redraw on the Source, BLDG and VHCL off
  a placement: Board::relaid ──> ground::relay: ground and GRND from the world, cleared scatter despawned
- pieces: one entity each, a child per frame, shown by map::reel::show at game time
+ pieces: one entity each, a child per layer, stepped by map::reel::step at game time
 ```
 
 ## Game time and speed

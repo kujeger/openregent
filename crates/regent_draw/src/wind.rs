@@ -380,25 +380,21 @@ pub fn gust_speed(wave: f32) -> f32 {
     GUST_WAVES * wave / GUST
 }
 
-/// Mark `drawings`' materials as `tree`'s: each sways about its foot,
-/// the anchor's height on its quad, by its height and factor.
+/// Mark `drawings`' materials as a tree's: each sways in the wind; each
+/// frame's foot and bend are its instances' (`instance::Lean`).
 pub fn mark(
     drawings: &[Drawing],
-    (tree, trees): (Tree, &Trees),
+    trees: &Trees,
     bodies: &mut Assets<Body>,
     bands: &mut Assets<Band>,
 ) {
     let cels = drawings.iter().flat_map(|d| d.cels.iter().flatten());
+    let shaped = |gust: &mut Gust| {
+        gust.wave = trees.wave;
+        gust.gust_wave = GUST_WAVES * trees.wave;
+    };
 
     for cel in cels {
-        let foot = foot(cel);
-        let shaped = |gust: &mut Gust| {
-            gust.foot = foot;
-            gust.bend = trees.bend(tree, foot, cel.size.y);
-            gust.wave = trees.wave;
-            gust.gust_wave = GUST_WAVES * trees.wave;
-        };
-
         if let Picture::Indexed(body) = &cel.body
             && let Some(mut body) = bodies.get_mut(body)
         {
@@ -522,6 +518,7 @@ mod tests {
             size,
             anchor: Vec2::new(0.0, foot_row - size.y / 2.0),
             tile: (0, 0),
+            frame: crate::instance::Framed::default(),
         }
     }
 

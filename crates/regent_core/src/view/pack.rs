@@ -20,7 +20,7 @@
 //! same on every run and machine.
 
 /// A rectangle in texels, `x`, `y` its top left.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Rect {
     pub x: u32,
     pub y: u32,

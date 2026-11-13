@@ -28,10 +28,12 @@ use std::collections::HashMap;
 
 use bevy::camera::visibility::{RenderLayers, VisibilitySystems};
 use bevy::prelude::*;
+use regent_core::view::pack::Rect as PageRect;
 use regent_core::view::raster::shade::{CONTROL_FIRST, TRANSPARENT};
+use regent_draw::instance::Framed;
 use regent_draw::map::redraw::{GroundSheet, INSET_LAYER};
 use regent_draw::map::things::Thing;
-use regent_draw::material::{Band, Body, Pass};
+use regent_draw::material::{Band, Body, On, Pass};
 use regent_draw::plain::{Lay, Plain};
 use regent_draw::present::texel;
 use regent_draw::ring::Ellipse;
@@ -214,16 +216,31 @@ struct Pixels {
 }
 
 impl Pixels {
-    fn of(image: &Image) -> Option<Pixels> {
+    /// `image`'s pixels in `rect` (a sheet frame's), else all of them.
+    fn of(image: &Image, rect: Option<PageRect>) -> Option<Pixels> {
         let data = image.data.as_ref()?;
-        let colour = data.iter().filter(|i| **i < CONTROL_FIRST).count();
-        let operation = data
+        let across = image.width() as usize;
+        let rect = rect.unwrap_or(PageRect {
+            x: 0,
+            y: 0,
+            w: image.width(),
+            h: image.height(),
+        });
+        let texels: Vec<u8> = (rect.y..rect.y + rect.h)
+            .flat_map(|y| {
+                let at = y as usize * across + rect.x as usize;
+
+                data[at..at + rect.w as usize].iter().copied()
+            })
+            .collect();
+        let colour = texels.iter().filter(|i| **i < CONTROL_FIRST).count();
+        let operation = texels
             .iter()
             .filter(|i| (CONTROL_FIRST..TRANSPARENT).contains(*i))
             .count();
 
         Some(Pixels {
-            all: u32::try_from(data.len()).ok()?,
+            all: u32::try_from(texels.len()).ok()?,
             colour: u32::try_from(colour).ok()?,
             operation: u32::try_from(operation).ok()?,
         })
@@ -250,11 +267,17 @@ fn covered(
         &ViewVisibility,
         &GlobalTransform,
         &MeshMaterial3d<Body>,
+        Option<&Framed>,
         Has<Thing>,
     )>,
-    with_band: Query<(&ViewVisibility, &GlobalTransform, &MeshMaterial3d<Band>)>,
+    with_band: Query<(
+        &ViewVisibility,
+        &GlobalTransform,
+        &MeshMaterial3d<Band>,
+        Option<&Framed>,
+    )>,
     mut frames: Local<u32>,
-    mut known: Local<HashMap<AssetId<Image>, Pixels>>,
+    mut known: Local<HashMap<(AssetId<Image>, Option<PageRect>), Pixels>>,
 ) {
     *frames += 1;
 
@@ -267,11 +290,18 @@ fn covered(
     }
 
     let side = texel(view.zoom, window.scale_factor());
-    let mut pixels = |id: AssetId<Image>| {
-        *known
-            .entry(id)
-            .or_insert_with(|| images.get(id).and_then(Pixels::of).unwrap_or_default())
+    let mut pixels = |id: AssetId<Image>, rect: Option<PageRect>| {
+        *known.entry((id, rect)).or_insert_with(|| {
+            images
+                .get(id)
+                .and_then(|i| Pixels::of(i, rect))
+                .unwrap_or_default()
+        })
     };
+    // A sheet frame's rectangle in its page.
+    // A sheet frame's rectangle in its page; a frame on its own texture
+    // is all of it.
+    let rect_on = |on: On, frame: Option<&Framed>| frame.filter(|_| on == On::Sheet).map(|f| f.0);
 
     // Texels of a unit quad scaled by `at` on screen.
     let area = |at: &GlobalTransform| {
@@ -294,9 +324,9 @@ fn covered(
         sum.1 += drawn * f64::from(texels);
     };
 
-    for (seen, at, material, thing) in &with_body {
+    for (seen, at, material, frame, thing) in &with_body {
         if let (true, Some(body)) = (seen.get(), bodies.get(&material.0)) {
-            let p = pixels(body.indices.id());
+            let p = pixels(body.indices.id(), rect_on(body.on, frame));
             let share = f64::from(p.colour) / f64::from(p.all.max(1));
             let kind = match (body.pass, thing) {
                 (Pass::Glass, _) => "glass",
@@ -309,9 +339,10 @@ fn covered(
         }
     }
 
-    for (seen, at, material) in &with_band {
+    for (seen, at, material, frame) in &with_band {
         if let (true, Some(band)) = (seen.get(), bands.get(&material.0)) {
-            let p = pixels(band.indices.id());
+            let rect = rect_on(band.on, frame);
+            let p = pixels(band.indices.id(), rect);
             let share = f64::from(p.operation) / f64::from(p.all.max(1));
 
             add("bands", area(at), share);

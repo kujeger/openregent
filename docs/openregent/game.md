@@ -970,15 +970,59 @@ by the menus and the panels ([art-service.md](art-service.md)).
 
 The game view's sprites come from the same service's Bevy front end,
 `art::Sprites` (`art::world`), keyed by the same `art::ArtSource`, each
-made once: each tile's materials (an index texture, a palette texture
-shared by tiles naming its palette, `material::Body` and `Band`, or a
-colour material), each piece's layers (`art::world::Piece`), a body's
+made once: each `IMAG` record's sheet (`map::sheet`), each tile's
+materials, each piece's layers (`art::world::Piece`), a body's
 palette swaps (`art::world::Variant`: draw-effect tints, a fading
 particle's glow, the fog's darkening), and the cursor's images. Pieces,
 missiles, effects, particles, rings, the build preview and the map's
 scatter all draw through it (`regent_draw::map::redraw::redraw` takes a
 `map::cel::Paint`; the viewer's own is `Fresh`, made anew each redraw).
 Nothing is scaled ([enhancements.md](enhancements.md)).
+
+A sheet is a record's whole art: **Game** (the user), a unit once
+shown plays nearly all its sets in a game, and a building kind its
+upgrades, each its own record ([formats/art.md](../formats/art.md)).
+Damage and rubble (`Die`, `Dead`, `Crumble`, `Damage`) may never show,
+but go on the same pages: they are 65% of buildings' texels, yet in the
+`g512-late` and `d-battle` perf runs 5.9 and 2.9 MB (`regent_cli
+atlas`).
+
+A sheet holds a record's world sets, each packed when a frame of it
+first draws (`view::pack`, a gutter of index 255) into pages of palette
+indices at most 4096 a side, more pages where one is not enough, with a
+`feet` page beside each that casts a shadow. A frame is decoded once.
+Its materials are the page's: a `Body` a palette and pass (a
+translucent frame's also by mode and level), a `Band` a ramp
+(`material::On::Sheet`).
+
+Every body and band draws on the unit quad. Its `MeshTag` is its row in
+one table on the GPU (`instance::TABLE`, written in place): the row
+holds the frame's rectangle in its page and what the tag held before,
+a body's footing or a band's ground row (`instance::Tag`), and a
+tree's foot and bend for its lean (`instance::Lean`). The shaders
+clamp to the rectangle and read the page there, so a frame draws the
+texels its own texture held. The frame's size and anchor stay on the
+CPU, in its quad's transform.
+
+A drawing's layer is one entity a role for the drawing's life
+(`map::reel::Layer`): its body, a band where any frame casts, a lift
+where any frame is translucent. Each holds the layer's frames (shared,
+`Drawing::cels`) and their `Beat` (first frame, its time, ms a frame; a
+held frame never steps). Where the frame up changes, `reel::step` writes
+the quad's transform (each frame's size and anchor), its rectangle (one
+row), its visibility (hidden on a frame with nothing in its role) and
+its material where it differs. A material made over for one entity (the
+fog's darkening, draw effects, a cast model's band) is its `reel::Own`,
+frame by frame. A piece, missile or effect whose key changes keeps its
+entities, given the new frames (`pieces::lay`); only a layer, band or
+lift the new key has more or fewer of is spawned or despawned
+(`a_turn_spawns_nothing`). A tinted piece is drawn anew.
+
+On their own texture still, a material each (`material::On::Own`): the
+one direct-colour frame (a `Plain`, not indexed), and a model-cast copy
+of a band (`Aloft`: its indices less the pixels a model casts, made per
+piece). The page's indices stay on the CPU, once a page, for
+`perf::hide`'s counts.
 
 Two tests hold the boundary: no other file makes a sprite's materials or
 adds an image, body or band (`only_the_art_service_makes_world_sprites`);
@@ -1179,6 +1223,15 @@ nearest, and each sprite and the ground smooth their own texels
   alike and keep their places relative to each other at any zoom
   (`a_layers_frames_move_alike_at_any_zoom`). At 1× the two agree. A
   tree's foot snaps; its lean stays smooth.
+- Since a frame's rectangle comes from the instance table
+  (`instance::TABLE`), a few pixels of these two modes differ from what
+  a frame's own texture drew: 1 to 85 pixels a 1920 × 1200 view, most one
+  565 step, at most a sprite's edge row a pixel over (up to 144 a
+  channel). The quads' inputs (transform, frame rectangle,
+  footing) are bit for bit the same; only where the GPU puts the
+  snapped quad moves, by a fraction of a pixel. **Inferred**: the
+  driver orders the snap's arithmetic differently once the rectangle is
+  fetched in the vertex stage.
 - Ground patches get `smooth::Sheet` (one linear tap at a warped uv) and a
   one-texel apron of their neighbours (`patch::APRON`), so the blend
   crosses seams. The other modes keep apron-less patches and

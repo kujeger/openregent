@@ -41,6 +41,9 @@ use super::env;
 /// a common desktop one. **Inferred**: the target's UHD 600 takes 8192.
 const LIMITS: [u32; 2] = [4096, 8192];
 
+/// A page side within 25% of [`LIMITS`]' first.
+const SIDE_NEAR: u32 = 3072;
+
 /// wgpu's default `max_texture_array_layers`.
 const ARRAY_LAYERS: usize = 256;
 
@@ -1526,6 +1529,165 @@ fn timing(art: &Art<'_>, gutter: u32) {
     println!("  every tile decoded: {:.0} ms", ms(all));
 }
 
+/// Whether set kind `kind` is damage or rubble: a building's `Die`
+/// stages (fires and wrecked tiles), `Dead`, `Crumble` and `Damage`.
+/// `sim::damage` picks them only as hit points fall; on a character
+/// `Die` and `Dead` are its death and corpse.
+const fn spare(kind: SetKind) -> bool {
+    matches!(
+        kind,
+        SetKind::Die | SetKind::Dead | SetKind::Crumble | SetKind::Damage
+    )
+}
+
+/// One `IMAG` record's tiles: those only its damage and rubble sets
+/// draw, and the rest.
+#[derive(Default)]
+struct Split {
+    spare: BTreeSet<Tile>,
+    rest: BTreeSet<Tile>,
+}
+
+/// Each `IMAG` record's [`Split`], from its set groups.
+fn splits(art: &Art<'_>, keys: &BTreeMap<Key, Shape>) -> BTreeMap<FourCc, Split> {
+    let mut found: BTreeMap<FourCc, Split> = BTreeMap::new();
+
+    for ((image, set, _), tiles) in art.groups(keys.iter(), Grain::Set) {
+        let building = image_kind(art, image) == Kind::Buildings;
+        let split = found.entry(image).or_default();
+
+        // A character's death and corpse show whenever one dies.
+        if building && spare(SetKind::from_id(set)) {
+            split.spare.extend(tiles);
+        } else {
+            split.rest.extend(tiles);
+        }
+    }
+
+    for split in found.values_mut() {
+        split.spare = split.spare.difference(&split.rest).copied().collect();
+    }
+
+    found
+}
+
+/// The kind an `IMAG` record draws: its first unit's.
+fn image_kind(art: &Art<'_>, image: FourCc) -> Kind {
+    art.images
+        .iter()
+        .find(|(_, i)| **i == image)
+        .map_or(Kind::Other, |(code, _)| art.kind(*code))
+}
+
+/// Part A: damage and rubble apart, one page a record, upgrades.
+fn sheets(art: &Art<'_>, runs: &[(&String, Held)], gutter: u32) {
+    let found = splits(art, &art.keys);
+
+    println!(
+        "== a building's damage and rubble (Die, Dead, Crumble, Damage) apart; tiles only they draw"
+    );
+    println!(
+        "  {:<10} {:>9} {:>9} {:>7}",
+        "kind", "rest Mt", "spare Mt", "share"
+    );
+
+    for kind in Kind::ALL {
+        let of: Vec<&Split> = found
+            .iter()
+            .filter(|(i, _)| image_kind(art, **i) == kind)
+            .map(|(_, s)| s)
+            .collect();
+        let rest: u64 = of.iter().map(|s| areas(art, &s.rest).0).sum();
+        let spare: u64 = of.iter().map(|s| areas(art, &s.spare).0).sum();
+
+        if rest + spare > 0 {
+            println!(
+                "  {:<10} {:>9.1} {:>9.1} {:>6.1}%",
+                kind.name(),
+                mega(rest),
+                mega(spare),
+                share(spare, rest + spare)
+            );
+        }
+    }
+
+    for (path, held) in runs {
+        let full: BTreeMap<Key, Shape> = held
+            .keys
+            .iter()
+            .map(|(key, _)| (*key, art.shape(*key, None)))
+            .collect();
+        let touched: BTreeSet<FourCc> = art
+            .groups(full.iter(), Grain::Unit)
+            .keys()
+            .map(|k| k.0)
+            .collect();
+        let spare: BTreeSet<Tile> = touched
+            .iter()
+            .filter_map(|i| found.get(i))
+            .flat_map(|s| s.spare.iter().copied())
+            .collect();
+        let made: BTreeSet<Tile> = spare.intersection(&held.tiles).copied().collect();
+        let back: BTreeSet<Tile> = spare.difference(&made).copied().collect();
+
+        println!(
+            "  {path}: {} records; their damage and rubble {:.1} MB, of which made {:.1} MB, held back {:.1} MB",
+            touched.len(),
+            mega(areas(art, &spare).0),
+            mega(areas(art, &made).0),
+            mega(areas(art, &back).0)
+        );
+    }
+
+    println!("== one page a record (gutter {gutter}, whole tiles): sides past 3072 and 4096");
+
+    for ((image, ..), tiles) in art.groups(art.keys.iter(), Grain::Unit) {
+        let page = texture(art, &tiles, (Grain::Unit, Cut::Whole, gutter));
+        let side = page.width.max(page.height);
+        let rest = found.get(&image).map_or(&tiles, |s| &s.rest);
+        let without = texture(art, rest, (Grain::Unit, Cut::Whole, gutter));
+
+        if side > SIDE_NEAR {
+            println!(
+                "  {image} {:<10} {}x{}{}; without damage and rubble {}x{}",
+                image_kind(art, image).name(),
+                page.width,
+                page.height,
+                if side > LIMITS[0] { " PAST 4096" } else { "" },
+                without.width,
+                without.height
+            );
+        }
+    }
+
+    upgrades(art);
+}
+
+/// Each building with an `UpgradeFrom`: whether its art is its own
+/// `IMAG` record.
+fn upgrades(art: &Art<'_>) {
+    let mut own = 0;
+    let mut shared = Vec::new();
+
+    for (code, unit) in &art.units {
+        let Some(from) = unit.desc.building().and_then(|b| b.upgrade_from()) else {
+            continue;
+        };
+
+        if art.images.get(code) == art.images.get(&from) {
+            shared.push(format!("{from}->{code}"));
+        } else {
+            own += 1;
+        }
+    }
+
+    println!(
+        "== upgrades: {own} buildings with an UpgradeFrom draw their own IMAG record; {} share their base's: {}",
+        shared.len(),
+        shared.join(" ")
+    );
+}
+
 /// The atlas measurement: inventory, trimming, packing, shadows, frame
 /// table and timing over `MAJESTY_HD`'s expansion dataset; then each
 /// `held` run's dump.
@@ -1574,6 +1736,8 @@ pub fn cmd_atlas(gutter: u32, held: &[String]) -> Result<bool, String> {
     for (path, run) in &runs {
         held_report(&art, path, run, gutter);
     }
+
+    sheets(&art, &runs, gutter);
 
     Ok(true)
 }

@@ -31,13 +31,13 @@ use bevy::render::{Render, RenderApp, RenderSystems};
 use bevy::shader::{ShaderDefVal, ShaderRef, load_shader_library};
 use regent_core::view::raster::shade::{CONTROL_FIRST, TRANSPARENT};
 
-use crate::lie;
 use crate::plain::unculled;
 use crate::shadow::Shadows;
 use crate::smooth::{self, Sampling};
 use crate::soft::{self, Ramps};
 use crate::sun::relief;
 use crate::wind::{Gust, Sway};
+use crate::{instance, lie};
 
 /// A tile's colours, looked up through its own palette on the GPU.
 ///
@@ -64,6 +64,11 @@ pub struct Body {
     /// The models' reliefs, every body's the same ([`relief::RELIEF`]).
     #[texture(4, sample_type = "float", filterable = false, dimension = "2d_array")]
     pub relief: Handle<Image>,
+    /// Each instance's row, every body's the same ([`instance::TABLE`]).
+    #[texture(5, sample_type = "u_int")]
+    pub table: Handle<Image>,
+    /// Whether `indices` is a sheet page or the frame's own texture.
+    pub on: On,
 }
 
 impl Default for Body {
@@ -78,6 +83,8 @@ impl Default for Body {
             sampling: Sampling::Nearest,
             stands: relief::STANDS,
             relief: relief::RELIEF,
+            table: instance::TABLE,
+            on: On::Own,
         }
     }
 }
@@ -90,6 +97,7 @@ pub struct Look {
     /// plain pipeline.
     pub sway: Sway,
     pub sampling: Sampling,
+    pub on: On,
 }
 
 /// How a [`Body`] meets what is under it.
@@ -118,6 +126,7 @@ impl From<&Body> for Look {
             pass: body.pass,
             sway: swaying(body.sway, &body.gust),
             sampling: body.sampling,
+            on: body.on,
         }
     }
 }
@@ -166,6 +175,29 @@ impl Material for Body {
     }
 }
 
+/// Where a material's frame is: a rectangle of a sheet page, its
+/// instance's row says which ([`crate::instance`]); or a texture of its
+/// own, all of it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum On {
+    Sheet,
+    #[default]
+    Own,
+}
+
+impl On {
+    /// Its def in both stages: `SHEET` reads the rectangle.
+    fn define(self, descriptor: &mut RenderPipelineDescriptor) {
+        if self == On::Sheet {
+            descriptor.vertex.shader_defs.push("SHEET".into());
+
+            if let Ok(fragment) = descriptor.fragment_mut() {
+                fragment.shader_defs.push("SHEET".into());
+            }
+        }
+    }
+}
+
 impl Body {
     /// [`Material::specialize`]'s work, without Bevy's pipeline: the
     /// compile tests call it.
@@ -180,9 +212,11 @@ impl Body {
             pass,
             sway,
             sampling,
+            on,
         } = look;
 
         unculled(descriptor);
+        on.define(descriptor);
 
         if sway == Sway::Tree {
             descriptor.vertex.shader_defs.push("SWAY".into());
@@ -252,6 +286,11 @@ pub struct Band {
     /// Whether its darkening draws: dropped where a model casts the
     /// shadow instead ([`crate::sun`]); glows draw either way.
     pub painted: Painted,
+    /// Each instance's row, every band's the same ([`instance::TABLE`]).
+    #[texture(4, sample_type = "u_int")]
+    pub table: Handle<Image>,
+    /// Whether `indices` and `feet` are sheet pages or the frame's own.
+    pub on: On,
 }
 
 /// Whether a [`Band`]'s darkening draws.
@@ -271,6 +310,7 @@ pub struct Key {
     pub sway: Sway,
     pub sampling: Sampling,
     pub painted: Painted,
+    pub on: On,
 }
 
 impl From<&Band> for Key {
@@ -281,6 +321,7 @@ impl From<&Band> for Key {
             sway: swaying(band.sway, &band.gust),
             sampling: band.sampling,
             painted: band.painted,
+            on: band.on,
         }
     }
 }
@@ -336,6 +377,7 @@ impl Band {
             sway,
             sampling,
             painted,
+            on,
         } = key;
 
         unculled(descriptor);
@@ -362,6 +404,10 @@ impl Band {
 
             if painted == Painted::Dropped {
                 fragment.shader_defs.push("DROPPED".into());
+            }
+
+            if on == On::Sheet {
+                fragment.shader_defs.push("SHEET".into());
             }
         }
 
@@ -537,6 +583,8 @@ impl bevy::app::Plugin for Plugin {
                 crate::wind::blow,
             ),
         );
+
+        instance::install(app);
 
         // Moved glass, bands and soft bodies in their new place in the
         // order (`sort`).

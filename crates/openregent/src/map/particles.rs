@@ -28,6 +28,7 @@ use bevy::prelude::*;
 use regent_core::view::map::particles::Mote;
 use regent_core::view::raster::blend;
 use regent_draw::data::Corpus;
+use regent_draw::instance::Framed;
 use regent_draw::lie::Footing;
 use regent_draw::map::Maps;
 use regent_draw::map::cel::Picture;
@@ -92,7 +93,6 @@ pub fn motes(
     if motes.at != Some(at) {
         let depth = Depth::of(&maps);
         let live = &frame.motes;
-        let quad = sprites.quad(&mut stores.meshes);
         let mut used = 0;
 
         if motes.ms != Some(reel.ms) {
@@ -112,8 +112,8 @@ pub fn motes(
 
             if let Some(look) = look {
                 match motes.pool.get_mut(used) {
-                    Some(slot) => slot.give(&mut commands, &quad, look),
-                    None => motes.pool.push(Slot::spawn(&mut commands, &quad, look)),
+                    Some(slot) => slot.give(&mut commands, look),
+                    None => motes.pool.push(Slot::spawn(&mut commands, look)),
                 }
 
                 used += 1;
@@ -161,6 +161,8 @@ struct Look {
     body: Picture,
     lift: Option<Handle<Body>>,
     band: Option<Handle<Band>>,
+    /// The quad its parts are drawn on, and its frame's texels.
+    quad: (Handle<Mesh>, Framed),
 }
 
 /// One particle's look: its frame, placed by its anchor. `None` where
@@ -231,6 +233,7 @@ fn look(
         body: glass.map_or(cel.body, Picture::Indexed),
         lift,
         band,
+        quad: (sprites.quad(&mut stores.meshes), cel.frame),
     })
 }
 
@@ -244,6 +247,7 @@ struct Slot {
     body: (Entity, Picture),
     lift: Option<Part<Body>>,
     band: Option<Part<Band>>,
+    quad: (Handle<Mesh>, Framed),
 }
 
 /// A pooled part: its entity, and its material while shown.
@@ -255,7 +259,7 @@ struct Part<M: Material> {
 impl Slot {
     /// A new slot drawing `look`: a parent and its parts, as spawned
     /// before the pool.
-    fn spawn(commands: &mut Commands, quad: &Handle<Mesh>, look: Look) -> Slot {
+    fn spawn(commands: &mut Commands, look: Look) -> Slot {
         let Look {
             place,
             footing,
@@ -263,7 +267,9 @@ impl Slot {
             body,
             lift,
             band,
+            quad,
         } = look;
+        let shape = (&quad.0, quad.1);
         // `Visibility` too: its cels inherit it.
         let parent = commands
             .spawn((
@@ -274,13 +280,14 @@ impl Slot {
             .id();
         let body_part = match &body {
             Picture::Indexed(body) => commands.spawn((
-                Mesh3d(quad.clone()),
+                Mesh3d(quad.0.clone()),
+                quad.1,
                 MeshMaterial3d(body.clone()),
                 put,
                 ChildOf(parent),
             )),
             Picture::Colour(colour) => commands.spawn((
-                Mesh3d(quad.clone()),
+                Mesh3d(quad.0.clone()),
                 MeshMaterial3d(colour.clone()),
                 put,
                 ChildOf(parent),
@@ -293,13 +300,14 @@ impl Slot {
             shown: true,
             put,
             body: (body_part, body),
-            lift: lift.map(|m| Part::spawn(commands, quad, (parent, put), m)),
-            band: band.map(|m| Part::spawn(commands, quad, (parent, put), m)),
+            lift: lift.map(|m| Part::spawn(commands, shape, (parent, put), m)),
+            band: band.map(|m| Part::spawn(commands, shape, (parent, put), m)),
+            quad: quad.clone(),
         }
     }
 
     /// The slot drawing `look` in place of what it drew.
-    fn give(&mut self, commands: &mut Commands, quad: &Handle<Mesh>, look: Look) {
+    fn give(&mut self, commands: &mut Commands, look: Look) {
         let mut parent = commands.entity(self.parent);
 
         parent.insert((Transform::from_translation(look.place), look.footing));
@@ -332,7 +340,18 @@ impl Slot {
             }
         }
 
-        // The parts share the frame's place on the parent.
+        // The parts share the frame's place and texels on the parent.
+        if self.quad.1 != look.quad.1 {
+            let lift = self.lift.as_ref().map(|p| p.entity);
+            let band = self.band.as_ref().map(|p| p.entity);
+
+            for part in std::iter::once(*entity).chain(lift).chain(band) {
+                commands.entity(part).insert(look.quad.1);
+            }
+
+            self.quad.1 = look.quad.1;
+        }
+
         if self.put != look.put {
             let lift = self.lift.as_ref().map(|p| p.entity);
             let band = self.band.as_ref().map(|p| p.entity);
@@ -348,14 +367,14 @@ impl Slot {
         Part::give(
             &mut self.lift,
             commands,
-            quad,
+            (&self.quad.0, self.quad.1),
             (self.parent, self.put),
             look.lift,
         );
         Part::give(
             &mut self.band,
             commands,
-            quad,
+            (&self.quad.0, self.quad.1),
             (self.parent, self.put),
             look.band,
         );
@@ -374,13 +393,14 @@ impl<M: Material> Part<M> {
     /// A part drawing `material` at `put` on `parent`.
     fn spawn(
         commands: &mut Commands,
-        quad: &Handle<Mesh>,
+        (quad, frame): (&Handle<Mesh>, Framed),
         (parent, put): (Entity, Transform),
         material: Handle<M>,
     ) -> Part<M> {
         let entity = commands
             .spawn((
                 Mesh3d(quad.clone()),
+                frame,
                 MeshMaterial3d(material.clone()),
                 put,
                 ChildOf(parent),
@@ -397,7 +417,7 @@ impl<M: Material> Part<M> {
     fn give(
         part: &mut Option<Part<M>>,
         commands: &mut Commands,
-        quad: &Handle<Mesh>,
+        quad: (&Handle<Mesh>, Framed),
         on: (Entity, Transform),
         material: Option<Handle<M>>,
     ) {

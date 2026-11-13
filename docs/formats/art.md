@@ -655,6 +655,10 @@ both.
 `Hotspot` on most. The save names the set each object draws, so a renderer never
 chooses — see [saves.md](saves.md).
 
+**Corpus**: an upgraded building names its own `IMAG` record: all 25
+with an `UpgradeFrom` in the expansion dataset's archives
+(`an_upgrade_draws_its_own_art`).
+
 54 of 60 records with both draw two different pictures. The six that do not
 include all three Palaces. `ABH3 Marketplace3`: `Active` adds stall awnings and
 pennants. `a_buildings_two_pictures_are_two_pictures_bar_six`.

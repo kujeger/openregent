@@ -178,7 +178,8 @@ fn update(app: &mut App) {
                 .in_set(Frame::Step),
             (
                 mirror::check.run_if(mirror::checking),
-                map::reel::show,
+                map::reel::step,
+                effects::speak,
                 perf::ground_began,
                 map::redraw::redraw::<regent_draw::art::Sprites>,
                 perf::ground_ended,

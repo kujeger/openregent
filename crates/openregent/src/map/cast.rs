@@ -1,7 +1,8 @@
 //! The buildings that cast from a model (`[enhancements] cast =
 //! "models"`, `regent_draw::sun`): each finished one with a model, shown,
-//! handed to the bake; its painted shadow dropped, and its bodies kept
-//! from its own model's shadow.
+//! handed to the bake; its painted shadow dropped (each band frame's a
+//! copy without its ground shadow: the layer's [`Own`]), and its bodies
+//! kept from its own model's shadow.
 //!
 //! ```text
 //!  O   a debug key ([enhancements] debug_keys; a cheat), while models cast: their
@@ -14,7 +15,8 @@ use bevy::prelude::*;
 
 use regent_draw::lie::Footing;
 use regent_draw::map::Maps;
-use regent_draw::material::{Band, Body, Painted};
+use regent_draw::map::reel::{Own, Role, Stepped};
+use regent_draw::material::{Band, Painted};
 use regent_draw::sun::bare::Sprites;
 use regent_draw::sun::model::Proxies;
 use regent_draw::sun::{Casters, Casting, Casts, Sun};
@@ -26,22 +28,9 @@ use crate::game::seen::Watch;
 use crate::map::pieces::{Keyed, Piece};
 
 /// On a body [`casting`] hid: on no render layer, so no camera draws it,
-/// its frame cycle left alone.
+/// its frames left stepping.
 #[derive(Component)]
 pub(crate) struct Unshown;
-
-/// On a band [`casting`] replaced by a copy without its darkening: the
-/// tile's own band, to go back to. Bands are cached by tile and the placing
-/// preview draws a finished building's tile with no model behind it, so a
-/// piece cannot change the band itself.
-#[derive(Component)]
-pub(crate) struct Shared(Handle<Band>);
-
-/// On a band whose tile holds a part's darkening: the tile without its
-/// ground shadow, to draw while a model casts
-/// ([`Cel::aloft`](regent_draw::map::cel::Cel::aloft)).
-#[derive(Component)]
-pub(crate) struct Aloft(pub(crate) regent_draw::map::cel::Aloft);
 
 /// O hides the sprites of the buildings casting from a model, or draws
 /// them again, with `[enhancements] debug_keys`, while models cast: a
@@ -78,22 +67,8 @@ type Drawn = (
     Has<Casts>,
 );
 
-/// A piece's parts [`casting`] reads: its bands, copied or not, and its
-/// bodies, hidden or not.
-type Parts<'w, 's> = (
-    Query<
-        'w,
-        's,
-        (
-            &'static MeshMaterial3d<Band>,
-            Option<&'static Shared>,
-            Option<&'static Aloft>,
-        ),
-    >,
-    Query<'w, 's, Has<Unshown>, With<MeshMaterial3d<Body>>>,
-);
-
-/// The casters, once a frame, after the pieces are placed.
+/// The casters, once a frame, after the pieces are placed: each one's
+/// bands made over or not, its bodies hidden or not.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -102,7 +77,7 @@ pub(crate) fn casting(
     mut commands: Commands,
     (sun, proxies, maps): (Res<Sun>, Res<Proxies>, Res<Maps>),
     pieces: Query<Drawn, With<Piece>>,
-    (bands, bodies): Parts,
+    mut parts: Query<(Stepped, Has<Unshown>), Without<Piece>>,
     sprites: Res<Sprites>,
     mut materials: ResMut<Assets<Band>>,
     mut casters: ResMut<Casters>,
@@ -136,50 +111,41 @@ pub(crate) fn casting(
             _ => {}
         }
 
-        // Its bands' darkening drawn, or dropped for the model's.
-        for child in children.into_iter().flatten() {
-            match (casts, bands.get(*child)) {
-                (true, Ok((band, None, aloft))) => {
-                    if let Some(copy) = materials.get(&band.0).cloned() {
-                        // A part's darkening stays; the ground's goes.
-                        let copy = materials.add(match aloft {
-                            Some(aloft) => Band {
-                                indices: aloft.0.indices.clone(),
-                                feet: aloft.0.feet.clone(),
-                                ..copy
-                            },
-                            None => Band {
-                                painted: Painted::Dropped,
-                                ..copy
-                            },
-                        });
-
-                        commands
-                            .entity(*child)
-                            .insert((MeshMaterial3d(copy), Shared(band.0.clone())));
-                    }
-                }
-                (false, Ok((_, Some(shared), _))) => {
-                    commands
-                        .entity(*child)
-                        .insert(MeshMaterial3d(shared.0.clone()))
-                        .remove::<Shared>();
-                }
-                _ => {}
-            }
-        }
-
-        // Its sprite hidden by the debug key, or drawn.
+        // Its bands' darkening drawn, or dropped for the model's; its
+        // sprite hidden by the debug key, or drawn.
         let hide = casts && *sprites == Sprites::Hidden;
 
         for child in children.into_iter().flatten() {
-            match (hide, bodies.get(*child)) {
-                (true, Ok(false)) => {
+            let Ok((mut layer, unshown)) = parts.get_mut(*child) else {
+                continue;
+            };
+
+            match (layer.layer.role, casts, layer.own.1.is_some()) {
+                (Role::Band, true, false) => {
+                    let own = Own(layer
+                        .layer
+                        .cels()
+                        .iter()
+                        .map(|cel| dropped(cel.as_ref()?, &mut materials))
+                        .collect());
+
+                    layer.repaint((None, Some(&own)), &mut commands);
+                    commands.entity(*child).insert(own);
+                }
+                (Role::Band, false, true) => {
+                    layer.repaint((None, None), &mut commands);
+                    commands.entity(*child).remove::<Own<Band>>();
+                }
+                _ => {}
+            }
+
+            match (layer.layer.role, hide, unshown) {
+                (Role::Body, true, false) => {
                     commands
                         .entity(*child)
                         .insert((Unshown, RenderLayers::none()));
                 }
-                (false, Ok(true)) => {
+                (Role::Body, false, true) => {
                     commands.entity(*child).remove::<(Unshown, RenderLayers)>();
                 }
                 _ => {}
@@ -190,6 +156,29 @@ pub(crate) fn casting(
     casters.set_if_neq(Casters(now));
 }
 
+/// Frame `cel`'s band while a model casts: a copy of its own, drawing a
+/// part's darkening alone ([`Cel::aloft`](regent_draw::map::cel::Cel::aloft)),
+/// else none of the ground's. Bands are shared by a page's frames and
+/// the placing preview draws a finished building with no model behind
+/// it, so the band itself is left alone.
+fn dropped(cel: &regent_draw::map::cel::Cel, materials: &mut Assets<Band>) -> Option<Handle<Band>> {
+    let copy = materials.get(cel.band.as_ref()?)?.clone();
+    let made = match &cel.aloft {
+        Some(aloft) => Band {
+            indices: aloft.indices.clone(),
+            feet: aloft.feet.clone(),
+            on: aloft.on,
+            ..copy
+        },
+        None => Band {
+            painted: Painted::Dropped,
+            ..copy
+        },
+    };
+
+    Some(materials.add(made))
+}
+
 #[cfg(test)]
 mod tests {
     use bevy::ecs::system::RunSystemOnce;
@@ -197,21 +186,48 @@ mod tests {
     use regent_core::data::imag::SetKind;
     use regent_core::data::tile::Mode;
     use regent_draw::lie;
+    use regent_draw::material::On;
     use regent_draw::shadow::Shadows;
     use regent_draw::smooth::Sampling;
     use regent_draw::soft::Ramps;
     use regent_draw::sun::Cast;
     use regent_draw::wind::{Gust, Sway};
 
+    use std::sync::Arc;
+
+    use regent_draw::instance::Framed;
+    use regent_draw::map::cel::{Aloft, Cel, Picture};
+    use regent_draw::map::reel::{Beat, Layer, dress};
+
     use super::*;
 
     use crate::testdata::{GUARDHOUSE, proxies};
 
-    /// A piece of the guardhouse drawing `set`, with `band` as its one band.
-    fn piece(world: &mut World, agent: u32, set: SetKind, band: Handle<Band>) -> Entity {
+    /// A piece of the guardhouse drawing `set`, with a band layer of one
+    /// frame, drawing `band`, its part's darkening `aloft`.
+    fn piece(
+        world: &mut World,
+        (agent, set): (u32, SetKind),
+        (band, aloft): (Handle<Band>, Option<Aloft>),
+    ) -> Entity {
         let set = set.id().try_into().expect("small");
-
-        world
+        let cel = Cel {
+            body: Picture::Indexed(Handle::default()),
+            band: Some(band),
+            aloft,
+            lift: None,
+            size: Vec2::ONE,
+            anchor: Vec2::ZERO,
+            tile: (0, 0),
+            frame: Framed::default(),
+        };
+        let layer = Layer::new(
+            Arc::from([Some(cel)]),
+            Role::Band,
+            Beat::runs(0, 1),
+            Vec2::ZERO,
+        );
+        let piece = world
             .spawn((
                 Piece(agent),
                 Keyed((GUARDHOUSE, set, 0)),
@@ -222,8 +238,13 @@ mod tests {
                 Transform::default(),
                 Visibility::Inherited,
             ))
-            .with_child(MeshMaterial3d(band))
-            .id()
+            .id();
+        let mut commands = world.commands();
+        let mut part = commands.spawn(ChildOf(piece));
+
+        dress(&mut part, layer, 0, 0.0);
+        world.flush();
+        piece
     }
 
     /// A band of the guardhouse, its tile drawn from `indices`.
@@ -238,6 +259,8 @@ mod tests {
             feet: Handle::default(),
             sampling: Sampling::Nearest,
             painted: Painted::Kept,
+            table: regent_draw::instance::TABLE,
+            on: On::Own,
         }
     }
 
@@ -280,17 +303,19 @@ mod tests {
                 feet: Handle::default(),
                 sampling: Sampling::Nearest,
                 painted: Painted::Kept,
+                table: regent_draw::instance::TABLE,
+                on: On::Own,
             });
             let world = app.world_mut();
 
             let (damaged, finished) = if damaged_first {
-                let damaged = piece(world, 1, SetKind::Build, band.clone());
+                let damaged = piece(world, (1, SetKind::Build), (band.clone(), None));
 
-                (damaged, piece(world, 2, SetKind::Inactive, band))
+                (damaged, piece(world, (2, SetKind::Inactive), (band, None)))
             } else {
-                let finished = piece(world, 1, SetKind::Inactive, band.clone());
+                let finished = piece(world, (1, SetKind::Inactive), (band.clone(), None));
 
-                (piece(world, 2, SetKind::Build, band), finished)
+                (piece(world, (2, SetKind::Build), (band, None)), finished)
             };
 
             world.run_system_once(casting).expect("ran");
@@ -337,15 +362,14 @@ mod tests {
             .resource_mut::<Assets<Band>>()
             .add(band(tile.clone()));
         let world = app.world_mut();
-        let building = piece(world, 1, SetKind::Inactive, shared);
+        let aloft = Aloft {
+            indices: flag.clone(),
+            feet: Handle::default(),
+            on: On::Own,
+        };
+        let building = piece(world, (1, SetKind::Inactive), (shared, Some(aloft)));
         let child = world.get::<Children>(building).expect("a band")[0];
 
-        world
-            .entity_mut(child)
-            .insert(Aloft(regent_draw::map::cel::Aloft {
-                indices: flag.clone(),
-                feet: Handle::default(),
-            }));
         world.run_system_once(casting).expect("ran");
         world.flush();
 

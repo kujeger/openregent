@@ -147,18 +147,27 @@ pub enum Churn {
     Spawned,
     /// Entities with a `Transform` despawned.
     Despawned,
-    /// Pieces drawn anew, their key changed (`map::pieces`).
+    /// Pieces despawned and drawn anew as their key changed: a tinted
+    /// one's (`map::pieces`).
     Respawns,
-    /// Missiles drawn anew (`map::pieces::missiles`).
+    /// Drawings given a new key's frames in their own entities: pieces,
+    /// missiles and effects (`map::pieces::lay`).
+    Rekeys,
+    /// Missiles drawn the first time (`map::pieces::missiles`).
     Missiles,
+    /// Pieces whose new key takes a body material the old did not:
+    /// another sheet page, palette or pass (`map::pieces`).
+    Swaps,
 }
 
 impl Churn {
-    const ALL: [Churn; 4] = [
+    const ALL: [Churn; 6] = [
         Churn::Spawned,
         Churn::Despawned,
         Churn::Respawns,
+        Churn::Rekeys,
         Churn::Missiles,
+        Churn::Swaps,
     ];
 
     const fn name(self) -> &'static str {
@@ -166,7 +175,9 @@ impl Churn {
             Churn::Spawned => "spawned",
             Churn::Despawned => "despawned",
             Churn::Respawns => "respawns",
+            Churn::Rekeys => "rekeys",
             Churn::Missiles => "missiles",
+            Churn::Swaps => "swaps",
         }
     }
 }
@@ -476,11 +487,11 @@ fn ended(mut drawn: ResMut<Drawn>, entities: Query<()>, meshes: Meshes) {
         named(what.name(), f64::from(n));
     }
 
-    let [spawned, despawned, respawns, missiles] = churned;
+    let [spawned, despawned, respawns, rekeys, missiles, swaps] = churned;
 
     debug!(
         target: TARGET,
-        "frame {} main {:.3} interval {:.3} spawned {spawned} despawned {despawned} respawns {respawns} missiles {missiles}",
+        "frame {} main {:.3} interval {:.3} spawned {spawned} despawned {despawned} respawns {respawns} rekeys {rekeys} missiles {missiles} swaps {swaps}",
         drawn.total,
         main.unwrap_or(0.0),
         interval.unwrap_or(0.0)

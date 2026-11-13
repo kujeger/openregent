@@ -134,9 +134,12 @@ fn spawn(
         .as_ref()
         .and_then(|u| ring::fitted(&corpus.catalogue, u, look(p.placement), Fit::Clearing).ok()?);
     let native = ring.and_then(|r| rings::native(corpus, ellipses, &r, with));
-    let ring = ring
-        .filter(|_| native.is_none())
-        .and_then(|r| Some((r.at, sprites.frame(corpus, stores, r.frame)?)));
+    let ring = ring.filter(|_| native.is_none()).and_then(|r| {
+        Some((
+            r.at,
+            sprites.frame(corpus, stores, (r.frame, Some(r.owner())))?,
+        ))
+    });
     let layers = unit.as_ref().map(|u| {
         let set = u
             .initial()
@@ -168,7 +171,7 @@ fn spawn(
         #[allow(clippy::cast_precision_loss, reason = "screen pixels")]
         let at = Vec2::new(offset.0 as f32, -(offset.1 as f32)) - cel.anchor;
 
-        quads(commands, parent, &quad, &cel, at.extend(-LAYER_STEP));
+        quads(commands, (parent, &quad), &cel, at.extend(-LAYER_STEP));
     }
 
     let layers = layers.unwrap_or_default();
@@ -180,8 +183,7 @@ fn spawn(
         if let Some(Some(cel)) = drawing.cels.first() {
             quads(
                 commands,
-                parent,
-                &quad,
+                (parent, &quad),
                 cel,
                 (base - cel.anchor).extend(nth as f32 * LAYER_STEP),
             );
@@ -191,11 +193,11 @@ fn spawn(
     parent
 }
 
-/// One frame's body, lift and shadow quads under `parent`, at `at`.
+/// One frame's body, lift and shadow quads under `parent`, at `at`, on
+/// `quad`.
 fn quads(
     commands: &mut Commands,
-    parent: Entity,
-    quad: &Handle<Mesh>,
+    (parent, quad): (Entity, &Handle<Mesh>),
     cel: &map::cel::Cel,
     at: Vec3,
 ) {
@@ -209,6 +211,7 @@ fn quads(
         Picture::Indexed(body) => {
             commands.spawn((
                 Mesh3d(quad.clone()),
+                cel.frame,
                 MeshMaterial3d(body.clone()),
                 put,
                 ChildOf(parent),
@@ -217,6 +220,7 @@ fn quads(
         Picture::Colour(colour) => {
             commands.spawn((
                 Mesh3d(quad.clone()),
+                cel.frame,
                 MeshMaterial3d(colour.clone()),
                 put,
                 ChildOf(parent),
@@ -227,6 +231,7 @@ fn quads(
     if let Some(lift) = &cel.lift {
         commands.spawn((
             Mesh3d(quad.clone()),
+            cel.frame,
             MeshMaterial3d(lift.clone()),
             put,
             ChildOf(parent),
@@ -236,6 +241,7 @@ fn quads(
     if let Some(band) = &cel.band {
         commands.spawn((
             Mesh3d(quad.clone()),
+            cel.frame,
             MeshMaterial3d(band.clone()),
             put,
             ChildOf(parent),

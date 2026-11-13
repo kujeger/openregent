@@ -36,18 +36,18 @@
 //!
 //! [`Depth`] is not linear in the row, so the shader looks it up in a
 //! table of rows ([`ROWS`], [`PER_CELL`] samples a cell), and each band's
-//! [`MeshTag`] holds the ground row at its quad's top, from the
+//! [`Tag`] holds the ground row at its quad's top, from the
 //! [`Footing`] of its caster ([`tag`]).
 
 use bevy::asset::{RenderAssetUsages, uuid_handle};
 use bevy::image::ImageSampler;
-use bevy::mesh::MeshTag;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use regent_core::data::settings::SQUASH;
 use regent_core::view::raster::shade::{CONTROL_FIRST, TRANSPARENT};
 
 use crate::cull::Parked;
+use crate::instance::Tag;
 use crate::map::Maps;
 use crate::map::depth::{Depth, FURTHEST};
 use crate::material::Band;
@@ -84,13 +84,13 @@ pub fn top_row(footing: Footing, top: f32) -> f32 {
     footing.row + (footing.ground - top) / ROW
 }
 
-/// A row as a [`MeshTag`]: its bits, where 0 is no footing; a row of
+/// A row as a [`Tag`]: its bits, where 0 is no footing; a row of
 /// exactly 0 is written as −0.
 #[must_use]
-pub fn encode(row: f32) -> MeshTag {
+pub fn encode(row: f32) -> Tag {
     let row = if row == 0.0 { -0.0 } else { row };
 
-    MeshTag::new(row.to_bits())
+    Tag(row.to_bits())
 }
 
 /// Whether index `index` darkens under `ramps`: a band index whose
@@ -288,10 +288,10 @@ type Banded = (
     &'static Transform,
     Option<&'static Footing>,
     Option<&'static ChildOf>,
-    Option<&'static MeshTag>,
+    Option<&'static Tag>,
 );
 
-/// Each band's [`MeshTag`]: the ground row at its quad's top, from its
+/// Each band's [`Tag`]: the ground row at its quad's top, from its
 /// own [`Footing`] or its parent's. A band with neither keeps none, and
 /// falls as its caster's. A parked band
 /// ([`crate::cull`]) keeps its tag until it comes out.
@@ -434,7 +434,7 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp, reason = "the same bits back")]
     fn row_zero_is_tagged() {
-        assert_ne!(encode(0.0), MeshTag::new(0));
-        assert_eq!(f32::from_bits(encode(2.5).value), 2.5);
+        assert_ne!(encode(0.0), Tag(0));
+        assert_eq!(f32::from_bits(encode(2.5).0), 2.5);
     }
 }

@@ -47,8 +47,11 @@ The game's own timers are opt-in: `MAJ_PERF=1`
   `meshes`, `visible`);
 - each drawn frame's churn (`perf::Churn`): entities with a `Transform`
   spawned and despawned (`spawned`, `despawned`, by observers), pieces
-  drawn anew as their key changed (`respawns`, `map::pieces`) and
-  missiles drawn anew (`missiles`). With `RUST_LOG=warn,maj_perf=debug`,
+  despawned and drawn anew as their key changed (`respawns`: a tinted
+  piece's), drawings given a new key's frames in their own entities
+  (`rekeys`), pieces whose new key takes a body material the old did
+  not (`swaps`: another sheet page, palette or pass) and missiles drawn
+  the first time (`missiles`). With `RUST_LOG=warn,maj_perf=debug`,
   a line a frame sets its number, main and interval ms beside its churn.
 
 Each series logs `n`, `mean`, `p50` (median), `p99`, `max` and its samples
@@ -289,18 +292,22 @@ each frame:
   (`minimap::Cache::changed`).
 - `lie::tag` tags no parked band; one coming out is tagged that frame
   (after `cull`).
-- An ended effect's drawing is parked, not despawned (`map::effects::Pool`):
-  it and its parts `Disabled`, so out of every query and every per-frame
-  pass. An effect of the same mold (key, held frames, amount or not) takes
-  one back: its place, frames' start, amount and tie order (`map::tie`)
-  set anew. Every hero in
-  an area shares a kill's gold, so dozens of `Got_Gold` start at once.
-  Bounded a mold and in all (`MOLD`, `POOL`); despawned as the game ends,
-  which the teardown's queries do not see. Nothing changes a parked
-  drawing, so `Disabled`'s cost below does not apply.
-- A flying missile keeps its drawing (`map::pieces::missiles`): moved each
-  frame, its shadow parts kept on the ground under it; drawn anew only as
-  its picture's key or launch changes.
+- A drawing's layer is one entity for the drawing's life
+  (`map::reel::Layer`): a frame step writes its quad's transform, one
+  instance row and, where it differs, its material; nothing is spawned
+  or hidden to animate. `reel::step` visits only the layers that run
+  (`reel::Runs`: more than one frame, not held), so still scatter is
+  never visited. A piece, missile or effect whose key changes keeps its
+  entities, given the new frames (`map::pieces::lay`). Against an
+  entity a frame: a late 512-cell game has 1,530 fewer entities and 4%
+  fewer instructions; the battle spawns 84% fewer and takes 16% fewer
+  instructions at 1x.
+- An ended effect's drawing is despawned: parking it for the next
+  effect of its kind saves no instructions once a drawing is a few
+  entities (the battle at 1x: 41.87 G parked, 41.75 G not).
+- A flying missile keeps its drawing (`map::pieces::missiles`): moved
+  each frame, its shadow layers kept on the ground under it; a new
+  picture or launch gives the same entities new frames.
 - A soft band's fragment reads its run's foot from `Band::feet`, made on
   the CPU with the band (`lie::feet`), in place of searching the column
   below it.
@@ -388,7 +395,7 @@ Left as they are:
 - Bevy's `Disabled`: hidden from every query, a parked thing would need
   `Allow<Disabled>` in each system that changes it while far
   (`ground::relay` moves and despawns, `fog::scatter` hides and darkens,
-  `map::redraw::redraw` despawns, `map::reel::animate` cycles), and each
+  `map::redraw::redraw` despawns, `map::reel::step` steps), and each
   change marked again on the way back (transform, mesh, material,
   visibility), or Bevy's passes miss it; the saving is small.
 - `material::Body` bindless (`#[bindless]`, indices `R8Unorm` read as

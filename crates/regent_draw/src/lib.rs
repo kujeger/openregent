@@ -22,6 +22,7 @@ pub mod compose;
 pub mod cull;
 pub mod data;
 pub mod frame;
+pub mod instance;
 pub mod lie;
 pub mod map;
 pub mod material;

@@ -53,12 +53,13 @@ use crate::input::{Clicks, Press};
 use crate::map::cursor::{Hover, SideHover};
 use crate::map::effects::{EffectDrawn, Effects, Hung};
 use crate::map::mirror::Pieces;
-use crate::map::pieces::{Piece, Shows, Under};
+use crate::map::pieces::{Hits, Piece, Under};
 use crate::map::rings::{self, Native};
 use crate::ui::tracking::Tracking;
 use crate::ui::{Covered, on_map};
 use crate::{map::hp_bars, map::labels};
 use regent_draw::art::{Assets2, Sprites};
+use regent_draw::map::reel::Layer;
 
 /// The selected piece, by agent.
 #[derive(Resource, Default)]
@@ -276,7 +277,7 @@ pub struct Picker<'w, 's> {
             &'static Under,
         ),
     >,
-    frames: Query<'w, 's, (&'static Shows, &'static Transform, &'static Visibility)>,
+    frames: Query<'w, 's, (&'static Layer, &'static Transform, &'static Visibility), With<Hits>>,
     /// Effects drawn, by handle: message flags among them.
     hung: Res<'w, Hung>,
     effects: Res<'w, Effects>,
@@ -389,7 +390,7 @@ impl Picker<'_, '_> {
                     .iter()
                     .filter_map(|c| self.frames.get(c).ok())
                     .filter(|(.., shown)| **shown != Visibility::Hidden)
-                    .map(|(shows, put, _)| (shows.0, rect_of(put)))
+                    .filter_map(|(layer, put, _)| Some((layer.cel()?.tile, rect_of(put))))
                     .collect();
                 let seen = (
                     handle,
@@ -416,7 +417,7 @@ impl Picker<'_, '_> {
                     .iter()
                     .filter_map(|c| self.frames.get(c).ok())
                     .filter(|(.., shown)| **shown != Visibility::Hidden)
-                    .map(|(shows, put, _)| (shows.0, rect_of(put)))
+                    .filter_map(|(layer, put, _)| Some((layer.cel()?.tile, rect_of(put))))
                     .collect();
 
                 (at.z, (piece.0, Vec2::new(at.x, -at.y), tiles, *under))
@@ -669,7 +670,7 @@ struct Glow {
 /// A ring's quads: the art's frame, or its band.
 #[derive(Clone)]
 enum Quads {
-    Art(Glow),
+    Art(Box<Glow>),
     Native(Native, Handle<Mesh>),
 }
 
@@ -705,7 +706,7 @@ pub fn follow(
     mut ellipses: ResMut<Assets<Ellipse>>,
     seen: Watch,
     pieces: Query<(&Transform, &Visibility, &Under, &Children), (With<Piece>, Without<Ring>)>,
-    frames: Query<(&Shows, &Transform, &Visibility), Without<Ring>>,
+    frames: Query<(&Layer, &Transform, &Visibility), (With<Hits>, Without<Ring>)>,
     mut drawn: Query<(&mut Transform, &mut Visibility), With<Ring>>,
 ) {
     let under = |agent: Option<u32>| {
@@ -793,7 +794,8 @@ pub fn follow(
                     (code, look, fit, (with, side)),
                 );
                 let quads = banded.or_else(|| {
-                    glow(&corpus, (&mut sprites, &mut stores), (code, look, fit)).map(Quads::Art)
+                    glow(&corpus, (&mut sprites, &mut stores), (code, look, fit))
+                        .map(|g| Quads::Art(Box::new(g)))
                 });
                 let entity = spawn(&mut commands, quads, at);
 
@@ -855,7 +857,7 @@ fn glow(
 ) -> Option<Glow> {
     let unit = Unit::find(&corpus.catalogue, code)?.ok()?;
     let ring = ring::fitted(&corpus.catalogue, &unit, look, fit).ok()??;
-    let cel = sprites.frame(corpus, stores, ring.frame)?;
+    let cel = sprites.frame(corpus, stores, (ring.frame, Some(ring.owner())))?;
     let put = Transform {
         translation: offset(ring.at, cel.anchor).extend(0.0),
         scale: cel.size.extend(1.0),
@@ -915,8 +917,9 @@ fn spawn(commands: &mut Commands, quads: Option<Quads>, at: (Vec3, Visibility, U
         }
     }
 
-    if let Some(Quads::Art(Glow { cel, put, quad })) = quads {
-        let quad = Mesh3d(quad);
+    if let Some(Quads::Art(glow)) = quads {
+        let Glow { cel, put, quad } = *glow;
+        let quad = (Mesh3d(quad), cel.frame);
 
         match cel.body {
             Picture::Indexed(body) => {

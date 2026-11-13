@@ -50,6 +50,7 @@ use regent_core::data::fourcc::FourCc;
 
 use crate::cull::Parked;
 use crate::frame;
+use crate::instance::Tag;
 use crate::lie::Footing;
 use crate::map::Maps;
 use crate::material::Body;
@@ -172,13 +173,13 @@ pub struct Casters(pub Vec<Casting>);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Casts;
 
-/// A body's flat ground point's world height as its [`MeshTag`]: the
+/// A body's flat ground point's world height as its [`Tag`]: the
 /// bits, where 0 is none; a height of exactly 0 is written as −0.
 #[must_use]
-pub fn stand(ground: f32) -> MeshTag {
+pub fn stand(ground: f32) -> Tag {
     let ground = if ground == 0.0 { -0.0 } else { ground };
 
-    MeshTag::new(ground.to_bits())
+    Tag(ground.to_bits())
 }
 
 /// The sun.
@@ -573,10 +574,10 @@ type Standing = (
     Entity,
     Option<&'static Footing>,
     Option<&'static ChildOf>,
-    Option<&'static MeshTag>,
+    Option<&'static Tag>,
 );
 
-/// Each body's [`MeshTag`] while models cast: on a casting building's
+/// Each body's [`Tag`] while models cast: on a casting building's
 /// piece its slot ([`relief::model_tag`]), so it takes the other models'
 /// shadows, not its own; else its footing, its own or its parent's, as
 /// [`stand`] packs it; none (0) without one, or on a building past the
@@ -616,7 +617,7 @@ fn stood(
         let tag = match (slot, footing) {
             (Some(slot), _) => relief::model_tag(*slot),
             (None, Some(f)) => stand(maps.flat_y(f.row)),
-            (None, None) => MeshTag::new(0),
+            (None, None) => Tag(0),
         };
 
         if had != Some(&tag) {
@@ -704,8 +705,8 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp, reason = "the same bits back")]
     fn height_zero_is_tagged() {
-        assert_ne!(stand(0.0).value, 0);
-        assert_eq!(f32::from_bits(stand(-12.5).value), -12.5);
+        assert_ne!(stand(0.0).0, 0);
+        assert_eq!(f32::from_bits(stand(-12.5).0), -12.5);
     }
 
     /// The light as [`aim`] turns it, under the default sun.
