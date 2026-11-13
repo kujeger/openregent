@@ -64,6 +64,18 @@ def case(dir: Path) -> dict:
             # The threads' waits: voluntary context switches.
             if "vol" in fields:
                 figures["vol k"] = float(fields["vol"]) / 1000
+    # The machine's heat while the case ran (run.sh): a throttled case
+    # is slower for that, not for what it draws.
+    heat = dir / "heat.txt"
+    if heat.exists():
+        rows = [[float(x) for x in line.split()] for line in heat.read_text().splitlines() if len(line.split()) == 3]
+        if rows:
+            temps, cpus, gpus = zip(*rows)
+            figures["temp C"] = sum(temps) / len(temps)
+            figures["temp max C"] = max(temps)
+            figures["cpu MHz"] = sum(cpus) / len(cpus)
+            if any(gpus):
+                figures["gpu MHz"] = sum(gpus) / len(gpus)
     siblings = dir / "siblings.txt"
     if siblings.exists():
         busy = re.search(r"busy=([\d.]+)%", siblings.read_text())
@@ -203,7 +215,7 @@ def main() -> None:
     runs = [run(p) for p in paths]
     # The cases of the last run: a comparison shows those run now.
     names = list(runs[-1])
-    order = ["wall s", "cpu s", "rss MB", "ctx k", "vol k", "faults", "sibling %", "instr G", "cycles G", "to drawn ms", "to game ms", "opening max ms"] + TIMERS
+    order = ["wall s", "cpu s", "rss MB", "ctx k", "vol k", "faults", "sibling %", "temp C", "temp max C", "cpu MHz", "gpu MHz", "instr G", "cycles G", "to drawn ms", "to game ms", "opening max ms"] + TIMERS
     known = set(order) | set(MEMORY) | {"failed", "busy"}
     named = sorted({k for r in runs for _, rs in r.values() for c in rs for k in c if k not in known})
     order += named + MEMORY

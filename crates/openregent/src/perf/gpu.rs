@@ -8,6 +8,8 @@
 //!  gpu_<pass>         ms per pass, Bevy's RenderDiagnosticsPlugin (timestamp
 //!  cpu_<pass>         queries); cpu_ the pass's command encoding
 //!  frag_<pass>        fragment shader invocations, where the driver counts
+//!  gpu_copy_<n>       ms, camera order n's final copy and egui pass
+//!  gpu_egui_<n>       (time spans: no frag_)
 //!  render             ms, the render world's schedule (its own thread)
 //!  draws_*, items     draw calls and phase items, per frame (count)
 //!  pipelines, binds   pipeline and material bind group changes (count)
@@ -26,10 +28,14 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Instant;
 
 use bevy::core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d};
+use bevy::core_pipeline::upscaling::upscaling;
+use bevy::core_pipeline::{Core2d, Core2dSystems};
 use bevy::diagnostic::{DiagnosticsPlugin, DiagnosticsStore};
 use bevy::log::{info, warn};
 use bevy::pbr::{PreparedMaterial, RenderMaterialInstances};
 use bevy::prelude::*;
+use bevy::render::camera::ExtractedCamera;
+use bevy::render::diagnostic::RecordDiagnostics;
 use bevy::render::diagnostic::RenderDiagnosticsPlugin;
 use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_phase::{
@@ -39,6 +45,8 @@ use bevy::render::render_resource::{BindGroupId, CachedRenderPipelineId};
 use bevy::render::renderer::{
     PendingCommandBuffers, RenderDevice, RenderGraph, RenderGraphSystems, RenderQueue,
 };
+use bevy::render::renderer::{RenderContext, ViewQuery};
+use bevy_egui::render::{EguiCameraView, egui_pass, prepare_egui_pass};
 // Renamed: regent_draw's art_service test bans the module's path followed
 // by `::` in openregent, where it would mean regent_draw's texture module.
 use bevy::platform::collections::{HashMap, HashSet};
@@ -96,6 +104,21 @@ pub fn install(app: &mut App) {
                     (ended, memory)
                         .in_set(RenderSystems::PostCleanup)
                         .after(RenderSystems::Cleanup),
+                ),
+            )
+            // Each 2D camera's egui pass and final copy, timed apart.
+            .add_systems(
+                Core2d,
+                (
+                    egui_opened
+                        .after(Core2dSystems::MainPass)
+                        .after(prepare_egui_pass)
+                        .before(egui_pass),
+                    egui_closed.after(egui_pass).before(copy_opened),
+                    copy_opened
+                        .after(Core2dSystems::PostProcess)
+                        .before(upscaling),
+                    copy_closed.after(upscaling),
                 ),
             )
             .add_systems(
@@ -303,6 +326,49 @@ fn art(art: Option<Res<regent_draw::art::Art>>, mut frames: Local<u32>) {
             mb(stats.map)
         );
     }
+}
+
+/// The span bracketing a 2D camera's final copy (Bevy's `upscaling`):
+/// `gpu_copy_<order>`, the camera's order.
+const COPY: &str = "copy";
+
+/// The span bracketing a camera's egui pass: `gpu_egui_<order>`.
+const EGUI: &str = "egui";
+
+/// A time span `<prefix>_<order>` opened on the view's encoder. Neither
+/// Bevy's copy nor egui's pass holds a pass span, so they have no `frag_`
+/// series: a copy shades its scissor rect, the window or the camera's
+/// viewport.
+fn open(prefix: &str, camera: &ExtractedCamera, ctx: &mut RenderContext) {
+    let diagnostics = ctx.diagnostic_recorder();
+    let name = format!("{prefix}_{}", camera.order);
+
+    diagnostics
+        .as_deref()
+        .begin_time_span(ctx.command_encoder(), name.into());
+}
+
+/// The span [`open`] opened, closed.
+fn close(ctx: &mut RenderContext) {
+    let diagnostics = ctx.diagnostic_recorder();
+
+    diagnostics.as_deref().end_time_span(ctx.command_encoder());
+}
+
+fn copy_opened(view: ViewQuery<&ExtractedCamera>, mut ctx: RenderContext) {
+    open(COPY, view.into_inner(), &mut ctx);
+}
+
+fn copy_closed(_view: ViewQuery<&ExtractedCamera>, mut ctx: RenderContext) {
+    close(&mut ctx);
+}
+
+fn egui_opened(view: ViewQuery<&ExtractedCamera, With<EguiCameraView>>, mut ctx: RenderContext) {
+    open(EGUI, view.into_inner(), &mut ctx);
+}
+
+fn egui_closed(_view: ViewQuery<(), With<EguiCameraView>>, mut ctx: RenderContext) {
+    close(&mut ctx);
 }
 
 /// When the render world's schedule began.

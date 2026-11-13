@@ -32,6 +32,11 @@
 # (the dist build is static: it needs none). Keep
 # <out-dir> out of tracked folders: local/ (quiet.sh's default) is ignored.
 #
+# Heat: each case's <case>/heat.txt samples the hottest thermal zone and
+# the CPU's and an Intel GPU's clocks every 2 s (the summary: `temp C`,
+# `cpu MHz`, `gpu MHz`, means, and `temp max C`). PERF_COOL=<seconds>
+# rests the machine before each case: a fanless one throttles as it warms.
+#
 # Busy machine (busy.sh: cargo, rustc, clippy-driver or openregent
 # running, or a 1-minute load above its max_load) at start: a warning, and
 # <out-dir>/disturbed; the summary marks the cases DISTURBED. PERF_GUARD=off
@@ -161,6 +166,31 @@ isolated() {
     mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
 }
 
+# The machine's heat now, one line: the hottest thermal zone (°C), the
+# first CPU's clock and an Intel GPU's (MHz); 0 where there is none.
+heat() {
+    local temp=0 zone cpu=0 gpu=0 file
+    for zone in /sys/class/thermal/thermal_zone*/temp; do
+        [[ -r $zone ]] && (($(<"$zone") > temp)) && temp=$(<"$zone")
+    done
+    file=/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq
+    [[ -r $file ]] && cpu=$(($(<"$file") / 1000))
+    for file in /sys/class/drm/card*/gt_act_freq_mhz; do
+        [[ -r $file ]] && gpu=$(<"$file")
+    done
+    echo "$((temp / 1000)) $cpu $gpu"
+}
+
+# `heat` every $heat_every seconds into $1, until killed: a fanless
+# machine slows as it warms, and a case's figures with it.
+heat_every=2
+heated() {
+    while true; do
+        heat >>"$1"
+        sleep "$heat_every"
+    done
+}
+
 run_case() {
     local name=$1 kind=$2
     shift 2
@@ -212,6 +242,11 @@ run_case() {
     local before
     before=$(jiffies "${sibs[@]}")
 
+    # The heat sampled while the case runs; first, $PERF_COOL seconds' rest.
+    sleep "${PERF_COOL:-0}"
+    heated "$dir/heat.txt" &
+    local sampler=$!
+
     case $kind in
     headless)
         (isolated run && cd "$root" && measured "${with[@]}" "$game" --headless "$@" >"$dir/out.log" 2>&1)
@@ -241,6 +276,9 @@ run_case() {
         ;;
     esac
     local status=$?
+
+    kill "$sampler" 2>/dev/null
+    wait "$sampler" 2>/dev/null || true
 
     # The siblings' busy share while the case ran, e.g. "cpus=15 busy=0.4%".
     if [[ ${#sibs[@]} -gt 0 ]]; then

@@ -106,6 +106,12 @@ condition (`busy.sh`, shared with `quiet.sh`), warns on stderr and writes
 `<out>/disturbed`; `summary.py` marks the cases DISTURBED (machine busy).
 `quiet.sh` sets `PERF_GUARD=off` for its repeats: it checks itself.
 
+A fanless machine slows as it warms, and its GPU more than its CPU:
+cases run one after another are not comparable there. `run.sh` samples
+the hottest thermal zone and the CPU's and an Intel GPU's clocks every
+2 s (`<case>/heat.txt`; the summary's `temp C`, `temp max C`, `cpu MHz`,
+`gpu MHz`), and `PERF_COOL=<seconds>` rests the machine before each case.
+
 Other load the load average misses still skews a case. `run.sh` records
 it: `ctx k` (thousands of involuntary context switches), `faults` (major
 page faults: swap, cold files), and on SMT machines `sibling %`, the busy
@@ -194,6 +200,13 @@ Memory:
   frame, a parallel pass costing about as much for one entity as for
   thousands, so the idle upscale quads keep no material
   (`present::equip`).
+
+The `attribute` cases (`a-*`) show what a weak GPU's frame goes to: the
+late 512 game at 1920x1080 with one thing changed a case (size, zoom,
+`view_upscale`, `shadows`), and `a-no-*` with a class of meshes hidden.
+Each `a-no-*` hides the tracking window too, so they compare with
+`a-no-track`; `a-no-world` leaves the full-screen passes and the
+interface.
 
 ## Threads
 
