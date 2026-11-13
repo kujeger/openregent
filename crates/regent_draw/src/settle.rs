@@ -1,12 +1,13 @@
 //! The start-up draw work still pending, frame by frame: pipelines
-//! compiling, the ground's patches the view wants, sprite pages made.
+//! compiling, the ground's patches the view wants, sprite pages asked
+//! for and not yet put on their sheets, pages put on this frame.
 //! Settled: nothing pending [`QUIET`] frames in a row; at once without a
 //! renderer. Interface pictures upscaling (`art::busy`) are not waited
 //! for: they take minutes on a slow machine, and play needs none.
 //!
 //! ```text
 //!  render world  Cleanup: pipelines waiting ──> Waiting (shared) ──┐
-//!  main world    Last: Waiting, Maps::pending, pages made ─────────┴──> Settle::pending
+//!  main world    Last: Waiting, Maps::pending, page jobs, pages put ┴──> Settle::pending
 //!                quiet frames counted ──> Settle::settled
 //!  restart (a game put in) ──> waited for: what is pending said each LONG
 //! ```
@@ -31,7 +32,9 @@ pub struct Pending {
     pub pipelines: usize,
     /// Ground patches the view wants, not yet made.
     pub patches: usize,
-    /// Sprite pages made this frame.
+    /// Sprite page jobs queued or running ([`crate::map::sheet::Jobs`]).
+    pub jobs: usize,
+    /// Sprite pages put on their sheets this frame.
     pub pages: u32,
 }
 
@@ -40,13 +43,14 @@ impl Pending {
     const NONE: Pending = Pending {
         pipelines: 0,
         patches: 0,
+        jobs: 0,
         pages: 0,
     };
 
     /// Whether nothing is.
     #[must_use]
     pub const fn none(&self) -> bool {
-        self.pipelines == 0 && self.patches == 0 && self.pages == 0
+        self.pipelines == 0 && self.patches == 0 && self.jobs == 0 && self.pages == 0
     }
 }
 
@@ -192,11 +196,16 @@ fn compiling(cache: Res<PipelineCache>, waiting: Res<Waiting>) {
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
 )]
-fn note(mut settle: ResMut<Settle>, waiting: Res<Waiting>, maps: Option<Res<Maps>>) {
+fn note(
+    mut settle: ResMut<Settle>,
+    waiting: Res<Waiting>,
+    (maps, sprites): (Option<Res<Maps>>, Option<Res<crate::art::Sprites>>),
+) {
     let made = sheet::pages_made();
     let pending = Pending {
         pipelines: waiting.0.load(Ordering::Relaxed),
         patches: maps.map_or(0, |m| m.pending()),
+        jobs: sprites.map_or(0, |s| s.jobs()),
         pages: made.wrapping_sub(settle.made),
     };
 

@@ -748,7 +748,7 @@ fn count_menu(
     let sized = as_asked(&shot, &windows);
 
     shot.settled = if sized { shot.settled + 1 } else { 0 };
-    advance(&mut commands, &mut shot, &prepared);
+    advance(&mut commands, &mut shot, (&prepared, Pages::Landed));
 }
 
 /// Whether a window is `shot`'s size, in logical points: its pixels
@@ -765,16 +765,28 @@ fn as_asked(shot: &Shot, windows: &Query<&Window, With<PrimaryWindow>>) -> bool 
     })
 }
 
+/// Whether sprite pages are on their way (`regent_draw::settle`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pages {
+    Pending,
+    Landed,
+}
+
 /// A drawn frame's [`Step`] taken: a frame counted, or the capture
 /// asked for; the next frame's clock stepping on a counted one alone.
-fn advance(commands: &mut Commands, shot: &mut Shot, prepared: &Prepared) {
+fn advance(commands: &mut Commands, shot: &mut Shot, (prepared, pages): (&Prepared, Pages)) {
     shot.waited += 1;
 
     let pending = regent_draw::art::busy() || !prepared.0.load(Ordering::Relaxed);
 
     shot.ready = if pending { 0 } else { shot.ready + 1 };
 
-    let step = step(shot);
+    // Sprite pages on their way: held, so the game steps only once its
+    // pieces draw the keys it gave them.
+    let step = match pages {
+        Pages::Pending => Step::Wait,
+        Pages::Landed => step(shot),
+    };
 
     match step {
         Step::Capture => {
@@ -852,6 +864,7 @@ fn count(
     mut paused: ResMut<Paused>,
     mut view: ResMut<View>,
     (windows, prepared): (Query<&Window, With<PrimaryWindow>>, Res<Prepared>),
+    settle: Res<regent_draw::settle::Settle>,
 ) {
     // The window measured, not the room: the room ends above the bottom
     // bar, so its corner is never the window's.
@@ -876,7 +889,13 @@ fn count(
         // Framed again each frame, but under a moving camera once
         // settled: its moves would be undone.
         framed.0 = shot.camera.is_some() && shot.settled >= SETTLED;
-        advance(&mut commands, &mut shot, &prepared);
+        let pages = if settle.pending().jobs > 0 {
+            Pages::Pending
+        } else {
+            Pages::Landed
+        };
+
+        advance(&mut commands, &mut shot, (&prepared, pages));
     }
 }
 
@@ -1163,6 +1182,7 @@ mod tests {
                 app.insert_resource(Framed(true))
                     .insert_resource(view)
                     .insert_resource(drape)
+                    .init_resource::<regent_draw::settle::Settle>()
                     .init_resource::<Paused>()
                     .init_resource::<Fog>()
                     .add_systems(Update, count);

@@ -94,6 +94,10 @@ pub struct Orders {
     /// The Options menu's surrender, confirmed: sent by
     /// [`crate::input::send`] (`Sim::surrender`).
     pub surrender: bool,
+    /// The build list the palace's panel last showed: its buildings'
+    /// sprite pages asked for, so a preview picked is ready
+    /// (`map::preview::listed`).
+    pub listed: Option<Rows>,
 }
 
 impl Orders {
@@ -135,7 +139,7 @@ impl Titles {
 }
 
 /// The build menu's rows: each building's title and offer.
-type Rows = Arc<[(String, Offer)]>;
+pub(crate) type Rows = Arc<[(String, Offer)]>;
 
 /// The build menu ([`Panel::menu`]), kept by game frame and toggle.
 #[derive(Resource, Default)]
@@ -164,7 +168,8 @@ impl Panel<'_> {
     /// The palace's list with each building's title, sorted as the
     /// original sorts it: what is offered, and with
     /// [`Unavailable::Listed`] the rest, not offered; read once a game
-    /// `frame`.
+    /// `frame`. Kept as shown ([`Orders::listed`]): its buildings'
+    /// pictures are asked for.
     pub fn menu(
         &mut self,
         corpus: &Corpus,
@@ -172,20 +177,29 @@ impl Panel<'_> {
         (frame, unavailable): (u32, Unavailable),
     ) -> Rows {
         let Panel {
+            orders,
             rules,
             titles,
             built,
-            ..
         } = self;
-
-        built
+        let rows = built
             .0
             .get((frame, unavailable), || {
                 let offers = world.build_list(&rules.0, local, unavailable);
 
                 titled(offers, |code| titles.of(corpus, code)).into()
             })
-            .clone()
+            .clone();
+
+        if orders
+            .listed
+            .as_ref()
+            .is_none_or(|was| !Arc::ptr_eq(was, &rows))
+        {
+            orders.listed = Some(rows.clone());
+        }
+
+        rows
     }
 }
 

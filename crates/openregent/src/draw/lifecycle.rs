@@ -951,6 +951,25 @@ fn a_command_line_game_restarts_to_its_start_page() {
 }
 
 /// The assets standing: images, meshes, colours, bodies, bands.
+/// Drawn frames until no sprite page job is left, the pages asked for
+/// put on their sheets and drawn: the clock held meanwhile, so the game is at the
+/// frame it was, a frame a drawn frame after.
+fn landed(app: &mut App) {
+    let began = std::time::Instant::now();
+    let jobs = |app: &App| app.world().resource::<regent_draw::art::Sprites>().jobs();
+    let frame = Duration::from_millis(MS_PER_FRAME.into());
+
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+
+    while jobs(app) > 0 && began.elapsed() < MAKING {
+        step(app);
+    }
+
+    // The pieces waiting on them drawn.
+    step(app);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(frame));
+}
+
 fn assets(app: &App) -> [usize; 5] {
     let world = app.world();
 
@@ -1179,7 +1198,10 @@ fn a_second_game_on_a_dataset_reuses_the_firsts_art() {
         step(&mut app);
     }
 
-    let first = (assets(&app), index(&app));
+    landed(&mut app);
+
+    let first = index(&app);
+    let pages = app.world().resource::<regent_draw::art::Sprites>().pages();
 
     returning(&mut app, crate::menu::Return::Main);
     app.world_mut()
@@ -1208,12 +1230,22 @@ fn a_second_game_on_a_dataset_reuses_the_firsts_art() {
         step(&mut app);
     }
 
+    landed(&mut app);
+
     assert_eq!(
         *app.world().resource::<State<Screen>>().get(),
         Screen::Playing
     );
-    assert_eq!(index(&app), first.1, "the first game's corpus");
-    assert_eq!(assets(&app), first.0, "no art made twice");
+    assert_eq!(index(&app), first, "the first game's corpus");
+    // No sprite page made twice: the first game's every set kept. The
+    // other assets follow timing, not art made again: a key the first
+    // game passed while its pages were on their way draws now (its
+    // materials), and the ground's patches follow when the view settled.
+    assert_eq!(
+        app.world().resource::<regent_draw::art::Sprites>().pages(),
+        pages,
+        "no page made twice"
+    );
 }
 
 /// The high scores at `path` hold one won quest's time, `monarch`'s.
@@ -1946,7 +1978,10 @@ fn a_resync_to_another_board_draws_that_board() {
 
     assert!(mini.is_some() && mini == mini_fresh, "the minimap's ground");
 
-    // The scatter as a new drawing of the same map draws it.
+    // The scatter as a new drawing of the same map draws it: its pages
+    // landed first, then kept.
+    landed(&mut app);
+
     let drawn = strewn(&mut app);
 
     app.world_mut().resource_mut::<Maps>().revision += 1;

@@ -14,7 +14,7 @@
 //!                   the pieces mirrored (mirror);
 //!                   the ground relaid, the fog taken, a quake; a gone selection forgotten;
 //!                   what the tracking window follows (tracking)
-//!    Frame::Draw    map, ground and scatter, its fog;
+//!    Frame::Draw    map, ground and scatter, its fog; sprite pages landed;
 //!                   pieces, missiles, particles
 //!    Frame::Pick    a click picks or orders, on the map or the tracking window; the
 //!                   preview and reach; the cursor
@@ -197,6 +197,7 @@ fn update(app: &mut App) {
                 perf::ground_ended,
                 fog::ground,
                 fog::scatter,
+                regent_draw::art::world::land,
                 crate::map::pieces::pieces,
                 crate::map::cast::casting,
                 crate::map::pieces::missiles,
@@ -214,6 +215,7 @@ fn update(app: &mut App) {
                 )
                     .chain()
                     .run_if(undraped),
+                preview::listed,
                 preview::follow,
                 reach::follow,
                 cursor::point.run_if(undraped),

@@ -18,16 +18,29 @@
 //! A frame draws from its page exactly the texels its own texture held:
 //! the shaders clamp to the rectangle and offset into the page, so the
 //! picture is unchanged. The quad keeps its size and place.
+//!
+//! A set's pages are asked for: decoded, packed and built on the compute
+//! pool, at most [`JOBS`] at once of every source's, and put on the sheet
+//! as they land ([`Jobs::landed`], [`Sheet::put`]). Its frames are
+//! [`Paged::Pending`] until then. Nothing makes them on the main thread.
+//!
+//! ```text
+//!  cel, or ask ──unlaid set──> asked: Jobs queued ──landed──> running (compute pool)
+//!  Jobs::landed ──finished──> Sheet::put: images added, frames and looks kept ──> Ready
+//! ```
 
-use std::collections::{BTreeSet, HashMap};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::tasks::{ComputeTaskPool, Task, TaskPool};
 
 use regent_core::content::imagery::{self, FrameSource};
+use regent_core::data::catalogue::Catalogue;
 use regent_core::data::fourcc::FourCc;
 use regent_core::data::imag::{Blit, SetKind, set_number};
 use regent_core::data::payload::Palette;
@@ -56,11 +69,18 @@ pub const SIDE: u32 = 4096;
 /// Archive and index of a `TILE`.
 pub type Tile = (usize, usize);
 
-/// Pages made since the process started, every sheet's: what a frame
-/// made is the change ([`crate::settle`]).
+/// Page jobs running at once, every source's: each takes a compute pool
+/// thread, and a 2-core machine's pool also makes the ground's patches.
+pub const JOBS: usize = 2;
+
+/// Page jobs running now, every [`Jobs`]'.
+static RUNNING: AtomicUsize = AtomicUsize::new(0);
+
+/// Pages put on sheets since the process started, every sheet's: what
+/// a frame put is the change ([`crate::settle`]).
 static MADE: AtomicU32 = AtomicU32::new(0);
 
-/// Pages made since the process started, wrapping.
+/// Pages put on sheets since the process started, wrapping.
 pub fn pages_made() -> u32 {
     MADE.load(Ordering::Relaxed)
 }
@@ -87,9 +107,13 @@ type Shown = (Colours, material::Pass, Option<(Mode, u16)>);
 /// One `IMAG` record's frames, packed a set at a time.
 #[derive(Debug, Default)]
 pub struct Sheet {
-    /// Each world set's tiles not yet laid (low 16 bits of its id: every
-    /// layer).
+    /// Its `IMAG` record.
+    record: FourCc,
+    /// Each world set's tiles not yet laid nor asked for (low 16 bits of
+    /// its id: every layer).
     sets: HashMap<u16, BTreeSet<Tile>>,
+    /// Each set asked for and not yet put, with its tiles.
+    asked: HashMap<u16, BTreeSet<Tile>>,
     pub pages: Vec<Page>,
     frames: HashMap<Tile, Framed>,
     /// What each frame on a page draws with, kept from its one decode.
@@ -122,6 +146,111 @@ struct Decoded {
     look: Option<Look>,
 }
 
+/// One page built: its indices, its feet where a frame casts, and its
+/// frames' rectangles.
+type Built = (Image, Option<Image>, Vec<(Tile, Rect)>);
+
+/// A set's pages, made off the main thread: each page's images and
+/// members' rectangles, and each frame's look.
+pub struct Laid {
+    pages: Vec<Built>,
+    looks: Vec<(Tile, Look)>,
+}
+
+/// A frame's materials, or that its set's pages are on their way.
+#[derive(Clone)]
+pub enum Paged {
+    Ready(Option<Cel>),
+    Pending,
+}
+
+impl Paged {
+    /// The materials; `None` off the sheet or pending.
+    #[must_use]
+    pub fn ready(self) -> Option<Cel> {
+        match self {
+            Paged::Ready(cel) => cel,
+            Paged::Pending => None,
+        }
+    }
+}
+
+/// A set asked for: its sheet's record, the set, its tiles, and the
+/// catalogue they read from.
+struct Job {
+    record: FourCc,
+    set: u16,
+    tiles: BTreeSet<Tile>,
+    catalogue: Arc<Catalogue<'static>>,
+}
+
+/// A job on the compute pool, counted in [`RUNNING`] while it lives:
+/// dropped, its task is cancelled.
+struct Running {
+    record: FourCc,
+    set: u16,
+    task: Task<Laid>,
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        RUNNING.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+/// Page jobs asked and not yet put on their sheets: queued, then running
+/// on the compute pool, at most [`JOBS`] at once of every source's.
+#[derive(Default)]
+pub struct Jobs {
+    queued: VecDeque<Job>,
+    running: Vec<Running>,
+}
+
+impl Jobs {
+    /// Jobs queued or running.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.queued.len() + self.running.len()
+    }
+
+    /// Whether none is.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The jobs finished, taken; queued ones started in their place.
+    pub fn landed(&mut self) -> Vec<(FourCc, u16, Laid)> {
+        let mut landed = Vec::new();
+
+        self.running.retain_mut(
+            |run| match bevy::tasks::futures::check_ready(&mut run.task) {
+                Some(laid) => {
+                    landed.push((run.record, run.set, laid));
+                    false
+                }
+                None => true,
+            },
+        );
+
+        while RUNNING.load(Ordering::Relaxed) < JOBS
+            && let Some(job) = self.queued.pop_front()
+        {
+            let pool = ComputeTaskPool::get_or_init(TaskPool::default);
+            let task = pool.spawn(async move { laid(&job.catalogue, job.tiles) });
+
+            RUNNING.fetch_add(1, Ordering::Relaxed);
+            self.running.push(Running {
+                record: job.record,
+                set: job.set,
+                task,
+            });
+        }
+
+        landed
+    }
+}
+
 /// Whether a set is drawn on the map: not a panel's, the minimap's or
 /// the ground's.
 const fn world(kind: SetKind) -> bool {
@@ -143,8 +272,8 @@ fn casts(frame: &Frame, palette: &Palette) -> bool {
 }
 
 /// `tile` as a sheet holds it; `None` for direct colour or no canvas.
-fn decode(corpus: &Corpus, tile: Tile) -> Option<Decoded> {
-    let frame = Frame::at(&corpus.catalogue, tile.0, tile.1)?.ok()?;
+fn decode(catalogue: &Catalogue<'_>, tile: Tile) -> Option<Decoded> {
+    let frame = Frame::at(catalogue, tile.0, tile.1)?.ok()?;
     let (image, palette) = texture::indices(&frame)?;
     let indices = image.data.clone()?;
     let width = u32::from(frame.width);
@@ -299,6 +428,36 @@ fn page(decoded: &[Decoded], (members, packed): &(Vec<usize>, Packed)) -> (Image
     )
 }
 
+/// `tiles`' pages, made from `catalogue`: decoded once, packed, built.
+/// On the main thread or the compute pool alike.
+fn laid(catalogue: &Catalogue<'_>, tiles: BTreeSet<Tile>) -> Laid {
+    let decoded: Vec<Decoded> = tiles
+        .into_iter()
+        .filter_map(|t| decode(catalogue, t))
+        .collect();
+    let sizes: Vec<(u32, u32)> = decoded.iter().map(|d| (d.width, d.height)).collect();
+    let pages = paged(&sizes, SIDE)
+        .iter()
+        .map(|members| {
+            let (indices, feet) = page(&decoded, members);
+            let rects = members
+                .0
+                .iter()
+                .zip(&members.1.rects)
+                .map(|(member, rect)| (decoded[*member].tile, *rect))
+                .collect();
+
+            (indices, feet, rects)
+        })
+        .collect();
+    let looks = decoded
+        .into_iter()
+        .filter_map(|d| Some((d.tile, d.look?)))
+        .collect();
+
+    Laid { pages, looks }
+}
+
 impl Sheet {
     /// `record`'s sheet: its sets read, no page made; `None` without a
     /// world set.
@@ -306,47 +465,87 @@ impl Sheet {
         let sets = sets(corpus, record);
 
         (!sets.is_empty()).then(|| Sheet {
+            record,
             sets,
             ..Sheet::default()
         })
     }
 
-    /// Set `set`'s tiles not yet on a page decoded once, packed and added
-    /// to `store` as pages of their own.
-    fn lay(&mut self, corpus: &Corpus, store: &mut Store, set: u16) {
+    /// Every set asked for and not yet put to lay again: its jobs let go
+    /// with the sheet's source, shelved.
+    pub fn forget(&mut self) {
+        self.sets.extend(self.asked.drain());
+    }
+
+    /// Set `set`'s tiles not yet on a page.
+    fn take(&mut self, set: u16) -> BTreeSet<Tile> {
         let wanted = self.sets.remove(&set).unwrap_or_default();
-        let decoded: Vec<Decoded> = wanted
+
+        wanted
             .into_iter()
             .filter(|t| !self.frames.contains_key(t))
-            .filter_map(|t| decode(corpus, t))
-            .collect();
-        let sizes: Vec<(u32, u32)> = decoded.iter().map(|d| (d.width, d.height)).collect();
+            .collect()
+    }
 
-        for laid in &paged(&sizes, SIDE) {
+    /// Set `set` asked of `jobs`: its tiles' pages made off the main
+    /// thread from `catalogue`. Nothing where it is laid or asked.
+    pub fn ask(&mut self, catalogue: &Arc<Catalogue<'static>>, set: u16, jobs: &mut Jobs) {
+        if self.sets.contains_key(&set) {
+            let tiles = self.take(set);
+
+            self.asked.insert(set, tiles.clone());
+            jobs.queued.push_back(Job {
+                record: self.record,
+                set,
+                tiles,
+                catalogue: catalogue.clone(),
+            });
+        }
+    }
+
+    /// Set `set`'s pages, landed from its job, put on the sheet; let go
+    /// where its ask was forgotten since.
+    pub fn put(&mut self, set: u16, laid: Laid, images: &mut Assets<Image>) {
+        if self.asked.remove(&set).is_some() {
+            self.keep(laid, images);
+        }
+    }
+
+    /// `laid`'s pages kept: their images added to `images`, their frames
+    /// and looks kept; a frame already on a page stays there.
+    fn keep(&mut self, laid: Laid, images: &mut Assets<Image>) {
+        for (indices, feet, members) in laid.pages {
             let at = self.pages.len();
-            let (indices, feet) = page(&decoded, laid);
 
             MADE.fetch_add(1, Ordering::Relaxed);
             self.pages.push(Page {
-                indices: store.images.add(indices),
-                feet: feet.map(|f| store.images.add(f)).unwrap_or_default(),
+                indices: images.add(indices),
+                feet: feet.map(|f| images.add(f)).unwrap_or_default(),
             });
 
-            for (member, rect) in laid.0.iter().zip(&laid.1.rects) {
-                let framed = Framed {
-                    page: at,
-                    rect: *rect,
-                };
-
-                self.frames.insert(decoded[*member].tile, framed);
+            for (tile, rect) in members {
+                self.frames.entry(tile).or_insert(Framed { page: at, rect });
             }
         }
 
-        for tile in decoded {
-            if let Some(look) = tile.look {
-                self.looks.insert(tile.tile, look);
-            }
+        for (tile, look) in laid.looks {
+            self.looks.entry(tile).or_insert(look);
         }
+    }
+
+    /// The asked set holding `tile`, if any.
+    fn awaited(&self, tile: Tile) -> Option<u16> {
+        self.asked
+            .iter()
+            .filter(|(_, tiles)| tiles.contains(&tile))
+            .map(|(s, _)| *s)
+            .min()
+    }
+
+    /// Whether set `set` is asked for and not yet put.
+    #[must_use]
+    pub fn pending(&self, set: u16) -> bool {
+        self.asked.contains_key(&set)
     }
 
     /// The set to lay for `tile`: `set` where it names the tile, else
@@ -370,23 +569,34 @@ impl Sheet {
     }
 
     /// Frame `tile`'s materials, as `cel::picture` makes them for its own
-    /// texture, on its page: its set's pages made first if need be (`set`,
-    /// else a set that names it); `None` off the sheet.
+    /// texture, on its page: its set's pages asked of `jobs` if need be
+    /// (`set`, else a set that names it); `Ready(None)` off the sheet,
+    /// `Pending` while its pages are on their way.
     pub fn cel(
         &mut self,
         corpus: &Corpus,
         store: &mut Store,
         palettes: &mut Palettes,
         (tile, set): (Tile, u16),
-    ) -> Option<Cel> {
-        let laying = (!self.frames.contains_key(&tile))
-            .then(|| self.naming(tile, set))
-            .flatten();
+        jobs: &mut Jobs,
+    ) -> Paged {
+        let unlaid = !self.frames.contains_key(&tile);
+        let laying = unlaid.then(|| self.naming(tile, set)).flatten();
+        let awaited = unlaid.then(|| self.awaited(tile)).flatten();
 
-        if let Some(laying) = laying {
-            self.lay(corpus, store, laying);
+        // One asked for first: another set naming the tile is not asked too.
+        match (awaited, laying) {
+            (Some(_), _) => Paged::Pending,
+            (None, Some(laying)) => {
+                self.ask(&corpus.catalogue, laying, jobs);
+                Paged::Pending
+            }
+            (None, None) => Paged::Ready(self.drawn(store, palettes, tile)),
         }
+    }
 
+    /// Frame `tile`'s materials on its page; `None` off the sheet.
+    fn drawn(&mut self, store: &mut Store, palettes: &mut Palettes, tile: Tile) -> Option<Cel> {
         let framed = self.frames.get(&tile)?.clone();
         let page = self.pages[framed.page].clone();
         let look = self.looks.get(&tile)?;
@@ -636,7 +846,12 @@ mod tests {
 
             assert!(sheet.pages.is_empty(), "no page before a frame draws");
 
-            let _ = sheet.cel(&corpus, &mut store, &mut palettes, (named[0].1, first));
+            let _ = landed(
+                &mut sheet,
+                &corpus,
+                (&mut store, &mut palettes),
+                (named[0].1, first),
+            );
 
             assert!(!sheet.sets.contains_key(&first) && !sheet.pages.is_empty());
 
@@ -646,9 +861,13 @@ mod tests {
                     index: tile.1,
                     flags: 0,
                 };
-                let framed = sheet
-                    .cel(&corpus, &mut store, &mut palettes, (tile, set))
-                    .expect("framed");
+                let framed = landed(
+                    &mut sheet,
+                    &corpus,
+                    (&mut store, &mut palettes),
+                    (tile, set),
+                )
+                .expect("framed");
                 let alone =
                     super::super::cel::cel(&corpus, &mut store, &mut own, source).expect("alone");
                 let at = sheet.framed(tile).expect("on the sheet").clone();
@@ -699,5 +918,99 @@ mod tests {
                 assert!(was.is_none_or(|was| was == colours));
             }
         }
+    }
+
+    /// Frame `key` of `sheet`, its set's pages asked and landed first.
+    fn landed(
+        sheet: &mut Sheet,
+        corpus: &Corpus,
+        (store, palettes): (&mut Store, &mut Palettes),
+        key: (Tile, u16),
+    ) -> Option<Cel> {
+        let mut jobs = Jobs::default();
+
+        loop {
+            match sheet.cel(corpus, store, palettes, key, &mut jobs) {
+                Paged::Ready(cel) => break cel,
+                Paged::Pending => {
+                    for (_, set, laid) in jobs.landed() {
+                        sheet.put(set, laid, store.images);
+                    }
+
+                    std::thread::yield_now();
+                }
+            }
+        }
+    }
+
+    /// A set asked for is pending until its job lands, asked once however
+    /// often its frames are; put, its frames are ready. A sheet shelved
+    /// forgets its asks: the job landing after is let go, and the set is
+    /// asked again.
+    #[test]
+    #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+    fn a_set_asked_is_pending_until_its_job_lands() {
+        let corpus = Corpus::open(&crate::common::archives(&crate::common::hd().join("Data")))
+            .expect("HD's archives");
+        let record = FourCc(*b"AVL1");
+        let mut images = Assets::<Image>::default();
+        let (mut meshes, mut colours) = (Assets::<Mesh>::default(), Assets::default());
+        let (mut bodies, mut bands) = (Assets::<Body>::default(), Assets::<Band>::default());
+        let quad = meshes.add(Rectangle::new(1.0, 1.0));
+        let mut store = Store {
+            images: &mut images,
+            meshes: &mut meshes,
+            colours: &mut colours,
+            bodies: &mut bodies,
+            bands: &mut bands,
+            quad,
+        };
+        let mut palettes = Palettes::new();
+        let mut sheet = Sheet::make(&corpus, record).expect("a sheet");
+        let key = sheet
+            .sets
+            .iter()
+            .map(|(set, tiles)| (*tiles.first().expect("a tile"), *set))
+            .min_by_key(|(_, set)| *set)
+            .expect("a set");
+        let mut jobs = Jobs::default();
+        let mut asked = |sheet: &mut Sheet, store: &mut Store, jobs: &mut Jobs| {
+            sheet.cel(&corpus, store, &mut palettes, key, jobs)
+        };
+
+        assert!(matches!(
+            asked(&mut sheet, &mut store, &mut jobs),
+            Paged::Pending
+        ));
+        assert!(matches!(
+            asked(&mut sheet, &mut store, &mut jobs),
+            Paged::Pending
+        ));
+        assert_eq!(jobs.len(), 1, "asked once");
+
+        // Shelved: the ask forgotten, the job let go.
+        sheet.forget();
+        drop(std::mem::take(&mut jobs));
+
+        while jobs.is_empty() || !sheet.pending(key.1) {
+            let _ = asked(&mut sheet, &mut store, &mut jobs);
+        }
+
+        assert_eq!(jobs.len(), 1, "asked again");
+
+        let cel = loop {
+            if let Paged::Ready(cel) = asked(&mut sheet, &mut store, &mut jobs) {
+                break cel;
+            }
+
+            for (_, set, laid) in jobs.landed() {
+                sheet.put(set, laid, store.images);
+            }
+
+            std::thread::yield_now();
+        };
+
+        assert!(cel.is_some());
+        assert!(jobs.is_empty() && !sheet.pages.is_empty());
     }
 }

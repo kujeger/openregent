@@ -42,14 +42,14 @@ pub type Palettes = BTreeMap<Colours, Handle<Image>>;
 pub trait Paint {
     /// Frame `source` as materials: on its `owner`'s sheet where given
     /// and that holds the frame ([`super::sheet`]), else on its own
-    /// texture.
+    /// texture; pending while its sheet's pages are on their way.
     fn cel(
         &mut self,
         corpus: &Corpus,
         store: &mut Store,
         source: FrameSource,
         owner: Option<Owner>,
-    ) -> Option<Cel>;
+    ) -> super::sheet::Paged;
 
     /// A whole redraw begins.
     fn begin(&mut self) {}

@@ -601,7 +601,8 @@ no `AP50`).
 The game made, it is put in under the same page (`menu::drape`), the
 world drawn beneath it, until its drawing's start-up work settles
 (`regent_draw::settle`: no pipeline compiling, ground patch wanted,
-sprite page made or picture upscaling, three frames in a row; 30 s at
+sprite page made or on its way, picture upscaling, three frames in a
+row; 30 s at
 most): the first frames' cost is paid before play. Under it the game
 clock does not start, no input reaches the game and no game sound
 starts. Then a held game offers Start Quest, the others' page goes by

@@ -87,6 +87,7 @@ pub fn draw(
 
     if ghosts.ms != Some(reel.ms) {
         let world = seen.world();
+        let mut pending = false;
         let was: HashMap<u32, (Vec2, u32)> = ghosts
             .drawn
             .drain()
@@ -127,13 +128,26 @@ pub fn draw(
             // Where the slide below puts it: stepped, at once at `to`.
             let drawn = at.lerp(to, snapshot.between);
             let place = maps.standing_at(drawn).extend(depth.at(at.y + lift));
+            let quad = sprites.quad(&mut stores.meshes);
+            let piece = regent_draw::art::world::Piece {
+                code: key.0,
+                set: key.1,
+                slot: key.2,
+                still: None,
+            };
+
+            // Its pages on their way: not drawn, looked at again next frame.
+            let Some(layers) = sprites
+                .piece(&corpus, &mut stores, piece)
+                .map(<[regent_draw::map::cel::Drawing]>::to_vec)
+            else {
+                pending = true;
+                continue;
+            };
             let (entity, _) = pieces::spawn(
                 &mut commands,
-                &corpus,
-                &mut sprites,
-                &mut stores,
+                (&quad, &layers),
                 &reel,
-                key,
                 (
                     None,
                     place,
@@ -153,7 +167,7 @@ pub fn draw(
                 .insert(c.handle, (entity, c.unit, at, to, shown.jumps));
         }
 
-        ghosts.ms = Some(reel.ms);
+        ghosts.ms = (!pending).then_some(reel.ms);
     }
 
     for (entity, unit, from, to, _) in ghosts.drawn.values() {

@@ -182,9 +182,9 @@ fn look(
         still: None,
     };
     // The set a particle's part draws: layer 0 (`UnitIMGParticle`,
-    // its set by whole id).
+    // its set by whole id). None while its pages are on their way.
     let cel = sprites
-        .piece(corpus, stores, piece)
+        .piece(corpus, stores, piece)?
         .iter()
         .find(|d| d.layer == 0)?
         .cels

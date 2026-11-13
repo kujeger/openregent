@@ -10,6 +10,12 @@
 //!                     held by source (Held), each made once
 //! ```
 //!
+//! A piece, a frame or a scatter thing waits for its sheets' pages, made
+//! off the main thread ([`crate::map::sheet::Jobs`]): `None` (or
+//! [`Paged::Pending`]) until [`land`] puts them on; nothing is made at
+//! once. [`Sprites::ask`] asks a set's pages up front, no piece drawing
+//! it.
+//!
 //! An indexed frame is an index texture and a palette texture, the
 //! palette looked up on the GPU (`crate::material`): one index
 //! texture a tile, one palette texture a palette (`map::cel::Colours`),
@@ -23,7 +29,7 @@ use bevy::prelude::*;
 
 use crate::data::Corpus;
 use crate::map::cel::{self, Cel, Drawing, Owner, Paint, Palettes, Store};
-use crate::map::sheet::Sheet;
+use crate::map::sheet::{Jobs, Paged, Sheet};
 use crate::material::{Body, Pass};
 use crate::plain::Plain;
 use crate::{soft, texture};
@@ -93,6 +99,11 @@ struct Held {
     /// `SetDrawEffects`' colours 1 to 3 ([`TINTS`]), read on first use.
     tints: Option<[Option<Palette>; 3]>,
     cursors: HashMap<(u32, usize), Option<Pointer>>,
+    /// Page jobs asked and not yet put on the sheets.
+    jobs: Jobs,
+    /// Each piece [`Sprites::paged`] found pending, and the sheets' sets
+    /// it waits on.
+    waits: HashMap<Piece, Vec<Owner>>,
 }
 
 /// Sprites held, each under its source: all of the service's, or one
@@ -140,9 +151,21 @@ impl Sprites {
     }
 
     /// `source`'s sprites moved out, for the next game on its dataset;
-    /// none of a pinned source.
+    /// none of a pinned source. Its page jobs let go, their sets to ask
+    /// again.
     pub fn take(&mut self, source: ArtSource) -> Entries {
-        self.pinned.take(&mut self.entries, source)
+        let mut taken = self.pinned.take(&mut self.entries, source);
+
+        for held in taken.0.values_mut() {
+            held.jobs = Jobs::default();
+            held.waits.clear();
+
+            for sheet in held.sheets.values_mut().flatten() {
+                sheet.forget();
+            }
+        }
+
+        taken
     }
 
     /// Sprites [`Sprites::take`] gave, back.
@@ -157,41 +180,101 @@ impl Sprites {
             .clone()
     }
 
-    /// `piece`'s layers from `corpus`, lowest first (`Drawing::layers`):
-    /// made on first use.
-    pub fn piece(&mut self, corpus: &Corpus, stores: &mut Assets2, piece: Piece) -> &[Drawing] {
+    /// `piece`'s layers from `corpus`, lowest first (`Drawing::layers`),
+    /// made once every page it draws from is on its sheet: `None` until
+    /// then, its pages asked for ([`land`]).
+    pub fn piece(
+        &mut self,
+        corpus: &Corpus,
+        stores: &mut Assets2,
+        piece: Piece,
+    ) -> Option<&[Drawing]> {
         let quad = self.quad(&mut stores.meshes);
         let Held {
             cels,
             sheets,
             palettes,
             pieces,
+            jobs,
+            waits,
             ..
         } = self.entries.held(corpus.source());
+        let pending = |owner: &Owner| {
+            sheets
+                .get(&owner.0)
+                .and_then(Option::as_ref)
+                .is_some_and(|sheet| sheet.pending(owner.1))
+        };
+        let waiting = waits.get(&piece).is_some_and(|w| w.iter().any(pending));
 
-        pieces.entry(piece).or_insert_with(|| {
+        if !pieces.contains_key(&piece) && !waiting {
             let mut store = store(stores, quad);
-            let mut cel =
-                |s, record| cached((cels, sheets, palettes), corpus, &mut store, (s, record));
+            let mut asked = Vec::new();
+            let mut cel = |s, record: Option<Owner>| {
+                let kept = (&mut *cels, &mut *sheets, &mut *palettes);
 
-            match Unit::find(&corpus.catalogue, piece.code) {
-                Some(Ok(unit)) => {
-                    let mut drawings = Drawing::layers(
-                        &corpus.catalogue,
-                        &unit,
-                        piece.set,
-                        &|_| piece.slot,
-                        piece.still,
-                        &mut cel,
-                    );
-                    let stands = footprint::of_unit(&corpus.catalogue, &unit).ok().flatten();
-
-                    cel::keep_parts(&mut drawings, (piece.set, stands), corpus, &mut store);
-                    drawings
+                match cached(kept, corpus, &mut store, (s, record), &mut *jobs) {
+                    Paged::Ready(cel) => cel,
+                    Paged::Pending => {
+                        asked.extend(record);
+                        None
+                    }
                 }
-                _ => Vec::new(),
+            };
+            let drawings = drawn(corpus, piece, &mut cel);
+
+            if asked.is_empty() {
+                waits.remove(&piece);
+                pieces.insert(piece, kept(drawings, piece, corpus, &mut store));
+            } else {
+                waits.insert(piece, asked);
             }
-        })
+        }
+
+        pieces.get(&piece).map(Vec::as_slice)
+    }
+
+    /// Set `set` of `IMAG` record `record` asked for, its pages made off
+    /// the main thread, though no piece draws it yet; nothing where they
+    /// are made or asked.
+    pub fn ask(&mut self, corpus: &Corpus, (record, set): Owner) {
+        let Held { sheets, jobs, .. } = self.entries.held(corpus.source());
+        let sheet = sheets
+            .entry(record)
+            .or_insert_with(|| Sheet::make(corpus, record));
+
+        if let Some(sheet) = sheet {
+            sheet.ask(&corpus.catalogue, set, jobs);
+        }
+    }
+
+    /// The page jobs landed put on their sheets, `images` taking their
+    /// pages; queued ones started in their place.
+    pub fn land(&mut self, images: &mut Assets<Image>) {
+        for held in self.entries.0.values_mut() {
+            for (record, set, laid) in held.jobs.landed() {
+                if let Some(Some(sheet)) = held.sheets.get_mut(&record) {
+                    sheet.put(set, laid, images);
+                }
+            }
+        }
+    }
+
+    /// Pages on the sheets held, every source's.
+    #[must_use]
+    pub fn pages(&self) -> usize {
+        self.entries
+            .0
+            .values()
+            .flat_map(|held| held.sheets.values().flatten())
+            .map(|sheet| sheet.pages.len())
+            .sum()
+    }
+
+    /// Page jobs queued or running, every source's.
+    #[must_use]
+    pub fn jobs(&self) -> usize {
+        self.entries.0.values().map(|held| held.jobs.len()).sum()
     }
 
     /// What `source`'s sprites hold: every piece made and every tile made
@@ -210,13 +293,14 @@ impl Sprites {
     }
 
     /// Frame `source` of `corpus` as materials, on `owner`'s sheet where
-    /// given (`map::cel::cel` else); `None` where it draws nothing.
+    /// given (`map::cel::cel` else); `Pending` while its pages are on
+    /// their way.
     pub fn frame(
         &mut self,
         corpus: &Corpus,
         stores: &mut Assets2,
         (source, owner): (FrameSource, Option<Owner>),
-    ) -> Option<Cel> {
+    ) -> Paged {
         let quad = self.quad(&mut stores.meshes);
         let mut store = store(stores, quad);
 
@@ -275,16 +359,67 @@ impl Paint for Sprites {
         store: &mut Store,
         source: FrameSource,
         record: Option<Owner>,
-    ) -> Option<Cel> {
+    ) -> Paged {
         let Held {
             cels,
             sheets,
             palettes,
+            jobs,
             ..
         } = self.entries.held(corpus.source());
 
-        cached((cels, sheets, palettes), corpus, store, (source, record))
+        cached(
+            (cels, sheets, palettes),
+            corpus,
+            store,
+            (source, record),
+            jobs,
+        )
     }
+}
+
+/// The page jobs landed put on their sheets ([`Sprites::land`]): each
+/// frame, before the pieces draw.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+pub fn land(mut sprites: ResMut<Sprites>, mut images: ResMut<Assets<Image>>) {
+    sprites.land(&mut images);
+}
+
+/// `piece`'s layers from `corpus`, each frame's materials from `cel`.
+fn drawn(
+    corpus: &Corpus,
+    piece: Piece,
+    cel: &mut dyn FnMut(FrameSource, Option<Owner>) -> Option<Cel>,
+) -> Vec<Drawing> {
+    match Unit::find(&corpus.catalogue, piece.code) {
+        Some(Ok(unit)) => Drawing::layers(
+            &corpus.catalogue,
+            &unit,
+            piece.set,
+            &|_| piece.slot,
+            piece.still,
+            cel,
+        ),
+        _ => Vec::new(),
+    }
+}
+
+/// `drawings` of `piece` with what a model's shadow leaves of them
+/// ([`cel::keep_parts`]).
+fn kept(
+    mut drawings: Vec<Drawing>,
+    piece: Piece,
+    corpus: &Corpus,
+    store: &mut Store,
+) -> Vec<Drawing> {
+    let unit = Unit::find(&corpus.catalogue, piece.code).and_then(Result::ok);
+    let stands = unit.and_then(|u| footprint::of_unit(&corpus.catalogue, &u).ok().flatten());
+
+    cel::keep_parts(&mut drawings, (piece.set, stands), corpus, store);
+    drawings
 }
 
 /// What [`cached`] keeps: cels, sheets, palettes.
@@ -308,28 +443,48 @@ fn store<'a>(stores: &'a mut Assets2, quad: Handle<Mesh>) -> Store<'a> {
 }
 
 /// Frame `source`'s materials, made once a tile: on `record`'s sheet,
-/// made the first time it is asked, where that holds the frame; else on
-/// the frame's own texture.
+/// its pages asked of `jobs`; pending while they are on their way. A
+/// frame on no sheet draws nothing.
 fn cached(
     (cels, sheets, palettes): Kept,
     corpus: &Corpus,
     store: &mut Store,
     (source, record): (FrameSource, Option<Owner>),
-) -> Option<Cel> {
-    let tile = source.tile()?;
+    jobs: &mut Jobs,
+) -> Paged {
+    let tile = source.tile();
+    let made = tile.and_then(|tile| cels.get(&(tile, record)).cloned());
 
-    cels.entry((tile, record))
-        .or_insert_with(|| {
+    match (tile, made) {
+        (None, _) => Paged::Ready(None),
+        (Some(_), Some(cel)) => Paged::Ready(cel),
+        (Some(tile), None) => {
             let sheet = record.and_then(|(r, set)| {
                 let sheet = sheets.entry(r).or_insert_with(|| Sheet::make(corpus, r));
 
                 Some((sheet.as_mut()?, set))
             });
-            let framed = sheet.and_then(|(s, set)| s.cel(corpus, store, palettes, (tile, set)));
+            let paged = match sheet {
+                Some((s, set)) => s.cel(corpus, store, palettes, (tile, set), jobs),
+                None => Paged::Ready(None),
+            };
 
-            framed.or_else(|| cel::cel(corpus, store, palettes, source))
-        })
-        .clone()
+            match paged {
+                Paged::Pending => Paged::Pending,
+                Paged::Ready(cel) => {
+                    // Every frame drawn has an owner's sheet: none lacked
+                    // one in a late 512-cell game, the battle or The Day of
+                    // Reckoning. One that does draws nothing, said once.
+                    if record.is_none() {
+                        tracing::warn!("art: {source:?} has no sheet: not drawn");
+                    }
+
+                    cels.insert((tile, record), cel.clone());
+                    Paged::Ready(cel)
+                }
+            }
+        }
+    }
 }
 
 /// `corpus`'s tint palettes, `SetDrawEffects`' colours 1 to 3.

@@ -16,6 +16,7 @@ use super::cel::{Cel, Drawing, Mobility, Owner, Paint, Store, rungs};
 use super::depth::{FURTHEST, NEAREST, sorted_at};
 use super::project::{Projection, aloft, item_height, lift_at};
 use super::reel::{Beat, Layer, Reel, Role, Sways, cycles, dress};
+use super::sheet::Paged;
 use super::{BLDG, CHUNKS, LIFT, Maps, Placed, VHCL};
 use crate::data::Corpus;
 use crate::instance::Lean;
@@ -113,7 +114,12 @@ fn things(
 ) -> Populated {
     let mut cache: BTreeMap<Key, Vec<Drawing>> = BTreeMap::new();
     let scene = (maps, trees);
-    let (mut standing, reach) = gather(scene, corpus, (store, paint), &mut cache);
+    let (mut standing, reach) = gather(
+        scene,
+        corpus,
+        (store, paint),
+        (&mut cache, &mut Pages::Landed),
+    );
 
     // Before the sort: in chunk and record order, as `positions` gives.
     let placed = standing.iter().map(Standing::placed).collect();
@@ -264,6 +270,26 @@ impl Standing {
     }
 }
 
+/// Whether every scatter thing's sprite pages are on their sheets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pages {
+    Pending,
+    Landed,
+}
+
+/// Whether every object's pictures are ready to put up: their pages
+/// asked of `paint` where not, so a whole redraw can wait for them.
+pub(super) fn ready(
+    scene: (&Maps, &wind::Trees),
+    corpus: &Corpus,
+    drawn: (&mut Store, &mut dyn Paint),
+) -> bool {
+    let mut pages = Pages::Landed;
+
+    gather(scene, corpus, drawn, (&mut BTreeMap::new(), &mut pages));
+    pages == Pages::Landed
+}
+
 /// What [`gather`] found: draws, and building picture reach.
 type Gathered = (Vec<Standing>, BTreeMap<u32, f32>);
 
@@ -275,7 +301,7 @@ fn gather(
     (maps, trees): (&Maps, &wind::Trees),
     corpus: &Corpus,
     (store, paint): (&mut Store, &mut dyn Paint),
-    cache: &mut BTreeMap<Key, Vec<Drawing>>,
+    (cache, pending): (&mut BTreeMap<Key, Vec<Drawing>>, &mut Pages),
 ) -> Gathered {
     let mut standing: Vec<Standing> = Vec::new();
     let mut beside: BTreeMap<u32, f32> = BTreeMap::new();
@@ -313,7 +339,13 @@ fn gather(
             let still = (!cycles(kind)).then_some(picked.1);
             let key = (object.id, object.set, moves, picked.0, still);
             let found = cache.entry(key).or_insert_with(|| {
-                let mut cel = |s, record: Option<Owner>| paint.cel(corpus, store, s, record);
+                let mut cel = |s, record: Option<Owner>| match paint.cel(corpus, store, s, record) {
+                    Paged::Ready(cel) => cel,
+                    Paged::Pending => {
+                        *pending = Pages::Pending;
+                        None
+                    }
+                };
                 let drawings = Drawing::of(corpus, &mut cel, object, moves, still);
 
                 // A tree's materials bend in the wind, when it blows.
@@ -350,7 +382,6 @@ fn gather(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::cel::Cel;
     use crate::map::load::Loaded;
     use crate::map::project::positions;
     use crate::map::redraw::redraw;
@@ -380,8 +411,8 @@ mod tests {
             _: &mut Store,
             _: FrameSource,
             _: Option<Owner>,
-        ) -> Option<Cel> {
-            None
+        ) -> super::super::sheet::Paged {
+            super::super::sheet::Paged::Ready(None)
         }
     }
 

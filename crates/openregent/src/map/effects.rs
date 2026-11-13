@@ -252,11 +252,19 @@ pub fn draw(
                 };
                 let quad = sprites.quad(&mut stores.meshes);
 
+                // Its pages on their way: a drawing up stays; none yet,
+                // none drawn. Landed, at the frame it is on now.
+                let Some(layers) = sprites
+                    .piece(&corpus, &mut stores, piece)
+                    .map(<[Drawing]>::to_vec)
+                else {
+                    continue;
+                };
+
                 // A new set, frame or amount: its entities given the new
                 // frames. Else drawn the first time.
                 let hanging = if let Some((was, ..)) = old.cloned() {
-                    let layers = sprites.piece(&corpus, &mut stores, piece);
-                    let mut now = retake(&mut commands, (&quad, layers), was, (key, start));
+                    let mut now = retake(&mut commands, (&quad, &layers), was, (key, start));
 
                     now.words = effect.value.map_or_else(Vec::new, |value| {
                         amount(
@@ -271,11 +279,8 @@ pub fn draw(
                 } else {
                     let (root, strata) = pieces::spawn(
                         &mut commands,
-                        &corpus,
-                        &mut sprites,
-                        &mut stores,
+                        (&quad, &layers),
                         &reel,
-                        key,
                         // Its own place for ground: no effect set has a
                         // second pass (**Corpus**).
                         (None, place, place.truncate(), Visibility::Inherited, timing),

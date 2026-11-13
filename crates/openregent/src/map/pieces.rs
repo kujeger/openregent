@@ -8,7 +8,17 @@
 //!  key       a new set or slot: the same entities given the new layers'
 //!            frames and beat ([`lay`]); entities added or taken only
 //!            where the layer count, a band or a lift differs
+//!  pending   a key whose sheet pages are on their way (`Sprites::paged`):
+//!            the drawing up kept, moved with the piece, each layer held
+//!            on the frame it shows ([`Awaited`]); none yet, none drawn
 //! ```
+//!
+//! While a piece's pages are pending its drawing is the last it had:
+//! body, band and lift held alike, so no shadow without its body; its
+//! ring, bars and pick follow that drawing. A piece with no drawing yet
+//! shows nothing: no body, shadow, ring, bar or pick. Landed, the new
+//! key's frames step from when the key came ([`Awaited::from`]), so it
+//! shows the frame up now.
 //!
 //! Art steps on game time, so `--speed` scales it: each set at its own
 //! [`regent_core::sim::movement::action::frame_ms`], a walk a frame a step.
@@ -198,6 +208,14 @@ impl Timing {
 #[derive(Component)]
 pub struct Piece(pub u32);
 
+/// On a piece's mirror: a key whose sheet pages are on their way, and
+/// the game time its frames step from, as worked out when it came.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Awaited {
+    key: Key,
+    from: u32,
+}
+
 /// How far the ground under a piece lies from where its body draws,
 /// world units: a flier's drop to its shadow, else none. Its ring and the
 /// ring's part of its box sit there (ring draw, ring rect:
@@ -238,7 +256,7 @@ pub(crate) fn pieces(
     mut lifts: ResMut<Lifts>,
     mut sprites: ResMut<Sprites>,
     mirrors: Pieces,
-    mut states: Query<(&mut Phase, &mut Pin)>,
+    mut states: Query<(&mut Phase, &mut Pin, Option<&Awaited>)>,
     keys: Query<&Keyed>,
     fog: Res<fog::Fog>,
     mut stores: Assets2,
@@ -256,9 +274,10 @@ pub(crate) fn pieces(
         let Some(mirror) = mirrors.mirror_of(shown.agent) else {
             continue;
         };
-        let Ok((mut phase, mut pinned)) = states.get_mut(mirror) else {
+        let Ok((mut phase, mut pinned, awaited)) = states.get_mut(mirror) else {
             continue;
         };
+        let awaited = awaited.copied();
         let was = mirrors.was(shown.agent).copied().unwrap_or_default();
         let pin = pin(shown, key);
         let was_pinned = pinned.0;
@@ -298,8 +317,10 @@ pub(crate) fn pieces(
             .drawn(shown.agent)
             .and_then(|entity| keys.get(entity).ok().map(|k| (entity, k.0)));
 
-        // The same picture: moved, and a held frame moved on.
-        let same = matches!(old, Some((_, was))
+        // The same picture: moved, and a held frame moved on. One held
+        // while another key's pages were pending is laid again.
+        let same = awaited.is_none()
+            && matches!(old, Some((_, was))
             if was == key && (was_pinned == pin || was_pinned.and(pin).is_some()));
         let at = (place, ground, footing, seen);
 
@@ -324,10 +345,11 @@ pub(crate) fn pieces(
 
         // A set the world keeps starts when it says; else a turn
         // keeps the frame, and a new set starts on frame 0,
-        // as does one an action held.
-        let from = match (shown.look, old) {
-            (Some(Look::Plays { set, since }), _) if low(set) == key.1 => since,
-            (_, Some((_, was))) if (was.0, was.1) == (key.0, key.1) && was_pinned.is_none() => {
+        // as does one an action held. Pages awaited: from when the key came.
+        let from = match (shown.look, old, awaited) {
+            (_, _, Some(awaited)) if awaited.key == key => awaited.from,
+            (Some(Look::Plays { set, since }), ..) if low(set) == key.1 => since,
+            (_, Some((_, was)), _) if (was.0, was.1) == (key.0, key.1) && was_pinned.is_none() => {
                 phase.0.unwrap_or(reel.ms)
             }
             _ => reel.ms,
@@ -337,6 +359,47 @@ pub(crate) fn pieces(
             from,
             pin,
         };
+        let piece = art::world::Piece {
+            code: key.0,
+            set: key.1,
+            slot: key.2,
+            still: None,
+        };
+
+        // Its pages on their way: the drawing up kept and moved, its
+        // layers held, until they land.
+        let quad = sprites.quad(&mut stores.meshes);
+        let Some(layers) = sprites
+            .piece(&corpus, &mut stores, piece)
+            .map(<[Drawing]>::to_vec)
+        else {
+            if let Some(root) = old.and_then(|(entity, _)| drawn.get_mut(entity).ok()) {
+                placed(root, at);
+            }
+
+            let children = old.and_then(|(entity, _)| drawn.get(entity).ok()?.2);
+            let under = maps.standing_at(cell) - place.truncate();
+            let fresh = awaited.is_none_or(|a| a.key != key);
+
+            if fresh {
+                hold(&mut parts, children, reel.ms);
+                commands.entity(mirror).insert(Awaited { key, from });
+            }
+
+            follow(
+                &mut commands,
+                &mut parts,
+                (children, shown.housed),
+                (&depth, cell, place, under),
+                (None, reel.ms),
+            );
+
+            continue;
+        };
+
+        if awaited.is_some() {
+            commands.entity(mirror).remove::<Awaited>();
+        }
 
         if phase.0 != Some(from) {
             phase.0 = Some(from);
@@ -359,19 +422,11 @@ pub(crate) fn pieces(
         // A new key: the same entities, given the new layers' frames.
         // None yet, or one whose draw effects made it over: drawn anew.
         if let Some((entity, strata, root)) = kept {
-            let quad = sprites.quad(&mut stores.meshes);
-            let piece = art::world::Piece {
-                code: key.0,
-                set: key.1,
-                slot: key.2,
-                still: None,
-            };
-            let layers = sprites.piece(&corpus, &mut stores, piece);
             let floor = maps.standing_at(cell);
             let strata = lay(
                 &mut commands,
                 (&quad, entity),
-                (layers, &strata.0),
+                (&layers, &strata.0),
                 ((place, floor), timing, reel.ms),
             );
 
@@ -386,11 +441,8 @@ pub(crate) fn pieces(
 
             let (entity, _) = spawn(
                 &mut commands,
-                &corpus,
-                &mut sprites,
-                &mut stores,
+                (&quad, &layers),
                 &reel,
-                key,
                 (
                     Some(shown.agent),
                     place,
@@ -429,6 +481,18 @@ fn placed(
     }
 
     visibility.set_if_neq(seen);
+}
+
+/// A drawing's layers held on the frames they show: another key's pages
+/// are on their way.
+fn hold(parts: &mut Query<Part, Without<Piece>>, children: Option<&Children>, now: u32) {
+    for child in children.into_iter().flatten() {
+        if let Ok((_, _, mut stepped)) = parts.get_mut(*child)
+            && let Some(up) = stepped.layer.up()
+        {
+            stepped.layer.beat = Beat::holds(up, now);
+        }
+    }
 }
 
 /// A piece's parts kept up with it: a layer sorting apart at its own
@@ -591,6 +655,7 @@ pub(crate) fn missiles(
     if shots.at != Some(at) {
         let depth = Depth::of(&maps);
         let mut was = std::mem::take(&mut shots.drawn);
+        let mut pending = false;
 
         for flown in &snapshot.flown {
             let Some(key) = missile_key(&corpus, flown) else {
@@ -622,21 +687,32 @@ pub(crate) fn missiles(
             let moved = (place, ground, seen, footing);
 
             // The same picture: moved. Another, or a new launch: its
-            // entities given the new frames. Else drawn the first time.
-            let entity = match was.remove(&flown.handle) {
-                Some(old) if (old.key, old.launched) == (key, flown.launched) => {
+            // entities given the new frames. Else drawn the first time,
+            // once its pages are in: in flight, at its place and frame
+            // now. Its pages on their way: the drawing up moved, as it
+            // was; none yet, none drawn.
+            let old = was.remove(&flown.handle);
+            let same = old.is_some_and(|o| (o.key, o.launched) == (key, flown.launched));
+            let quad = sprites.quad(&mut stores.meshes);
+            let piece = art::world::Piece {
+                code: key.0,
+                set: key.1,
+                slot: key.2,
+                still: None,
+            };
+            let layers = (!same)
+                .then(|| {
+                    sprites
+                        .piece(&corpus, &mut stores, piece)
+                        .map(<[Drawing]>::to_vec)
+                })
+                .flatten();
+            let shot = match (old, layers) {
+                (Some(old), _) if same => {
                     fly(&mut flying, &mut shadows, old.entity, moved);
-                    old.entity
+                    Some(old)
                 }
-                Some(old) => {
-                    let quad = sprites.quad(&mut stores.meshes);
-                    let piece = art::world::Piece {
-                        code: key.0,
-                        set: key.1,
-                        slot: key.2,
-                        still: None,
-                    };
-                    let layers = sprites.piece(&corpus, &mut stores, piece);
+                (Some(old), Some(layers)) => {
                     let kept = flying
                         .get(old.entity)
                         .map(|f| f.5.0.clone())
@@ -644,23 +720,29 @@ pub(crate) fn missiles(
                     let strata = lay(
                         &mut commands,
                         (&quad, old.entity),
-                        (layers, &kept),
+                        (&layers, &kept),
                         ((place, ground), timing, reel.ms),
                     );
 
                     fly(&mut flying, &mut shadows, old.entity, moved);
                     commands.entity(old.entity).insert(strata);
                     crate::perf::churn(crate::perf::Churn::Rekeys, 1);
-                    old.entity
+                    Some(Shot {
+                        entity: old.entity,
+                        key,
+                        launched: flown.launched,
+                    })
                 }
-                None => {
+                (Some(old), None) => {
+                    fly(&mut flying, &mut shadows, old.entity, moved);
+                    pending = true;
+                    Some(old)
+                }
+                (None, Some(layers)) => {
                     let (entity, _) = spawn(
                         &mut commands,
-                        &corpus,
-                        &mut sprites,
-                        &mut stores,
+                        (&quad, &layers),
                         &reel,
-                        key,
                         (None, place, ground, seen, timing),
                     );
 
@@ -668,17 +750,22 @@ pub(crate) fn missiles(
                         .entity(entity)
                         .insert((footing, Tied::new(Who(Class::Missile, flown.handle))));
                     crate::perf::churn(crate::perf::Churn::Missiles, 1);
-                    entity
+                    Some(Shot {
+                        entity,
+                        key,
+                        launched: flown.launched,
+                    })
                 }
-            };
-            let shot = Shot {
-                entity,
-                key,
-                launched: flown.launched,
+                (None, None) => {
+                    pending = true;
+                    None
+                }
             };
 
             // A handle listed twice keeps its last drawing.
-            if let Some(twice) = shots.drawn.insert(flown.handle, shot) {
+            if let Some(shot) = shot
+                && let Some(twice) = shots.drawn.insert(flown.handle, shot)
+            {
                 commands.entity(twice.entity).despawn();
             }
         }
@@ -688,7 +775,9 @@ pub(crate) fn missiles(
             commands.entity(shot.entity).despawn();
         }
 
-        shots.at = Some(at);
+        // Pages on their way: looked at again next frame, though the
+        // clock stands.
+        shots.at = (!pending).then_some(at);
     }
 }
 
@@ -836,7 +925,8 @@ fn swaps(
 
         sprites
             .piece(corpus, stores, piece)
-            .iter()
+            .into_iter()
+            .flatten()
             .flat_map(|d| d.cels.iter().flatten())
             .filter_map(|cel| match &cel.body {
                 Picture::Indexed(body) => Some(body.id()),
@@ -854,27 +944,15 @@ pub(crate) fn slot(unit: &Unit<'_>, set: &Animation, facing: i32) -> usize {
     Facing::of(&unit.desc).slot_of(facing, set.poses.len())
 }
 
-/// A piece's entity, with its layers' entities as children ([`lay`]),
-/// stepping as `timing` says; `ground` where the ground under it is
-/// drawn. Its entity and layers.
+/// A piece's entity drawing `layers` on `quad`, with its layers'
+/// entities as children ([`lay`]), stepping as `timing` says; `ground`
+/// where the ground under it is drawn. Its entity and layers.
 pub(crate) fn spawn(
     commands: &mut Commands,
-    corpus: &Corpus,
-    sprites: &mut Sprites,
-    stores: &mut Assets2,
+    (quad, layers): (&Handle<Mesh>, &[Drawing]),
     reel: &Reel,
-    key: Key,
     (agent, place, ground, seen, timing): (Option<u32>, Vec3, Vec2, Visibility, Timing),
 ) -> (Entity, Strata) {
-    let quad = sprites.quad(&mut stores.meshes);
-    let (code, set, slot) = key;
-    let piece = art::world::Piece {
-        code,
-        set,
-        slot,
-        still: None,
-    };
-    let layers = sprites.piece(corpus, stores, piece);
     let parent = commands
         .spawn((Transform::from_translation(place), seen))
         .id();
@@ -886,7 +964,7 @@ pub(crate) fn spawn(
 
     let strata = lay(
         commands,
-        (&quad, parent),
+        (quad, parent),
         (layers, &[]),
         ((place, ground), timing, reel.ms),
     );
@@ -1262,13 +1340,30 @@ pub(crate) mod tests {
             .init_resource::<Assets<regent_draw::plain::Plain>>()
             .init_resource::<Assets<material::Body>>()
             .init_resource::<Assets<material::Band>>();
-        app.world_mut()
-            .run_system_once(
-                move |corpus: Res<Corpus>, mut sprites: ResMut<Sprites>, mut stores: Assets2| {
-                    sprites.piece(&corpus, &mut stores, piece).to_vec()
-                },
-            )
-            .expect("made")
+        // Asked, then its pages landed.
+        loop {
+            let made = app
+                .world_mut()
+                .run_system_once(
+                    move |corpus: Res<Corpus>,
+                          mut sprites: ResMut<Sprites>,
+                          mut stores: Assets2| {
+                        sprites
+                            .piece(&corpus, &mut stores, piece)
+                            .map(<[Drawing]>::to_vec)
+                    },
+                )
+                .expect("made");
+
+            if let Some(made) = made {
+                break made;
+            }
+
+            std::thread::yield_now();
+            app.world_mut()
+                .run_system_once(regent_draw::art::world::land)
+                .expect("landed");
+        }
     }
 
     /// A Dryad at its walk's end, `Waiting` with set `0xb1` playing on
@@ -1551,9 +1646,23 @@ pub(crate) mod tests {
         parts
     }
 
-    /// A drawing app with [`pieces`] alone, showing `shown`.
+    /// A drawing app with [`pieces`] alone, showing `shown`, updated
+    /// until its sprite pages land.
     fn drawing(corpus: Corpus, shown: Shown) -> App {
-        drawings(corpus, vec![shown])
+        const MOST: u32 = 5_000;
+
+        let mut app = drawings(corpus, vec![shown]);
+
+        for _ in 0..MOST {
+            if drawing_of(&app, shown.agent).is_some() {
+                break;
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            app.update();
+        }
+
+        app
     }
 
     /// The same, showing every piece in `now`.
@@ -1579,6 +1688,7 @@ pub(crate) mod tests {
                 (
                     crate::map::mirror::sync,
                     regent_draw::map::reel::step,
+                    regent_draw::art::world::land,
                     pieces,
                 )
                     .chain(),
@@ -1598,6 +1708,100 @@ pub(crate) mod tests {
             .filter_map(|c| world.get::<Layer>(c))
             .find(|l| l.role == Role::Body)
             .and_then(Layer::up)
+    }
+
+    /// Updates of `app` until agent 1's drawing draws `key`, at most
+    /// `most`: its sprite pages land.
+    fn landed_key(app: &mut App, key: Key, most: u32) {
+        for _ in 0..most {
+            if drawing_of(app, 1).is_some_and(|(_, k)| k == key) {
+                break;
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            app.update();
+        }
+    }
+
+    /// An attack whose pages land late draws the frame the attack is on
+    /// when they land, not its first; while they are on their way the
+    /// drawing up keeps its key and its frame. Each set's pages here are
+    /// pending at first: a fresh art service.
+    #[test]
+    #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+    fn an_attack_landing_late_draws_its_frame_now() {
+        // Game ms the attack started at, and the frames it is in when
+        // its pages land.
+        const SINCE: u32 = 50_000;
+        const INTO: u32 = 3;
+        const MOST: u32 = 5_000;
+
+        let hd = crate::files::env::path(crate::files::env::HD).expect("MAJESTY_HD");
+        let corpus =
+            Corpus::open(&crate::game::load::archives(&hd).expect("the dataset")).expect("corpus");
+        let unit = corpus
+            .catalogue
+            .tagged(b"DUNT")
+            .filter_map(|(at, _)| regent_core::content::unit::Unit::at(&corpus.catalogue, at).ok())
+            .find(|u| {
+                u.animation(SetKind::Attack)
+                    .and_then(|a| a.poses.first())
+                    .is_some_and(|p| p.frames.len() > (INTO + 1) as usize)
+            })
+            .expect("a unit with a long attack");
+        let attack = unit.animation(SetKind::Attack).expect("its attack").id;
+        let standing = Shown {
+            code: unit.id,
+            ..piece((0, 0), 0)
+        };
+        let attacking = Shown {
+            doing: Doing::Acting,
+            look: Some(Look::Plays {
+                set: attack,
+                since: SINCE,
+            }),
+            ..standing
+        };
+        let stand = key(&corpus, &Saved::default(), &standing).expect("standing art");
+        let strike = key(&corpus, &Saved::default(), &attacking).expect("attack art");
+        let piece = art::world::Piece {
+            code: strike.0,
+            set: strike.1,
+            slot: strike.2,
+            still: None,
+        };
+        let ms = made(
+            Corpus::open(&crate::game::load::archives(&hd).expect("the dataset")).expect("corpus"),
+            piece,
+        )[0]
+        .ms;
+        let mut app = drawings(corpus, vec![standing]);
+
+        assert!(drawing_of(&app, 1).is_none(), "nothing drawn while pending");
+
+        app.world_mut().resource_mut::<Reel>().ms = SINCE;
+        landed_key(&mut app, stand, MOST);
+
+        let held = drawn_frame(&app, 1);
+
+        assert!(held.is_some(), "standing drawn once landed");
+
+        // The attack starts: its pages pending, the stand stays, held.
+        app.insert_resource(Snapshot::of(Steps::showing(vec![attacking])));
+        app.update();
+
+        assert_eq!(drawing_of(&app, 1).map(|(_, k)| k), Some(stand));
+        assert_eq!(drawn_frame(&app, 1), held);
+
+        // Landing INTO frames on, the attack shows frame INTO.
+        app.world_mut().resource_mut::<Reel>().ms = SINCE + INTO * ms + ms / 2;
+        landed_key(&mut app, strike, MOST);
+
+        assert_eq!(drawing_of(&app, 1).map(|(_, k)| k), Some(strike));
+        assert_eq!(
+            drawn_frame(&app, 1),
+            Some(u16::try_from(INTO).expect("small"))
+        );
     }
 
     /// A walker draws the world's `Walk` frame, game frame by game frame:
@@ -1982,6 +2186,98 @@ pub(crate) mod tests {
                 Some((stands(&layers[1], place, ground) - anchor).extend(LAYER_STEP))
             );
         }
+    }
+
+    /// A missile whose pages land mid-flight is first drawn at its place
+    /// and frame then, not its launch's: nothing before.
+    #[test]
+    #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+    fn a_missile_landing_late_draws_its_place_and_frame_now() {
+        const LAUNCHED: u32 = 50_000;
+        const INTO: u32 = 5;
+        const MOST: u32 = 5_000;
+
+        let hd = crate::files::env::path(crate::files::env::HD).expect("MAJESTY_HD");
+        let open = || {
+            Corpus::open(&crate::game::load::archives(&hd).expect("the dataset")).expect("corpus")
+        };
+        let corpus = open();
+        let flown = |at: [i32; 3]| Flown {
+            handle: 7,
+            code: FourCc(*b"WPa2"),
+            at: at.map(fixed::from_whole),
+            facing: 0,
+            launched: LAUNCHED,
+        };
+        let key = missile_key(&corpus, &flown([0, 0, 0])).expect("a missile");
+        let piece = art::world::Piece {
+            code: key.0,
+            set: key.1,
+            slot: key.2,
+            still: None,
+        };
+        let drawing = made(open(), piece)[0].clone();
+        let frames = u32::try_from(drawing.cels.len()).expect("a few");
+        let mut app = App::new();
+        let mut steps = Steps::showing(Vec::new());
+
+        steps.flown = vec![flown([5, 6, 1])];
+        app.insert_resource(Snapshot::of(steps))
+            .insert_resource(Maps::with(Vec::new()))
+            .insert_resource(corpus)
+            .insert_resource(Reel {
+                ms: LAUNCHED + INTO * drawing.ms + drawing.ms / 2,
+            })
+            .init_resource::<Sprites>()
+            .init_resource::<Shots>()
+            .init_resource::<fog::Fog>()
+            .init_resource::<Assets<Image>>()
+            .init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<regent_draw::plain::Plain>>()
+            .init_resource::<Assets<material::Body>>()
+            .init_resource::<Assets<material::Band>>()
+            .add_systems(
+                Update,
+                (
+                    regent_draw::map::reel::step,
+                    regent_draw::art::world::land,
+                    missiles,
+                )
+                    .chain(),
+            );
+        app.update();
+
+        assert!(
+            app.world().resource::<Shots>().drawn.is_empty(),
+            "nothing drawn while pending"
+        );
+
+        for _ in 0..MOST {
+            if !app.world().resource::<Shots>().drawn.is_empty() {
+                break;
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            app.update();
+        }
+
+        let shot = app.world().resource::<Shots>().drawn[&7];
+        let world = app.world();
+        let place = world.get::<Transform>(shot.entity).expect("placed");
+        let body = world
+            .get::<Children>(shot.entity)
+            .expect("parts")
+            .iter()
+            .filter_map(|c| world.get::<Layer>(c))
+            .find(|l| l.role == Role::Body)
+            .and_then(Layer::up);
+        let maps = world.resource::<Maps>();
+
+        assert_eq!(
+            place.translation.truncate(),
+            maps.aloft_at(Vec2::new(5.0, 6.0), 1.0)
+        );
+        assert_eq!(body, u16::try_from(INTO % frames).ok());
     }
 
     #[test]

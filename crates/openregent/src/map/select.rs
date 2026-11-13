@@ -60,6 +60,7 @@ use crate::ui::{Covered, on_map};
 use crate::{map::hp_bars, map::labels};
 use regent_draw::art::{Assets2, Sprites};
 use regent_draw::map::reel::Layer;
+use regent_draw::map::sheet::Paged;
 
 /// The selected piece, by agent.
 #[derive(Resource, Default)]
@@ -793,10 +794,15 @@ pub fn follow(
                     &mut ellipses,
                     (code, look, fit, (with, side)),
                 );
-                let quads = banded.or_else(|| {
-                    glow(&corpus, (&mut sprites, &mut stores), (code, look, fit))
-                        .map(|g| Quads::Art(Box::new(g)))
-                });
+                // The art's pages on their way: no ring yet, asked again
+                // next frame.
+                let quads = match banded {
+                    Some(banded) => Some(banded),
+                    None => match glow(&corpus, (&mut sprites, &mut stores), (code, look, fit)) {
+                        Ringed::Art(glow) => glow.map(Quads::Art),
+                        Ringed::Pending => continue,
+                    },
+                };
                 let entity = spawn(&mut commands, quads, at);
 
                 rings.drawn[i] = Some((entity, (agent, side)));
@@ -845,6 +851,12 @@ fn fit_of(
     }
 }
 
+/// A ring's art, or that its pages are on their way.
+enum Ringed {
+    Art(Option<Box<Glow>>),
+    Pending,
+}
+
 /// The `look` ring fitted to descriptor `code` by `fit`. `None` without
 /// one.
 ///
@@ -854,21 +866,32 @@ fn glow(
     corpus: &Corpus,
     (sprites, stores): (&mut Sprites, &mut Assets2),
     (code, look, fit): (FourCc, Look, Fit),
-) -> Option<Glow> {
-    let unit = Unit::find(&corpus.catalogue, code)?.ok()?;
-    let ring = ring::fitted(&corpus.catalogue, &unit, look, fit).ok()??;
-    let cel = sprites.frame(corpus, stores, (ring.frame, Some(ring.owner())))?;
+) -> Ringed {
+    let unit = Unit::find(&corpus.catalogue, code).and_then(Result::ok);
+    let ring = unit.and_then(|u| ring::fitted(&corpus.catalogue, &u, look, fit).ok()?);
+
+    match ring.map(|r| (r, sprites.frame(corpus, stores, (r.frame, Some(r.owner()))))) {
+        Some((_, Paged::Pending)) => Ringed::Pending,
+        Some((ring, Paged::Ready(Some(cel)))) => {
+            Ringed::Art(Some(Box::new(art(ring, cel, sprites, stores))))
+        }
+        Some((_, Paged::Ready(None))) | None => Ringed::Art(None),
+    }
+}
+
+/// Ring `ring`'s art drawn with `cel`.
+fn art(ring: ring::Ring, cel: Cel, sprites: &mut Sprites, stores: &mut Assets2) -> Glow {
     let put = Transform {
         translation: offset(ring.at, cel.anchor).extend(0.0),
         scale: cel.size.extend(1.0),
         ..default()
     };
 
-    Some(Glow {
+    Glow {
         cel,
         put,
         quad: sprites.quad(&mut stores.meshes),
-    })
+    }
 }
 
 /// The `look` ring fitted to descriptor `code` by `fit`, drawn as its

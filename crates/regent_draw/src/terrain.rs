@@ -148,6 +148,9 @@ pub struct Drawn;
 pub struct MapShown {
     /// The map view's revision. Here because every view shares [`Drawn`].
     pub mapped: Option<u64>,
+    /// The revision whose scatter is up: behind `mapped` while its
+    /// sprite pages are on their way.
+    pub scattered: Option<u64>,
     pub status: String,
 }
 

@@ -26,6 +26,7 @@ use crate::input::orders::{Orders, Preview};
 use crate::map::rings;
 use regent_draw::art::world::Piece;
 use regent_draw::art::{Assets2, Sprites};
+use regent_draw::map::sheet::Paged;
 
 /// How far a layer of the preview sits above the one below.
 const LAYER_STEP: f32 = 0.01;
@@ -80,18 +81,16 @@ pub fn follow(
             commands.entity(entity).despawn();
         }
 
-        drawn.shown = orders.preview.map(|p| {
-            (
-                spawn(
-                    &mut commands,
-                    (&corpus, &maps),
-                    (&mut sprites, &mut stores, &mut ellipses),
-                    (p, with),
-                ),
-                p.code,
-                look(p.placement),
-                with,
-            )
+        // Its pages on their way: nothing shown, asked again next frame.
+        drawn.shown = orders.preview.and_then(|p| {
+            let entity = spawn(
+                &mut commands,
+                (&corpus, &maps),
+                (&mut sprites, &mut stores, &mut ellipses),
+                (p, with),
+            )?;
+
+            Some((entity, p.code, look(p.placement), with))
         });
     }
 
@@ -104,6 +103,51 @@ pub fn follow(
     }
 }
 
+/// The pages of each building the build list shows asked for, as it
+/// changes: its preview draws at once when picked.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+pub fn listed(
+    orders: Res<Orders>,
+    corpus: Res<Corpus>,
+    mut sprites: ResMut<Sprites>,
+    mut stores: Assets2,
+    mut asked: Local<Option<crate::input::orders::Rows>>,
+) {
+    let fresh = match (&orders.listed, &*asked) {
+        (Some(now), Some(was)) => !std::sync::Arc::ptr_eq(now, was),
+        (now, _) => now.is_some(),
+    };
+
+    if fresh {
+        for (_, offer) in orders.listed.iter().flat_map(|l| l.iter()) {
+            let _ = sprites.piece(&corpus, &mut stores, standing(&corpus, offer.code));
+        }
+
+        asked.clone_from(&orders.listed);
+    }
+}
+
+/// Building `code`'s preview: its first set's first frame.
+fn standing(corpus: &Corpus, code: FourCc) -> Piece {
+    let set = Unit::find(&corpus.catalogue, code)
+        .and_then(Result::ok)
+        .and_then(|u| {
+            u.initial()
+                .map(|s| regent_core::data::imag::set_number(s.id))
+        })
+        .unwrap_or(0);
+
+    Piece {
+        code,
+        set,
+        slot: 0,
+        still: Some(0),
+    }
+}
+
 /// Where preview `p` draws: its half cell standing on the ground, in
 /// front of every piece.
 fn at(maps: &Maps, p: Preview) -> Vec3 {
@@ -113,15 +157,35 @@ fn at(maps: &Maps, p: Preview) -> Vec3 {
 }
 
 /// The preview's entity: its ring, drawn `with` the art or as its band,
-/// then each layer's first frame.
+/// then each layer's first frame. `None` while their pages are on their
+/// way: nothing spawned.
 fn spawn(
     commands: &mut Commands,
     (corpus, maps): (&Corpus, &Maps),
     (sprites, stores, ellipses): (&mut Sprites, &mut Assets2, &mut Assets<Ellipse>),
     (p, with): (Preview, Rings),
-) -> Entity {
+) -> Option<Entity> {
     let quad = sprites.quad(&mut stores.meshes);
     let unit = Unit::find(&corpus.catalogue, p.code).and_then(Result::ok);
+    let ring = unit
+        .as_ref()
+        .and_then(|u| ring::fitted(&corpus.catalogue, u, look(p.placement), Fit::Clearing).ok()?);
+    let native = ring.and_then(|r| rings::native(corpus, ellipses, &r, with));
+    let ring = match ring.filter(|_| native.is_none()) {
+        Some(r) => match sprites.frame(corpus, stores, (r.frame, Some(r.owner()))) {
+            Paged::Ready(cel) => cel.map(|cel| (r.at, cel)),
+            Paged::Pending => return None,
+        },
+        None => None,
+    };
+    let layers = match unit {
+        Some(_) => Some(
+            sprites
+                .piece(corpus, stores, standing(corpus, p.code))?
+                .to_vec(),
+        ),
+        None => None,
+    };
     // At its place now: a move this frame cannot reach it until the
     // spawn applies, so the default would draw a frame at the map's centre.
     let parent = commands
@@ -130,29 +194,6 @@ fn spawn(
             Visibility::Inherited,
         ))
         .id();
-    let ring = unit
-        .as_ref()
-        .and_then(|u| ring::fitted(&corpus.catalogue, u, look(p.placement), Fit::Clearing).ok()?);
-    let native = ring.and_then(|r| rings::native(corpus, ellipses, &r, with));
-    let ring = ring.filter(|_| native.is_none()).and_then(|r| {
-        Some((
-            r.at,
-            sprites.frame(corpus, stores, (r.frame, Some(r.owner())))?,
-        ))
-    });
-    let layers = unit.as_ref().map(|u| {
-        let set = u
-            .initial()
-            .map_or(0, |s| regent_core::data::imag::set_number(s.id));
-        let piece = Piece {
-            code: p.code,
-            set,
-            slot: 0,
-            still: Some(0),
-        };
-
-        sprites.piece(corpus, stores, piece).to_vec()
-    });
 
     // The band under the body, in the ring's place.
     for (ellipse, mut put) in native.map(|n| n.0).unwrap_or_default() {
@@ -190,7 +231,7 @@ fn spawn(
         }
     }
 
-    parent
+    Some(parent)
 }
 
 /// One frame's body, lift and shadow quads under `parent`, at `at`, on

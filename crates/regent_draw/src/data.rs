@@ -247,7 +247,7 @@ pub fn text_of(sources: &Sources, catalogue: &Catalogue<'static>) -> Text<'stati
 /// The opened corpus: every archive, indexed, and its text.
 #[derive(Resource)]
 pub struct Corpus {
-    pub catalogue: Catalogue<'static>,
+    pub catalogue: Arc<Catalogue<'static>>,
     /// Game text for numeric save codes (e.g. all 177 activity codes).
     pub text: Text<'static>,
     /// Named archives that hold nothing.
@@ -293,7 +293,7 @@ impl Corpus {
 
         Ok(Corpus {
             text,
-            catalogue,
+            catalogue: Arc::new(catalogue),
             empty,
             source: ArtSource::of(&paths),
             paths,
@@ -340,7 +340,7 @@ impl Corpus {
 
         Corpus {
             text: Text::build(&catalogue),
-            catalogue,
+            catalogue: Arc::new(catalogue),
             empty: Vec::new(),
             paths: Vec::new(),
             source: ArtSource::of(&[]),
