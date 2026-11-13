@@ -666,8 +666,19 @@ fn recorded_word(dir: &std::path::Path) -> Option<String> {
         .map(|word| word.to_string())
 }
 
-/// A quest made stays on its loading page, Start Quest offered, until
-/// that is pressed.
+/// Whether a new game's loading page covers it.
+fn draped(app: &App) -> bool {
+    app.world().resource::<crate::menu::Drape>().is_up()
+}
+
+/// A drawn frame, a game being made finished first, nothing pressed.
+fn waited(app: &mut App) {
+    crate::menu::settle(app.world());
+    app.update();
+}
+
+/// A quest made is put in under its loading page, Start Quest offered,
+/// and waits there, its clock held, until that is pressed.
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn a_made_quest_waits_for_start_quest() {
@@ -679,20 +690,117 @@ fn a_made_quest_waits_for_start_quest() {
     let menu = crate::menu::Opened::starting(quests, 0);
     let mut app = menu_app(menu, (maker, nobody()), 1.0, settings, Display::Headless);
     let screen = |app: &App| *app.world().resource::<State<Screen>>().get();
+    let frame = Duration::from_millis(MS_PER_FRAME.into());
+
+    // A game frame owed each drawn frame, were the clock running.
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(frame));
 
     for _ in 0..STEPPED {
-        crate::menu::settle(app.world());
-        app.update();
+        waited(&mut app);
     }
 
-    assert_eq!(screen(&app), Screen::Menu);
+    assert_eq!(screen(&app), Screen::Playing);
+    assert!(draped(&app), "under its loading page");
     assert!(app.world().resource::<crate::menu::Menu>().offered());
+    assert_eq!(frames(app.world()), 0, "the clock held");
 
     for _ in 0..STEPPED {
         step(&mut app);
     }
 
-    assert_eq!(screen(&app), Screen::Playing);
+    assert!(!draped(&app));
+    assert!(frames(app.world()) > 0, "game frames ran");
+}
+
+/// The page over a new game goes by itself once its drawing settles,
+/// not before; Start Quest on a held one is offered only then. Under
+/// it, the clock does not run. An app that draws: settled only after
+/// quiet frames (`regent_draw::settle`).
+#[test]
+#[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+fn a_new_games_loading_page_waits_for_its_drawing_to_settle() {
+    const MOST: u32 = 600;
+
+    let starts = [
+        (
+            Wait::Free,
+            crate::menu::Opened::new as fn(_, _) -> crate::menu::Opened,
+        ),
+        (Wait::Held, |quests, _| {
+            crate::menu::Opened::starting(quests, 0)
+        }),
+    ];
+
+    for (wait, opened) in starts {
+        let (quests, maker) = commanding_maker(None, &[]);
+        let mut settings = Settings::default();
+        let mut menu = opened(quests, crate::menu::Art::default());
+
+        settings.audio.muted = true;
+
+        if wait == Wait::Free {
+            menu.with(|m| m.menu.command(crate::menu::LoadKind::Freestyle));
+        }
+
+        let mut app = menu_app(menu, (maker, nobody()), 1.0, settings, Display::Headless);
+        let frame = Duration::from_millis(MS_PER_FRAME.into());
+        let playing = |app: &App| *app.world().resource::<State<Screen>>().get() == Screen::Playing;
+
+        app.insert_resource(TimeUpdateStrategy::ManualDuration(frame))
+            .insert_resource(regent_draw::settle::Settle::default());
+
+        let began = std::time::Instant::now();
+
+        while !playing(&app) && began.elapsed() < MAKING {
+            waited(&mut app);
+        }
+
+        let mut under = 0;
+
+        while draped(&app) && under < MOST {
+            let settled = || {
+                app.world()
+                    .resource::<regent_draw::settle::Settle>()
+                    .settled()
+            };
+            let offered = app.world().resource::<crate::menu::Menu>().offered();
+
+            assert_eq!(frames(app.world()), 0, "the clock held");
+            assert!(!offered || settled(), "Start Quest offered unsettled");
+
+            if offered {
+                app.world_mut().resource_mut::<crate::menu::Menu>().go();
+            }
+
+            waited(&mut app);
+            under += 1;
+
+            let settled = app
+                .world()
+                .resource::<regent_draw::settle::Settle>()
+                .settled();
+
+            assert!(draped(&app) || settled, "gone unsettled");
+        }
+
+        assert!(!draped(&app), "{wait:?}: still up after {MOST} frames");
+        assert!(under >= regent_draw::settle::QUIET, "{wait:?}: up {under}");
+
+        for _ in 0..STEPPED {
+            waited(&mut app);
+        }
+
+        assert!(frames(app.world()) > 0, "{wait:?}: game frames ran");
+    }
+}
+
+/// How a test's game leaves its loading page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Wait {
+    /// By itself.
+    Free,
+    /// On Start Quest.
+    Held,
 }
 
 /// A restarted quest: its summary open, no game; Start Quest there
@@ -1646,6 +1754,10 @@ fn a_lan_game_from_the_menus_plays_alike() {
     let digests = (FRAMES / crate::game::record::DIGEST_EVERY) as usize;
 
     assert_eq!((host_peers, guest_peers), (2, 2), "a LAN game");
+    assert!(
+        !draped(&host) && !draped(&guest),
+        "no loading page over a LAN game"
+    );
     assert!(shown(&host) >= FRAMES && shown(&guest) >= FRAMES);
     assert_eq!((host_stopped, guest_stopped), (None, None));
     assert!(!host_dropped && !guest_dropped, "no peer dropped");

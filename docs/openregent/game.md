@@ -598,6 +598,15 @@ the covers; the bar empty, no progress drawn. A save shows its game's
 page: a quest's, else freestyle's (a departure: the original's load makes
 no `AP50`).
 
+The game made, it is put in under the same page (`menu::drape`), the
+world drawn beneath it, until its drawing's start-up work settles
+(`regent_draw::settle`: no pipeline compiling, ground patch wanted,
+sprite page made or picture upscaling, three frames in a row; 30 s at
+most): the first frames' cost is paid before play. Under it the game
+clock does not start, no input reaches the game and no game sound
+starts. Then a held game offers Start Quest, the others' page goes by
+itself. A LAN game is never covered: its peers start as they did.
+
 ### The game's end
 
 A won quest is recorded in the profile once, by its code, the game clock

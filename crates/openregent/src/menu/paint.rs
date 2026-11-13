@@ -348,11 +348,13 @@ pub enum Offer {
 /// dataset's frame, the game's still and icon in place of the panel's,
 /// its title, the covers. The bar stays empty: no progress is drawn.
 /// With `offer`, Start Quest; whether it was pressed, by a click or Enter.
+/// Over the game (`layer`), no press reaches what is under it.
 pub fn loading(
     ctx: &egui::Context,
     (art, shared): (&mut Art, &mut service::Art),
     (shows, offer): (Shows, Offer),
     quests: &[Offered],
+    layer: super::cinema::Layer,
 ) -> bool {
     let Art { book, ink, .. } = art;
     let (quest, title) = match shows {
@@ -370,7 +372,15 @@ pub fn loading(
 
     if let (Some(quest), Some(layout)) = (quest, layout) {
         let source = quest.source;
-        let mut canvas = Canvas::filling(ctx, (ink, shared), size(layout));
+        let mut canvas = match layer {
+            super::cinema::Layer::Menus => Canvas::filling(ctx, (ink, shared), size(layout)),
+            super::cinema::Layer::OverGame => {
+                let canvas = Canvas::over(ctx, (ink, shared), size(layout));
+
+                sink(&canvas.ui);
+                canvas
+            }
+        };
 
         canvas.backdrop();
 
@@ -410,6 +420,32 @@ pub fn loading(
     } else {
         false
     }
+}
+
+/// The whole of `ui` taking the pointer: no press, hover or wheel reaches
+/// the layers under it.
+fn sink(ui: &egui::Ui) {
+    ui.interact(ui.max_rect(), ui.id().with("sink"), Sense::click_and_drag());
+}
+
+/// The window black over the game, taking the pointer: a game with no
+/// loading page, as it settles (`menu::drape`).
+pub fn cover(ctx: &egui::Context) {
+    let ui = over_game(ctx);
+
+    ui.painter().rect_filled(ui.max_rect(), 0.0, Color32::BLACK);
+    sink(&ui);
+}
+
+/// The whole window, over the game's interface.
+fn over_game(ctx: &egui::Context) -> egui::Ui {
+    egui::Ui::new(
+        ctx.clone(),
+        "film".into(),
+        egui::UiBuilder::new()
+            .layer_id(egui::LayerId::new(egui::Order::Foreground, "film".into()))
+            .max_rect(ctx.viewport_rect()),
+    )
 }
 
 /// `c` moved to the middle of `layout`'s width, its row kept.
@@ -600,13 +636,7 @@ impl<'a> Canvas<'a> {
         ink: (&'a mut Store, &'a mut service::Art),
         layout: Vec2,
     ) -> Canvas<'a> {
-        let ui = egui::Ui::new(
-            ctx.clone(),
-            "film".into(),
-            egui::UiBuilder::new()
-                .layer_id(egui::LayerId::new(egui::Order::Foreground, "film".into()))
-                .max_rect(ctx.viewport_rect()),
-        );
+        let ui = over_game(ctx);
         let fit = Fit::of(ui.max_rect(), layout);
 
         Canvas::at(ui, ink, fit)

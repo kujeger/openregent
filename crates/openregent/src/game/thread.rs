@@ -82,11 +82,20 @@ pub enum Mode {
 }
 
 /// This machine's pause and speed (times the engine's), as the
-/// interface sets them.
+/// interface sets them, and whether the clock may start.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pace {
     pub paused: bool,
     pub speed: f32,
+    pub start: Start,
+}
+
+/// Whether the game's clock may start: held while the loading page
+/// covers a game just put in (`menu::drape`), its drawing settling.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Start {
+    Held,
+    Free,
 }
 
 /// What the interface may ask of the sim thread: the whole list.
@@ -610,8 +619,12 @@ impl Stepper {
         self.fresh = Fresh::Yes;
         self.sim.peer_mut().set_local(pace.paused, pace.speed);
 
-        // The clock starts with the first drawn frame.
-        self.clock.start();
+        // The clock starts with the first drawn frame not held: until
+        // then no time is owed.
+        if pace.start == Start::Free {
+            self.clock.start();
+        }
+
         self.clock.drawn(elapsed);
     }
 
@@ -793,6 +806,13 @@ mod tests {
     const RUNNING: Pace = Pace {
         paused: false,
         speed: 1.0,
+        start: Start::Free,
+    };
+
+    /// Running, but the clock held from starting.
+    const HELD: Pace = Pace {
+        start: Start::Held,
+        ..RUNNING
     };
 
     /// A new game on its thread, in `mode`.
@@ -875,6 +895,42 @@ mod tests {
         );
         assert_eq!(copies, 8, "one a stepped frame, shared while paused");
         assert_eq!(thread.run(|sim| sim.frames()), Ok(10), "the thread's own");
+    }
+
+    /// A held clock owes nothing, in either mode: no step however long
+    /// the drawn frames; freed, it starts from then, owing nothing before.
+    #[test]
+    #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+    fn a_held_clock_steps_nothing_until_freed() {
+        const WAIT: Duration = Duration::from_millis(300);
+
+        let mut sync = spawned(Mode::Sync);
+
+        for _ in 0..4 {
+            let state = sync.frame(Interest::default(), HELD, 1.0).expect("a state");
+
+            assert_eq!(state.frame.frames, 0, "held");
+        }
+
+        let freed = sync
+            .frame(Interest::default(), RUNNING, DRAWN)
+            .expect("a state");
+
+        assert_eq!(freed.frame.frames, 0, "nothing owed from the held frames");
+
+        let mut piped = spawned(Mode::Pipelined);
+
+        let _ = piped.frame(Interest::default(), HELD, DRAWN);
+        std::thread::sleep(WAIT);
+        assert_eq!(piped.run(|sim| sim.frames()), Ok(0), "held");
+
+        let _ = piped.frame(Interest::default(), RUNNING, DRAWN);
+        std::thread::sleep(WAIT);
+
+        // 300 ms: 6 frames, but for a busy machine's lag.
+        let frames = piped.run(|sim| sim.frames()).expect("frames");
+
+        assert!((3..=7).contains(&frames), "{frames}");
     }
 
     /// An order handed over is reported with the frame the game took it
@@ -1027,8 +1083,8 @@ mod tests {
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn quitting_mid_catch_up_joins_at_once() {
         const FLAT_OUT: Pace = Pace {
-            paused: false,
             speed: 1_000.0,
+            ..RUNNING
         };
 
         let mut thread = spawned(Mode::Pipelined);

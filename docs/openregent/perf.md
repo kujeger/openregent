@@ -422,6 +422,38 @@ Left as they are:
 
 ## Startup
 
+A new game's first drawn frames cost the most: the ground's first
+compose, the sprite pages its pieces first draw (`map::sheet`), the
+images handed to the GPU, the pipelines compiled. So a game made is put
+in under its loading page (`menu::drape`) and drawn beneath it until
+`regent_draw::settle` reports its start-up work done:
+
+```text
+ made ──> draw::install, page up ──> Screen::Playing: Settle::restart
+ each drawn frame, under the page: the world drawn; the clock held
+   (game::thread::Start::Held), no keys, picks or game sound
+ Last: nothing pending QUIET (3) frames in a row, or 30 s up
+   ──> a held game's Start Quest offered; else the page goes
+ page gone ──> the next tick starts the clock
+```
+
+Pending: pipelines queued or compiling as the render world last stood
+(a failed one leaves Bevy's waiting list), the ground patches the view
+wants, sprite pages made that frame. Interface pictures upscaling
+(`art::busy`) are not waited for: they take minutes on a slow machine.
+Without a renderer (`Display::Headless`) it is settled at once. A wait
+past 10 s logs what is pending, and again each 10 s. A LAN game is never
+covered.
+
+With `MAJ_PERF`, the page's going logs `drape frame <n> ms <ms> frames
+<count>`: the drawn frame it went on, how long and how many frames it
+was up. The `opening` report still ends 4 frames after the game's
+first, under the page; spike lines past `<n>` are play's. A shot
+(`draw::shot`) counts its `--frames` from the page's going. The game's
+first drawn frame no longer gives the clock its 1/60 s before the count,
+so a `--running` shot of `--frames N` shows what one of `N - 1` showed
+before the page; held shots are unchanged.
+
 A game without a screen (`--headless`) reads the archives without their
 `TILE` pixels (`cam::Defer::Pixels`, `regent_draw::data::headless`): they
 are most of the files, and a page-faulted copy of them was most of the

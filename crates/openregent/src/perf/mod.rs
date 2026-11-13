@@ -291,6 +291,21 @@ pub fn startup(what: &'static str) {
     }
 }
 
+/// The loading page's lift ([`lifted`]): ms up and drawn frames, for the
+/// frame's line.
+static LIFTED: Mutex<Option<(f64, u32)>> = Mutex::new(None);
+
+/// A new game's loading page (`menu::drape`) gone after `ms` and
+/// `frames` drawn frames: logged with the frame's number, as
+/// `drape frame 61 ms 210 frames 13`.
+pub fn lifted(ms: f64, frames: u32) {
+    if on()
+        && let Ok(mut lifted) = LIFTED.lock()
+    {
+        *lifted = Some((ms, frames));
+    }
+}
+
 /// Each non-empty series logged, `what` the run's part, and emptied:
 ///
 /// ```text
@@ -411,7 +426,10 @@ pub fn install(app: &mut App) {
             .add_systems(First, began)
             .add_systems(
                 Last,
-                (uploads, ended).chain().after(regent_draw::settle::Noted),
+                (uploads, ended)
+                    .chain()
+                    .after(regent_draw::settle::Noted)
+                    .after(crate::menu::lift),
             )
             .add_observer(|_: On<Add<Transform>>| churn(Churn::Spawned, 1))
             .add_observer(|_: On<Despawn<Transform>>| churn(Churn::Despawned, 1));
@@ -578,6 +596,10 @@ fn ended(
             latest(Timer::Step),
             latest(Timer::Ground)
         );
+    }
+
+    if let Some((ms, frames)) = LIFTED.lock().ok().and_then(|mut l| l.take()) {
+        info!(target: TARGET, "drape frame {} ms {ms:.0} frames {frames}", drawn.total);
     }
 
     let was = drawn.part;

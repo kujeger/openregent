@@ -23,8 +23,9 @@ use regent_draw::map::reel::Reel;
 use crate::files::config::Settings;
 use crate::game::seen::{Frame, Interest, News};
 use crate::game::speed::Speedup;
-use crate::game::thread::{Pace, SimThread, Slide};
+use crate::game::thread::{Pace, SimThread, Slide, Start};
 use crate::map::mirror::Was;
+use crate::menu::Drape;
 use crate::ui;
 
 /// The world as the last two frames left it: what [`crate::map::mirror::sync`]
@@ -159,7 +160,9 @@ impl Motion {
 /// it, and this takes the newest state if one came. A state is what the
 /// interface reads until the next (`seen`), with the snapshot the
 /// drawing reads and the news. The slide is worked out for now: the
-/// clock goes on between states.
+/// clock goes on between states. Under the loading page
+/// (`menu::drape`) the clock does not start: the game is drawn, not
+/// stepped.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -167,7 +170,7 @@ impl Motion {
 pub(crate) fn tick(
     time: Res<Time>,
     speed: Res<Speedup>,
-    (paused, settings): (Res<ui::Paused>, Res<Settings>),
+    (paused, settings, drape): (Res<ui::Paused>, Res<Settings>, Res<Drape>),
     mut thread: ResMut<SimThread>,
     (mut snapshot, mut reel): (ResMut<Snapshot>, ResMut<Reel>),
     (mut published, mut news): (ResMut<Frame>, ResMut<News>),
@@ -175,9 +178,15 @@ pub(crate) fn tick(
 ) {
     #[allow(clippy::cast_precision_loss, reason = "50")]
     let frame = MS_PER_FRAME as f32;
+    let start = if drape.is_up() {
+        Start::Held
+    } else {
+        Start::Free
+    };
     let pace = Pace {
         paused: paused.0,
         speed: speed.0,
+        start,
     };
     let waited = crate::perf::start();
     let state = thread.frame(*interest, pace, time.delta_secs());

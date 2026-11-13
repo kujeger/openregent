@@ -65,7 +65,7 @@ use crate::game::seen::{Ask, News, Outbox, Watch};
 use crate::game::sim::Session;
 use crate::map::mirror::Pieces;
 use crate::map::select::Selected;
-use crate::menu::{Screen, in_game};
+use crate::menu::{Screen, in_game, undraped};
 use crate::ui::end;
 
 /// The listener faces south, so a sound pans by its side of the screen;
@@ -158,7 +158,10 @@ impl bevy::app::Plugin for Plugin {
                     encore.run_if(not(end::playing)),
                 )
                     .chain()
+                    // Not under a new game's loading page: its sound
+                    // starts with play.
                     .run_if(in_game)
+                    .run_if(undraped)
                     .before(loudness)
                     .in_set(Starts),
             );

@@ -36,7 +36,8 @@
 //!  LanSetup opens Trees and Presets as Setup does, which close back to it.
 //!
 //!  Screen::Menu ──Start Quest, a freestyle start, a LAN game seated, the command line's──> AP50 drawn ──> begin: Maker on a thread, draw::install ──> Screen::Playing
-//!  a quest's AP50, the game made ──its Start Quest──> draw::install (`Hold`)
+//!  Screen::Playing, AP50 over the game (`drape`; not a LAN game) ──its drawing settled──> play
+//!  a quest's AP50 over the game, settled ──its Start Quest──> play (`Hold`)
 //!  Screen::Menu ──Load──> its page drawn, no AP50 ──> begin
 //!  Screen::Playing ──the end panel's Main Menu──> draw::uninstall ──> Screen::Menu, Main
 //!  Screen::Playing ──Options, LOAD GAME──> draw::uninstall ──> Screen::Menu, the save made
@@ -80,6 +81,7 @@
 
 pub mod art;
 mod cinema;
+mod drape;
 mod extras;
 pub mod faces;
 mod films;
@@ -125,6 +127,7 @@ use regent_core::sim::mapgen::preset;
 
 pub use art::Art;
 pub use cinema::{Layer, Video, full_screen};
+pub use drape::{Drape, lift, undraped};
 pub use freestyle::Freestyle;
 use paint::Shows;
 pub use paint::click;
@@ -189,8 +192,12 @@ enum Start {
 /// or quest save picked in the menus does, so its still is seen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Hold {
+    /// The page goes by itself, the game made and its drawing settled.
     Free,
+    /// Start Quest not yet offered: the game being made, or settling
+    /// ([`drape`]).
     Making,
+    /// Start Quest offered.
     Made,
 }
 
@@ -853,21 +860,15 @@ impl Menu {
             .map(|(k, p)| (*k, p))
     }
 
-    /// The game being made marked made: its Start Quest offered.
-    const fn made(&mut self) {
-        if let Some(Start::Shown(_, _, hold)) = &mut self.start {
-            *hold = Hold::Made;
-        }
-    }
-
-    /// Whether Start Quest is offered: the game made and held.
+    /// Whether Start Quest is offered: the game made and held, its
+    /// drawing settled.
     #[cfg(test)]
     pub const fn offered(&self) -> bool {
         matches!(self.start, Some(Start::Shown(_, _, Hold::Made)))
     }
 
     /// The loading page's Start Quest pressed ahead, as the player
-    /// presses it once the game is made.
+    /// presses it once offered.
     #[cfg(test)]
     pub const fn go(&mut self) {
         if let Some(Start::Shown(_, _, hold)) = &mut self.start {
@@ -1068,12 +1069,25 @@ fn opening(spec: &str, keys: &[FourCc]) -> Result<(Page, paint::View), String> {
     }
 }
 
-/// The menus' systems, while [`Screen::Menu`].
+/// The menus' systems, while [`Screen::Menu`]; the loading page over a
+/// game just put in ([`drape`]).
 pub struct Plugin;
 
 impl bevy::app::Plugin for Plugin {
     fn build(&self, app: &mut App) {
+        use crate::game::scope::Scoped as _;
+
         app.init_resource::<Returning>()
+            .per_game::<Drape>()
+            .add_systems(OnEnter(Screen::Playing), drape::began)
+            .add_systems(Last, lift.after(regent_draw::settle::Noted).run_if(in_game))
+            .add_systems(
+                EguiPrimaryContextPass,
+                drape::shown
+                    .after(crate::draw::frame::Ui::Over)
+                    .run_if(in_game)
+                    .run_if(not(undraped)),
+            )
             .add_systems(OnEnter(Screen::Menu), returned)
             .add_systems(Update, (begin, rescan).run_if(in_state(Screen::Menu)))
             .add_systems(EguiPrimaryContextPass, show.run_if(in_state(Screen::Menu)))
@@ -1143,7 +1157,13 @@ fn show(
     if let (None, Some(shows)) = (&f.menu.start, f.menu.held) {
         let shown = (shows, paint::Offer::Nothing);
 
-        paint::loading(ctx, (&mut *f.art, &mut shared), shown, &f.quests.0);
+        paint::loading(
+            ctx,
+            (&mut *f.art, &mut shared),
+            shown,
+            &f.quests.0,
+            Layer::Menus,
+        );
         return Ok(());
     }
 
@@ -1462,7 +1482,7 @@ fn show(
 }
 
 /// What shows while the game `start` asks for is made: its loading page,
-/// worked out once, with Start Quest once a held game is made; a game
+/// worked out once, with Start Quest once offered; a game
 /// with none loads under the page it was picked on, the command line's
 /// under nothing.
 fn starting(
@@ -1487,7 +1507,9 @@ fn starting(
 
     let hold = match shows {
         Some(shows) => {
-            let pressed = paint::loading(ctx, (&mut *f.art, shared), (shows, offer), &f.quests.0);
+            let page = (shows, offer);
+            let pressed =
+                paint::loading(ctx, (&mut *f.art, shared), page, &f.quests.0, Layer::Menus);
 
             if pressed { Hold::Free } else { hold }
         }
@@ -1803,28 +1825,25 @@ struct Making {
 type Job = (Maker, Shelf, Result<crate::game::begin::Made, String>);
 
 /// Once the loading page is drawn, make the game on a thread; once made,
-/// and a held game's Start Quest pressed, install and play it, on this
-/// one. A game that will not start is said on its page, the command
-/// line's ends the app; a held one's once Start Quest is pressed.
+/// install and play it on this one, under its loading page ([`drape`])
+/// until its drawing settles: a held game's then waits for Start Quest.
+/// A game that will not start is said on its page, the command line's
+/// ends the app.
 ///
 /// ```text
 ///  Shown, none making ──> Making: Maker, Shelf, Arc'd quests to a thread
-///  Shown, Making ──finished, held──> Hold::Made: Start Quest offered
-///  Shown, Making ──finished, free──> Maker, Shelf back ──> draw::install ──> Screen::Playing
+///  Shown, Making ──finished──> Maker, Shelf back ──> draw::install ──> Screen::Playing,
+///                              the page over it (not a LAN game's)
 /// ```
 fn begin(world: &mut World) {
     let shown = match &world.resource::<Menu>().start {
-        Some(Start::Shown(wanted, _, hold)) => Some((wanted.clone(), *hold)),
+        Some(Start::Shown(wanted, ..)) => Some(wanted.clone()),
         _ => None,
     };
 
-    if let Some((wanted, hold)) = shown {
+    if let Some(wanted) = shown {
         match world.remove_resource::<Making>() {
             None => making(world, wanted),
-            Some(m) if m.job.is_finished() && hold != Hold::Free => {
-                world.resource_mut::<Menu>().made();
-                world.insert_resource(m);
-            }
             Some(m) if m.job.is_finished() => {
                 let (maker, shelf, made) = m
                     .job
@@ -1907,8 +1926,9 @@ fn made(
     }
 }
 
-/// `made` installed and played; a game that will not start is said on
-/// its page, the command line's ends the app.
+/// `made` installed and played, under its loading page but a LAN game's;
+/// a game that will not start is said on its page, the command line's
+/// ends the app.
 fn played(world: &mut World, wanted: &Wanted, made: Result<crate::game::begin::Made, String>) {
     match made.and_then(|made| crate::draw::install(world, made)) {
         Ok(()) => {
@@ -1920,6 +1940,12 @@ fn played(world: &mut World, wanted: &Wanted, made: Result<crate::game::begin::M
 
             if let Some(mut kept) = world.get_resource_mut::<crate::files::scores::Scoring>() {
                 kept.scored = false;
+            }
+
+            // The page stays until the game's first frames' drawing work
+            // is done. A LAN game's peers start as they always did.
+            if !matches!(wanted, Wanted::Lan) {
+                world.insert_resource(Drape::up());
             }
 
             world

@@ -3,7 +3,8 @@
 //!
 //! ```text
 //!  base ──> plugins, cameras, every game system (frame)
-//!  install    a made game's resources ──> Screen::Playing
+//!  install    a made game's resources ──> Screen::Playing, under its
+//!             loading page until its drawing settles (menu::drape)
 //!  uninstall  its entities gone, its corpus and art onto the shelf
 //!  frame_start  once: on the palace, the map as bounds
 //! ```
@@ -92,7 +93,8 @@ pub enum Display {
 ///
 /// ```text
 ///  base ──> menus, Maker, Shelf, Player ──> Screen::Menu
-///    the command line's game: its loading page, begin ──> Screen::Playing
+///    the command line's game: its loading page, begin ──> Screen::Playing,
+///    the page over it until its drawing settles
 /// ```
 ///
 /// # Errors

@@ -2135,13 +2135,14 @@ fn guests_on_one_machine_share_the_discovery_port() {
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn a_stalled_drawing_drops_no_peer_and_freezes_none() {
     use crate::game::seen::Interest;
-    use crate::game::thread::{Mode, Pace, SimThread};
+    use crate::game::thread::{Mode, Pace, SimThread, Start};
 
     const STALL: Duration = Duration::from_millis(6_000);
     const DRAWN: Duration = Duration::from_millis(16);
     const RUNNING: Pace = Pace {
         paused: false,
         speed: 1.0,
+        start: Start::Free,
     };
 
     let build = lobby_build();
