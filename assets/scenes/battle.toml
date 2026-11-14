@@ -1,0 +1,370 @@
+# A battle for the perf runs (tools/perf/cases, `d-battle`): a Palace,
+# 40 heroes east of it and 40 monsters (slot 7) east of them, 4 cells apart.
+#
+#   openregent --scene assets/scenes/battle.toml
+version = 1
+map = { flat = { side = 128 } }
+
+[[unit]]
+code = "ABJ1" # Palace1
+at = [52, 64]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [58, 60]
+
+[[unit]]
+code = "AVH1" # Ranger
+at = [58, 61]
+
+[[unit]]
+code = "AVd1" # Elf
+at = [58, 62]
+
+[[unit]]
+code = "AVc1" # Dwarf
+at = [58, 63]
+
+[[unit]]
+code = "AVF1" # Paladin
+at = [58, 64]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [58, 65]
+
+[[unit]]
+code = "AVH1" # Ranger
+at = [58, 66]
+
+[[unit]]
+code = "AVd1" # Elf
+at = [58, 67]
+
+[[unit]]
+code = "AVc1" # Dwarf
+at = [59, 60]
+
+[[unit]]
+code = "AVF1" # Paladin
+at = [59, 61]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [59, 62]
+
+[[unit]]
+code = "AVH1" # Ranger
+at = [59, 63]
+
+[[unit]]
+code = "AVd1" # Elf
+at = [59, 64]
+
+[[unit]]
+code = "AVc1" # Dwarf
+at = [59, 65]
+
+[[unit]]
+code = "AVF1" # Paladin
+at = [59, 66]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [59, 67]
+
+[[unit]]
+code = "AVH1" # Ranger
+at = [60, 60]
+
+[[unit]]
+code = "AVd1" # Elf
+at = [60, 61]
+
+[[unit]]
+code = "AVc1" # Dwarf
+at = [60, 62]
+
+[[unit]]
+code = "AVF1" # Paladin
+at = [60, 63]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [60, 64]
+
+[[unit]]
+code = "AVH1" # Ranger
+at = [60, 65]
+
+[[unit]]
+code = "AVd1" # Elf
+at = [60, 66]
+
+[[unit]]
+code = "AVc1" # Dwarf
+at = [60, 67]
+
+[[unit]]
+code = "AVF1" # Paladin
+at = [61, 60]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [61, 61]
+
+[[unit]]
+code = "AVH1" # Ranger
+at = [61, 62]
+
+[[unit]]
+code = "AVd1" # Elf
+at = [61, 63]
+
+[[unit]]
+code = "AVc1" # Dwarf
+at = [61, 64]
+
+[[unit]]
+code = "AVF1" # Paladin
+at = [61, 65]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [61, 66]
+
+[[unit]]
+code = "AVH1" # Ranger
+at = [61, 67]
+
+[[unit]]
+code = "AVd1" # Elf
+at = [62, 60]
+
+[[unit]]
+code = "AVc1" # Dwarf
+at = [62, 61]
+
+[[unit]]
+code = "AVF1" # Paladin
+at = [62, 62]
+
+[[unit]]
+code = "AVL1" # Warrior
+at = [62, 63]
+
+[[unit]]
+code = "AVH1" # Ranger
+at = [62, 64]
+
+[[unit]]
+code = "AVd1" # Elf
+at = [62, 65]
+
+[[unit]]
+code = "AVc1" # Dwarf
+at = [62, 66]
+
+[[unit]]
+code = "AVF1" # Paladin
+at = [62, 67]
+
+[[unit]]
+code = "BVL1" # Goblin_Fighter
+at = [66, 60]
+owner = 7
+
+[[unit]]
+code = "BVL2" # Goblin_Archer
+at = [66, 61]
+owner = 7
+
+[[unit]]
+code = "BVT1" # Skeleton
+at = [66, 62]
+owner = 7
+
+[[unit]]
+code = "BVQ1" # Ratman
+at = [66, 63]
+owner = 7
+
+[[unit]]
+code = "BVV1" # Troll
+at = [66, 64]
+owner = 7
+
+[[unit]]
+code = "BVL1" # Goblin_Fighter
+at = [66, 65]
+owner = 7
+
+[[unit]]
+code = "BVL2" # Goblin_Archer
+at = [66, 66]
+owner = 7
+
+[[unit]]
+code = "BVT1" # Skeleton
+at = [66, 67]
+owner = 7
+
+[[unit]]
+code = "BVQ1" # Ratman
+at = [67, 60]
+owner = 7
+
+[[unit]]
+code = "BVV1" # Troll
+at = [67, 61]
+owner = 7
+
+[[unit]]
+code = "BVL1" # Goblin_Fighter
+at = [67, 62]
+owner = 7
+
+[[unit]]
+code = "BVL2" # Goblin_Archer
+at = [67, 63]
+owner = 7
+
+[[unit]]
+code = "BVT1" # Skeleton
+at = [67, 64]
+owner = 7
+
+[[unit]]
+code = "BVQ1" # Ratman
+at = [67, 65]
+owner = 7
+
+[[unit]]
+code = "BVV1" # Troll
+at = [67, 66]
+owner = 7
+
+[[unit]]
+code = "BVL1" # Goblin_Fighter
+at = [67, 67]
+owner = 7
+
+[[unit]]
+code = "BVL2" # Goblin_Archer
+at = [68, 60]
+owner = 7
+
+[[unit]]
+code = "BVT1" # Skeleton
+at = [68, 61]
+owner = 7
+
+[[unit]]
+code = "BVQ1" # Ratman
+at = [68, 62]
+owner = 7
+
+[[unit]]
+code = "BVV1" # Troll
+at = [68, 63]
+owner = 7
+
+[[unit]]
+code = "BVL1" # Goblin_Fighter
+at = [68, 64]
+owner = 7
+
+[[unit]]
+code = "BVL2" # Goblin_Archer
+at = [68, 65]
+owner = 7
+
+[[unit]]
+code = "BVT1" # Skeleton
+at = [68, 66]
+owner = 7
+
+[[unit]]
+code = "BVQ1" # Ratman
+at = [68, 67]
+owner = 7
+
+[[unit]]
+code = "BVV1" # Troll
+at = [69, 60]
+owner = 7
+
+[[unit]]
+code = "BVL1" # Goblin_Fighter
+at = [69, 61]
+owner = 7
+
+[[unit]]
+code = "BVL2" # Goblin_Archer
+at = [69, 62]
+owner = 7
+
+[[unit]]
+code = "BVT1" # Skeleton
+at = [69, 63]
+owner = 7
+
+[[unit]]
+code = "BVQ1" # Ratman
+at = [69, 64]
+owner = 7
+
+[[unit]]
+code = "BVV1" # Troll
+at = [69, 65]
+owner = 7
+
+[[unit]]
+code = "BVL1" # Goblin_Fighter
+at = [69, 66]
+owner = 7
+
+[[unit]]
+code = "BVL2" # Goblin_Archer
+at = [69, 67]
+owner = 7
+
+[[unit]]
+code = "BVT1" # Skeleton
+at = [70, 60]
+owner = 7
+
+[[unit]]
+code = "BVQ1" # Ratman
+at = [70, 61]
+owner = 7
+
+[[unit]]
+code = "BVV1" # Troll
+at = [70, 62]
+owner = 7
+
+[[unit]]
+code = "BVL1" # Goblin_Fighter
+at = [70, 63]
+owner = 7
+
+[[unit]]
+code = "BVL2" # Goblin_Archer
+at = [70, 64]
+owner = 7
+
+[[unit]]
+code = "BVT1" # Skeleton
+at = [70, 65]
+owner = 7
+
+[[unit]]
+code = "BVQ1" # Ratman
+at = [70, 66]
+owner = 7
+
+[[unit]]
+code = "BVV1" # Troll
+at = [70, 67]
+owner = 7

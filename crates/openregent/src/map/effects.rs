@@ -4,10 +4,13 @@
 //!
 //! ```text
 //!  capture  World::effects, World::tints ──> Effects
-//!  draw     one entity per effect, its set playing from `since`:
-//!           held, at its holder's drawn place plus its offset projected
-//!           (height lifts it); else where it stands
-//!  tint     a tinted piece's bodies swapped for its draw effects':
+//!  draw     one drawing per effect (`pieces::spawn`: a child per
+//!           layer), its set playing from `since`: held, at its holder's
+//!           drawn place plus its offset projected (height lifts it);
+//!           else where it stands. An amount: a text a layer stream
+//!           ([`Said`]), stepping as the layer does. A new set, frame
+//!           or amount: the same entities given the new frames
+//!  tint     a tinted piece's bodies made over by its draw effects:
 //!           palette to the tint's nearest, or see-through glass
 //! ```
 //!
@@ -28,15 +31,17 @@ use regent_core::sim::world::{draw::Tint, effectors::Effect, flag::MESSAGE_FLAG}
 use regent_core::view::map::amount;
 use regent_draw::data::Corpus;
 use regent_draw::map::Maps;
-use regent_draw::map::reel::{Cycle, Reel};
-use regent_draw::material::{Band, Body};
+use regent_draw::map::cel::Drawing;
+use regent_draw::map::reel::{Beat, Reel};
+use regent_draw::material::Body;
 
 use crate::game::scope::Scoped;
 use crate::game::seen::Watch;
 use crate::map::mirror::Pieces;
-use crate::map::pieces::{self, Depth, Key, LAYER_STEP, Lifts, Piece};
+use crate::map::pieces::{self, Coated, Depth, Key, Keyed, LAYER_STEP, Lifts, Piece, Strata};
+use crate::map::tie::{Class, Tied, Who};
 use crate::map::words::{self, GOLD_FOOT, Tie, Words};
-use regent_draw::art::world::Variant;
+use regent_draw::art::world;
 use regent_draw::art::{Assets2, Sprites};
 
 /// How far an effect level with its holder draws in front of it: past
@@ -107,22 +112,31 @@ pub fn capture(seen: Watch, mut effects: ResMut<Effects>) {
     effects.0 = seen.taken.effects.clone();
 }
 
-/// The entity drawing each effect, by handle, what it draws, from when
-/// and its value.
+/// An effect's drawing: its root, its layers' entities, and its
+/// amount's texts.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Hanging {
+    root: Entity,
+    strata: Strata,
+    words: Vec<Entity>,
+}
+
+/// The drawing of each effect, by handle, what it draws, from when and
+/// its value.
 #[derive(Resource, Default)]
-pub struct Hung(HashMap<u32, (Entity, Key, Look, Option<i32>)>);
+pub struct Hung(HashMap<u32, (Hanging, Key, Look, Option<i32>)>);
 
 impl Hung {
     /// The entity drawing `handle`.
     pub fn get(&self, handle: u32) -> Option<Entity> {
-        self.0.get(&handle).map(|(entity, ..)| *entity)
+        self.0.get(&handle).map(|(hanging, ..)| hanging.root)
     }
 
     /// Each effect drawn: its handle and entity.
     pub fn drawn(&self) -> impl Iterator<Item = (u32, Entity)> + '_ {
         self.0
             .iter()
-            .map(|(handle, (entity, ..))| (*handle, *entity))
+            .map(|(handle, (hanging, ..))| (*handle, hanging.root))
     }
 }
 
@@ -140,6 +154,10 @@ pub struct EffectDrawn;
     clippy::too_many_arguments,
     reason = "a system's arguments are its dependencies"
 )]
+#[allow(
+    clippy::too_many_lines,
+    reason = "an effect's place and drawing are set in one pass"
+)]
 pub fn draw(
     mut commands: Commands,
     effects: Res<Effects>,
@@ -148,7 +166,7 @@ pub fn draw(
     corpus: Res<Corpus>,
     reel: Res<Reel>,
     holders: Query<&Transform, (With<Piece>, Without<EffectDrawn>)>,
-    mut drawn: Query<&mut Transform, (With<EffectDrawn>, Without<Piece>)>,
+    mut drawn: Query<(&mut Transform, &Tied), (With<EffectDrawn>, Without<Piece>)>,
     mut lifts: ResMut<Lifts>,
     mut sprites: ResMut<Sprites>,
     mut hung: ResMut<Hung>,
@@ -160,15 +178,18 @@ pub fn draw(
     let alive: BTreeSet<u32> = shown().map(|e| e.handle).collect();
 
     // Gone from the world: gone from the screen.
-    hung.0.retain(|handle, (entity, ..)| {
-        let keep = alive.contains(handle);
+    let gone: Vec<u32> = hung
+        .0
+        .keys()
+        .filter(|handle| !alive.contains(handle))
+        .copied()
+        .collect();
 
-        if !keep {
-            commands.entity(*entity).despawn();
+    for handle in gone {
+        if let Some((hanging, ..)) = hung.0.remove(&handle) {
+            commands.entity(hanging.root).despawn();
         }
-
-        keep
-    });
+    }
 
     for effect in shown() {
         let holder = pieces
@@ -193,22 +214,18 @@ pub fn draw(
         let Some(place) = place else {
             continue;
         };
+        let now = (key, effect.look, effect.value);
+
         match hung.0.get(&effect.handle) {
-            Some((entity, was, look, value))
-                if *was == key && *look == effect.look && *value == effect.value =>
-            {
-                if let Ok(mut transform) = drawn.get_mut(*entity) {
+            Some(drawing) if same(drawing, now) => {
+                if let Ok((mut transform, tied)) = drawn.get_mut(drawing.0.root) {
                     transform.set_if_neq(Transform {
-                        translation: place,
+                        translation: place.with_z(tied.keep(place.z)),
                         ..*transform
                     });
                 }
             }
             old => {
-                if let Some((entity, ..)) = old {
-                    commands.entity(*entity).despawn();
-                }
-
                 let timing = match effect.look {
                     Look::Plays { since, .. } => pieces::Timing {
                         stride: None,
@@ -221,61 +238,218 @@ pub fn draw(
                         pin: u16::try_from(frame).ok(),
                     },
                 };
-                let entity = pieces::spawn(
-                    &mut commands,
-                    &corpus,
-                    &mut sprites,
-                    &mut stores,
-                    &reel,
-                    key,
-                    // Its own place for ground: no effect set has a
-                    // second pass (**Corpus**).
-                    (None, place, place.truncate(), Visibility::Inherited, timing),
-                );
+                let start = Start {
+                    who: Who(Class::Effect, effect.handle),
+                    place,
+                    timing,
+                    ms: reel.ms,
+                };
+                let piece = world::Piece {
+                    code: key.0,
+                    set: key.1,
+                    slot: key.2,
+                    still: None,
+                };
+                let quad = sprites.quad(&mut stores.meshes);
 
-                commands.entity(entity).insert(EffectDrawn);
-                hung.0
-                    .insert(effect.handle, (entity, key, effect.look, effect.value));
+                // Its pages on their way: a drawing up stays; none yet,
+                // none drawn. Landed, at the frame it is on now.
+                let Some(layers) = sprites
+                    .piece(&corpus, &mut stores, piece)
+                    .map(<[Drawing]>::to_vec)
+                else {
+                    continue;
+                };
 
-                if let Some(value) = effect.value {
-                    amount(
+                // A new set, frame or amount: its entities given the new
+                // frames. Else drawn the first time.
+                let hanging = if let Some((was, ..)) = old.cloned() {
+                    let mut now = retake(&mut commands, (&quad, &layers), was, (key, start));
+
+                    now.words = effect.value.map_or_else(Vec::new, |value| {
+                        amount(
+                            &mut commands,
+                            (&corpus, reel.ms),
+                            (now.root, key),
+                            value,
+                            timing,
+                        )
+                    });
+                    now
+                } else {
+                    let (root, strata) = pieces::spawn(
                         &mut commands,
-                        (&corpus, &reel),
-                        (entity, key),
-                        value,
-                        timing,
+                        (&quad, &layers),
+                        &reel,
+                        // Its own place for ground: no effect set has a
+                        // second pass (**Corpus**).
+                        (None, place, place.truncate(), Visibility::Inherited, timing),
                     );
-                }
+                    let words = effect.value.map_or_else(Vec::new, |value| {
+                        amount(
+                            &mut commands,
+                            (&corpus, reel.ms),
+                            (root, key),
+                            value,
+                            timing,
+                        )
+                    });
+
+                    commands
+                        .entity(root)
+                        .insert((EffectDrawn, Keyed(key), Tied::new(start.who)));
+
+                    Hanging {
+                        root,
+                        strata,
+                        words,
+                    }
+                };
+
+                hung.0
+                    .insert(effect.handle, (hanging, key, effect.look, effect.value));
             }
         }
     }
 }
 
-/// An effect's value drawn as text (`view::map::amount`): a layer of its
-/// frames, shown at view zoom 1.0 alone.
+/// Whether a drawing of `(key, look, value)` draws `now`.
+fn same(
+    (_, key, look, value): &(Hanging, Key, Look, Option<i32>),
+    now: (Key, Look, Option<i32>),
+) -> bool {
+    (*key, *look, *value) == now
+}
+
+/// What a drawing takes up anew: the effect it draws (its order in a
+/// tie), its place, its frames' start, and the game time it is shown at.
+#[derive(Clone, Copy)]
+struct Start {
+    who: Who,
+    place: Vec3,
+    timing: pieces::Timing,
+    ms: u32,
+}
+
+/// Drawing `was` given `layers` of `key`, on `quad`, as [`pieces::spawn`]
+/// draws one anew: at its place, each layer stepping from its start in
+/// its own entities; its amount's texts gone, for [`amount`] to make.
+fn retake(
+    commands: &mut Commands,
+    (quad, layers): (&Handle<Mesh>, &[Drawing]),
+    was: Hanging,
+    (key, start): (Key, Start),
+) -> Hanging {
+    let Hanging {
+        root,
+        strata,
+        words,
+    } = was;
+    let ground = start.place.truncate();
+    let strata = pieces::lay(
+        commands,
+        (quad, root),
+        (layers, &strata.0),
+        ((start.place, ground), start.timing, start.ms),
+    );
+
+    // Ordered among ties from its maker's depth; darkened anew by the
+    // fog, as its key is put again (`fog::units`).
+    commands.entity(root).insert((
+        Transform::from_translation(start.place),
+        Visibility::Inherited,
+        Tied::new(start.who),
+        Keyed(key),
+        strata.clone(),
+    ));
+
+    for word in words {
+        commands.entity(word).despawn();
+    }
+
+    Hanging {
+        root,
+        strata,
+        words: Vec::new(),
+    }
+}
+
+/// An effect's value drawn as text (`view::map::amount`), shown at view
+/// zoom 1.0 alone.
 #[derive(Component)]
 pub struct Amount;
 
-/// `value` drawn under effect entity `parent`, drawing `key`: each
-/// frame of reference kind text in the set's layers centred at the
-/// anchor plus its nudge, stepping as `timing` says;
-/// its words painted by egui (`words`).
+/// A layer stream's text frames: each frame's nudge from the anchor, or
+/// none where it shows no text; stepping as its layer does.
+#[derive(Component, Clone, Debug)]
+pub struct Said {
+    nudges: Arc<[Option<(i16, i16)>]>,
+    beat: Beat,
+    /// The layer's pose offset and depth on its drawing.
+    base: Vec3,
+    up: Option<u16>,
+}
+
+impl Said {
+    /// Where frame `up` puts the text, and whether it shows.
+    fn look(&self, up: u16) -> (Option<Vec3>, Visibility) {
+        match self.nudges.get(usize::from(up)).copied().flatten() {
+            // The digits' foot, below the anchor plus the nudge.
+            Some((nx, ny)) => {
+                let at = Vec3::new(f32::from(nx), -(f32::from(ny) + FOOT), 0.0);
+
+                (Some(self.base + at), Visibility::Inherited)
+            }
+            None => (None, Visibility::Hidden),
+        }
+    }
+}
+
+/// Each amount's text frame up at the clock's time written where it
+/// changed.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+pub fn speak(reel: Res<Reel>, mut texts: Query<(&mut Said, &mut Transform, &mut Visibility)>) {
+    for (mut said, mut put, mut seen) in &mut texts {
+        let up = said.beat.up(reel.ms, said.nudges.len());
+
+        if said.up != Some(up) {
+            let (at, shows) = said.look(up);
+
+            said.up = Some(up);
+
+            if let Some(at) = at {
+                put.translation = at;
+            }
+
+            seen.set_if_neq(shows);
+        }
+    }
+}
+
+/// `value` drawn under effect entity `parent`, drawing `key`: a text for
+/// each stream of reference kind frames in the set's layers, centred at
+/// the anchor plus its frame's nudge, stepping as `timing` says; its
+/// words painted by egui (`words`). Its entities.
 fn amount(
     commands: &mut Commands,
-    (corpus, reel): (&Corpus, &Reel),
+    (corpus, now): (&Corpus, u32),
     (parent, key): (Entity, Key),
     value: i32,
     timing: pieces::Timing,
-) {
+) -> Vec<Entity> {
     let (code, set, slot) = key;
     let Some(unit) = corpus.unit(code) else {
-        return;
+        return Vec::new();
     };
     let words = Words {
         text: amount::text(value),
         look: words::GOLD,
         tie: Tie::default(),
     };
+    let mut made = Vec::new();
 
     for layer in unit.stack(set) {
         let Some(pose) = layer.poses.get(slot).or_else(|| layer.poses.first()) else {
@@ -295,41 +469,31 @@ fn amount(
                 continue;
             }
 
-            let frames = u16::try_from(texts.len()).unwrap_or(u16::MAX);
-            let shown = commands
-                .spawn((
-                    Amount,
-                    Transform::from_translation(base.extend(f32::from(layer.variant) * LAYER_STEP)),
-                    Visibility::Inherited,
-                    ChildOf(parent),
-                ))
-                .id();
+            let mut said = Said {
+                nudges: texts.into(),
+                beat: timing.beat(ms),
+                base: base.extend(f32::from(layer.variant) * LAYER_STEP),
+                up: None,
+            };
+            let up = said.beat.up(now, said.nudges.len());
+            let (at, seen) = said.look(up);
 
-            for (index, nudge) in texts.iter().enumerate() {
-                let Some((nx, ny)) = nudge else { continue };
-                let index = u16::try_from(index).unwrap_or(u16::MAX);
-                let cycle = match timing.pin {
-                    Some(frame) => pieces::held(index, frames, frame, timing.from),
-                    None => Cycle::new(index, frames, 0, ms).from(timing.from),
-                };
-                // The digits' foot, below the anchor plus the nudge.
-                let at = Vec2::new(f32::from(*nx), -(f32::from(*ny) + FOOT));
-                let seen = if cycle.showing(reel.ms) {
-                    Visibility::Inherited
-                } else {
-                    Visibility::Hidden
-                };
+            said.up = Some(up);
 
-                commands.spawn((
-                    words.clone(),
-                    Transform::from_translation(at.extend(0.0)),
-                    seen,
-                    cycle,
-                    ChildOf(shown),
-                ));
-            }
+            let shown = commands.spawn((
+                Amount,
+                words.clone(),
+                Transform::from_translation(at.unwrap_or(said.base)),
+                seen,
+                said,
+                ChildOf(parent),
+            ));
+
+            made.push(shown.id());
         }
     }
+
+    made
 }
 
 /// What an effect draws: its descriptor, set, and the slot its facing
@@ -441,8 +605,8 @@ impl Tinted {
     }
 }
 
-/// Swap a tinted piece's bodies for its draw effects'; one whose effects
-/// change or clear is drawn anew, plain, by `map::pieces::pieces`.
+/// Make a tinted piece's bodies over for its draw effects; one whose
+/// effects change or clear is drawn anew, plain, by `map::pieces::pieces`.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -458,9 +622,9 @@ pub fn tint(
     mut sprites: ResMut<Sprites>,
     pieces: Pieces,
     mut tinted: ResMut<Tinted>,
-    children: Query<&Children>,
-    mut bodies_on: Query<(&mut MeshMaterial3d<Body>, &Mesh3d)>,
-    bands_on: Query<(), With<MeshMaterial3d<Band>>>,
+    reel: Res<Reel>,
+    drawings: Query<&Strata>,
+    mut parts: Query<Coated>,
     mut images: ResMut<Assets<Image>>,
     mut bodies: ResMut<Assets<Body>>,
 ) {
@@ -471,30 +635,16 @@ pub fn tint(
     }
 
     for (entity, t) in turn.fresh {
-        for child in children.get(entity).into_iter().flatten() {
-            if let Ok((mut material, quad)) = bodies_on.get_mut(*child) {
-                let stores = (&mut *images, &mut *bodies);
-                let made = sprites.variant(&corpus, stores, &material.0, Variant::Tint(t));
+        if let Ok(strata) = drawings.get(entity) {
+            let made = (&mut *sprites, &*corpus, (&mut *images, &mut *bodies));
 
-                // See-through: lifting where it is drawn as now.
-                if let (Some(glass), Some(_)) = (&made, t.transparency) {
-                    let made = (&mut *images, &mut *bodies);
-
-                    pieces::relift(
-                        &mut commands,
-                        (*child, quad),
-                        glass,
-                        (&mut sprites, &corpus, made),
-                    );
-                }
-
-                if let Some(handle) = made {
-                    material.0 = handle;
-                }
-            } else if t.transparency.is_some() && bands_on.contains(*child) {
-                // Mode 5 draws nothing from 247: no shadow.
-                commands.entity(*child).despawn();
-            }
+            pieces::tinted(
+                &mut commands,
+                (entity, strata),
+                &mut parts,
+                (t, reel.ms),
+                made,
+            );
         }
     }
 }
@@ -553,6 +703,8 @@ impl Tally {
 mod tests {
     use super::*;
 
+    use regent_draw::map::reel::Layer;
+
     #[test]
     #[allow(clippy::float_cmp, reason = "exact binary fractions")]
     fn a_cell_is_thirty_two_32nds() {
@@ -561,6 +713,213 @@ mod tests {
             fixed([fixed::ONE, fixed::ONE / 2, Fixed::ZERO]),
             [1.0, 0.5, 0.0]
         );
+    }
+
+    /// Frames in [`drawing`]'s stream.
+    const FRAMES: u32 = 4;
+
+    /// Game ms each of [`drawing`]'s frames shows.
+    const FRAME_MS: u32 = 100;
+
+    /// [`drawing`]'s layers: one of [`FRAMES`] frames, each with a band.
+    fn layers() -> Vec<Drawing> {
+        vec![pieces::tests::layer(
+            FRAMES,
+            0,
+            true,
+            regent_core::data::imag::Pass::First,
+        )]
+    }
+
+    /// Its timing from game time `from`, held on `pin`.
+    const fn timing(from: u32, pin: Option<u16>) -> pieces::Timing {
+        pieces::Timing {
+            stride: None,
+            from,
+            pin,
+        }
+    }
+
+    /// An effect drawing as `draw` makes one, from game time `from`: a
+    /// layer of [`FRAMES`] frames with its band, and an amount's text on
+    /// each frame.
+    fn drawing(world: &mut World, from: u32) -> Hanging {
+        use bevy::ecs::system::RunSystemOnce;
+
+        world
+            .run_system_once(move |mut commands: Commands| {
+                let root = commands
+                    .spawn((
+                        Transform::default(),
+                        Visibility::Inherited,
+                        EffectDrawn,
+                        Tied::new(Who(Class::Effect, 1)),
+                    ))
+                    .id();
+                let strata = pieces::lay(
+                    &mut commands,
+                    (&Handle::default(), root),
+                    (&layers(), &[]),
+                    ((Vec3::ZERO, Vec2::ZERO), timing(from, None), from),
+                );
+                let said = Said {
+                    nudges: (0..FRAMES).map(|_| Some((0, 0))).collect(),
+                    beat: Beat::runs(from, FRAME_MS),
+                    base: Vec3::ZERO,
+                    up: Some(0),
+                };
+                let words = Words {
+                    text: amount::text(10),
+                    look: words::GOLD,
+                    tie: Tie::default(),
+                };
+                let text = commands
+                    .spawn((
+                        Amount,
+                        words,
+                        said,
+                        Transform::default(),
+                        Visibility::Inherited,
+                        ChildOf(root),
+                    ))
+                    .id();
+
+                Hanging {
+                    root,
+                    strata,
+                    words: vec![text],
+                }
+            })
+            .expect("drawn")
+    }
+
+    /// The frame each of `drawing`'s layer entities and texts shows.
+    fn showing(world: &World, drawing: &Hanging) -> (Vec<Option<u16>>, Vec<Option<u16>>) {
+        let layers = drawing.strata.0.iter().flat_map(|s| s.entities());
+
+        (
+            layers
+                .map(|e| world.get::<Layer>(e).and_then(Layer::up))
+                .collect(),
+            drawing
+                .words
+                .iter()
+                .map(|e| world.get::<Said>(*e).and_then(|s| s.up))
+                .collect(),
+        )
+    }
+
+    /// `drawing` given its layers again from `start`, as `draw` does when
+    /// its effect's set, frame or amount changes.
+    fn retaken(world: &mut World, drawing: &Hanging, start: Start) -> Hanging {
+        use bevy::ecs::system::RunSystemOnce;
+
+        let drawing = drawing.clone();
+        let key = (FourCc(*b"Gold"), 1, 0);
+
+        world
+            .run_system_once(move |mut commands: Commands| {
+                let layers = layers();
+
+                retake(
+                    &mut commands,
+                    (&Handle::default(), &layers),
+                    drawing.clone(),
+                    (key, start),
+                )
+            })
+            .expect("retaken")
+    }
+
+    /// An effect whose set or frame changes keeps its root and layer
+    /// entities: it ties as its effect, starts on frame 0 at its new
+    /// start and place, and steps at its rate from there.
+    #[test]
+    fn a_changed_effect_keeps_its_entities() {
+        use bevy::ecs::system::RunSystemOnce;
+
+        const LATER: u32 = 12_345;
+
+        let mut world = World::new();
+        let drawing = drawing(&mut world, 0);
+        let other = tied(&mut world, 3, 0.0);
+        let place = Vec3::new(64.0, -32.0, 0.5);
+        let start = Start {
+            who: Who(Class::Effect, 5),
+            place,
+            timing: timing(LATER, None),
+            ms: LATER,
+        };
+
+        world.init_resource::<Reel>();
+        world.resource_mut::<Reel>().ms = 250;
+        world
+            .run_system_once(regent_draw::map::reel::step)
+            .expect("stepped");
+        assert_eq!(showing(&world, &drawing).0, [Some(2), Some(2)]);
+
+        let now = retaken(&mut world, &drawing, start);
+
+        assert_eq!((now.root, &now.strata), (drawing.root, &drawing.strata));
+        assert_eq!(
+            world.get::<Transform>(drawing.root).map(|t| t.translation),
+            Some(place)
+        );
+        assert_eq!(showing(&world, &now).0, [Some(0), Some(0)]);
+        assert!(now.words.is_empty(), "no amount now");
+
+        untied(&mut world);
+        assert!(
+            z(&world, drawing.root) > z(&world, other),
+            "handle 5 before 3"
+        );
+
+        world.resource_mut::<Reel>().ms = LATER + FRAME_MS;
+        world
+            .run_system_once(regent_draw::map::reel::step)
+            .expect("stepped");
+        assert_eq!(showing(&world, &now).0, [Some(1), Some(1)]);
+    }
+
+    /// A held effect whose held frame changes holds the new one.
+    #[test]
+    fn a_changed_held_effect_holds_its_new_frame() {
+        let mut world = World::new();
+        let drawing = drawing(&mut world, 0);
+        let start = Start {
+            who: Who(Class::Effect, 2),
+            place: Vec3::ZERO,
+            timing: timing(500, Some(2)),
+            ms: 500,
+        };
+        let now = retaken(&mut world, &drawing, start);
+
+        assert_eq!(showing(&world, &now).0, [Some(2), Some(2)]);
+    }
+
+    /// A drawing `who`, of effect handle `handle`, at depth `z`.
+    fn tied(world: &mut World, handle: u32, z: f32) -> Entity {
+        world
+            .spawn((
+                Transform::from_xyz(0.0, 0.0, z),
+                Visibility::Inherited,
+                Tied::new(Who(Class::Effect, handle)),
+            ))
+            .id()
+    }
+
+    /// `crate::map::tie::untie` run once over `world`.
+    fn untied(world: &mut World) {
+        use bevy::ecs::system::RunSystemOnce;
+
+        world
+            .run_system_once(crate::map::tie::untie)
+            .expect("untied");
+    }
+
+    /// The depth `entity` draws at.
+    fn z(world: &World, entity: Entity) -> f32 {
+        world.get::<Transform>(entity).expect("drawn").translation.z
     }
 
     /// A piece whose draw effects change is despawned, not tinted that

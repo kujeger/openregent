@@ -3,6 +3,7 @@
 
 mod archive;
 mod art;
+mod atlas;
 mod bytecode;
 mod config;
 mod descriptor;
@@ -260,6 +261,18 @@ enum Command {
         paths: Vec<String>,
     },
 
+    /// How the world's sprites would pack into atlases, from `MAJESTY_HD`'s
+    /// expansion dataset: inventory, trimming, packing, shadows, frame
+    /// table, load time; with --held, what a drawn run held
+    Atlas {
+        /// Texels between packed frames
+        #[arg(long, default_value_t = 1)]
+        gutter: u32,
+        /// A drawn run's dump (openregent, `MAJ_PERF_HELD`); repeatable
+        #[arg(long)]
+        held: Vec<String>,
+    },
+
     /// What the selection panel and ring show for a unit
     Selection {
         /// The DUNT record; omit for the empty panel only
@@ -350,6 +363,7 @@ fn main() -> ExitCode {
 
         Command::Quest(args) => quest::cmd_quest(&args),
 
+        Command::Atlas { gutter, held } => atlas::cmd_atlas(gutter, &held),
         Command::Units { kind, paths } => view::cmd_units(kind.map(Into::into), &paths),
         Command::Unit { record, paths } => view::cmd_unit(&record, &paths),
         Command::Selection { record, paths } => view::cmd_selection(record.as_deref(), &paths),

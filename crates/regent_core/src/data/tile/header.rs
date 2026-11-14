@@ -89,7 +89,7 @@ pub(super) const LEVEL_MASK: u16 = 0x1f;
 ///
 /// **Binary**: draw params copies it as the blit-table column. Values
 /// 0, 1, 2, 5, 7, 8 ship; version 1 tiles are all 0, as their table demands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Mode {
     /// Every index a colour. Version 3's 8-to-16-bit blit
     /// compares no index.

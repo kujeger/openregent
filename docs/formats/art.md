@@ -89,6 +89,9 @@ A row is a sequence of segments; the gaps are the only transparency.
 With both, every tile parses (`every_v3_tile_decodes`, `every_mod_tile_decodes`).
 In HD `max(x_end) == width` on 28,733 of 29,304; 571 fall short (empty
 rightmost columns); none exceeds (`tile_width_bounds_every_run`).
+The indexed tiles' canvases are nearly their drawn boxes: the boxes hold
+98.7% of the canvas texels; ten tiles draw nothing
+(`a_tiles_canvas_is_nearly_its_drawn_box`).
 
 ### Bit 2 of the same word says 555 or 565
 
@@ -651,6 +654,10 @@ both.
 `Inactive` is the building too: all buildings but one have one, matching
 `Hotspot` on most. The save names the set each object draws, so a renderer never
 chooses — see [saves.md](saves.md).
+
+**Corpus**: an upgraded building names its own `IMAG` record: all 25
+with an `UpgradeFrom` in the expansion dataset's archives
+(`an_upgrade_draws_its_own_art`).
 
 54 of 60 records with both draw two different pictures. The six that do not
 include all three Palaces. `ABH3 Marketplace3`: `Active` adds stall awnings and

@@ -20,14 +20,13 @@ use regent_core::sim::world::{draw::Tint, trail::Showing};
 use regent_draw::data::Corpus;
 use regent_draw::map::Maps;
 use regent_draw::map::reel::Reel;
-use regent_draw::material::{Band, Body};
+use regent_draw::material::Body;
 
 use crate::game::clock::Snapshot;
 use crate::game::seen::Watch;
 use crate::map::fog::Fog;
 use crate::map::mirror::{Phase, Pieces};
-use crate::map::pieces::{self, Depth, Lifts, Saved, Timing};
-use regent_draw::art::world::Variant;
+use crate::map::pieces::{self, Coated, Depth, Lifts, Saved, Strata, Timing};
 use regent_draw::art::{Assets2, Sprites};
 
 /// A clone drawn: its entity, its unit's agent, its last two places in
@@ -88,6 +87,7 @@ pub fn draw(
 
     if ghosts.ms != Some(reel.ms) {
         let world = seen.world();
+        let mut pending = false;
         let was: HashMap<u32, (Vec2, u32)> = ghosts
             .drawn
             .drain()
@@ -128,13 +128,26 @@ pub fn draw(
             // Where the slide below puts it: stepped, at once at `to`.
             let drawn = at.lerp(to, snapshot.between);
             let place = maps.standing_at(drawn).extend(depth.at(at.y + lift));
-            let entity = pieces::spawn(
+            let quad = sprites.quad(&mut stores.meshes);
+            let piece = regent_draw::art::world::Piece {
+                code: key.0,
+                set: key.1,
+                slot: key.2,
+                still: None,
+            };
+
+            // Its pages on their way: not drawn, looked at again next frame.
+            let Some(layers) = sprites
+                .piece(&corpus, &mut stores, piece)
+                .map(<[regent_draw::map::cel::Drawing]>::to_vec)
+            else {
+                pending = true;
+                continue;
+            };
+            let (entity, _) = pieces::spawn(
                 &mut commands,
-                &corpus,
-                &mut sprites,
-                &mut stores,
+                (&quad, &layers),
                 &reel,
-                key,
                 (
                     None,
                     place,
@@ -154,7 +167,7 @@ pub fn draw(
                 .insert(c.handle, (entity, c.unit, at, to, shown.jumps));
         }
 
-        ghosts.ms = Some(reel.ms);
+        ghosts.ms = (!pending).then_some(reel.ms);
     }
 
     for (entity, unit, from, to, _) in ghosts.drawn.values() {
@@ -182,7 +195,8 @@ fn shown_as(fog: &Fog, unit: u32) -> Visibility {
     }
 }
 
-/// Paint each new clone's bodies with its draw effects.
+/// Paint each new clone's bodies with its draw effects
+/// (`pieces::tinted`).
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -193,40 +207,23 @@ fn shown_as(fog: &Fog, unit: u32) -> Visibility {
 )]
 pub fn paint(
     mut commands: Commands,
-    fresh: Query<(Entity, &Ghost, &Children), Without<Painted>>,
-    corpus: Res<Corpus>,
+    fresh: Query<(Entity, &Ghost, &Strata), Without<Painted>>,
+    (corpus, reel): (Res<Corpus>, Res<Reel>),
     mut sprites: ResMut<Sprites>,
-    mut bodies_on: Query<(&mut MeshMaterial3d<Body>, &Mesh3d)>,
-    bands_on: Query<(), With<MeshMaterial3d<Band>>>,
+    mut parts: Query<Coated>,
     mut images: ResMut<Assets<Image>>,
     mut bodies: ResMut<Assets<Body>>,
 ) {
-    for (entity, Ghost(tint), children) in &fresh {
-        for child in children {
-            if let Ok((mut material, quad)) = bodies_on.get_mut(*child) {
-                let stores = (&mut *images, &mut *bodies);
-                let made = sprites.variant(&corpus, stores, &material.0, Variant::Tint(*tint));
+    for (entity, Ghost(tint), strata) in &fresh {
+        let made = (&mut *sprites, &*corpus, (&mut *images, &mut *bodies));
 
-                // See-through: lifting where it is drawn as now.
-                if let (Some(glass), Some(_)) = (&made, tint.transparency) {
-                    let made = (&mut *images, &mut *bodies);
-
-                    pieces::relift(
-                        &mut commands,
-                        (*child, quad),
-                        glass,
-                        (&mut sprites, &corpus, made),
-                    );
-                }
-
-                if let Some(handle) = made {
-                    material.0 = handle;
-                }
-            } else if bands_on.contains(*child) {
-                commands.entity(*child).despawn();
-            }
-        }
-
+        pieces::tinted(
+            &mut commands,
+            (entity, strata),
+            &mut parts,
+            (*tint, reel.ms),
+            made,
+        );
         commands.entity(entity).insert(Painted);
     }
 }

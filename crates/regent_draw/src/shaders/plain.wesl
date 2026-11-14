@@ -1,10 +1,10 @@
 // A mesh's own colour (`regent_draw::plain::Plain`): a colour, times its
 // vertex colours and its picture where it has them, as 2D's
-// `ColorMaterial` draws it. The ground's alpha is the models' shadows
-// on it (`lit.wesl`).
+// `ColorMaterial` draws it. While models cast (`CAST`), the ground's
+// alpha is their shadows on it (`lit.wesl`).
 
 import regent_draw::shaders::card::{Card, Vertex, place};
-@if(GROUND)
+@if(CAST)
 import regent_draw::shaders::lit::{covered, shade};
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var<uniform> colour: vec4<f32>;
@@ -38,7 +38,7 @@ fn fragment(in: Card) -> @location(0) vec4<f32> {
 }
 
     // The ground: the models' shadows on its metric point, as coverage.
-@if(GROUND)
+@if(CAST)
     out.a = shade(covered(in.world_position.xyz, in.position.xy));
 
     return out;

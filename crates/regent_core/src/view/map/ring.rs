@@ -162,6 +162,13 @@ pub struct Ring {
 }
 
 impl Ring {
+    /// Whose art its frame is: its look's `IMAG` record and [`SET`], low
+    /// 16 bits (a sheet's owner, `regent_draw::map::cel::Owner`).
+    #[must_use]
+    pub const fn owner(&self) -> (FourCc, u16) {
+        (self.look.image(), crate::data::imag::set_number(SET))
+    }
+
     /// The ring's rect, pixels about the unit's anchor: its slot's block
     /// 0 at [`Ring::at`]. A selected or
     /// hovered unit's box takes it (`view::map::hit`).

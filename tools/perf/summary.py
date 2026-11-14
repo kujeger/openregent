@@ -5,10 +5,13 @@ Per case: wall s, CPU s (user + sys), peak RSS MB; what disturbed it:
 thousands of involuntary context switches, major page faults, the busy
 share of the pinned cores' SMT siblings (run.sh); instructions and
 cycles (G, user space), then each of the game's timers (openregent/src/perf/mod.rs), ms:
-mean / p99 / max, then the count of samples past 25 ms (perf::SPIKE)
-where the log gives it: a stutter is the tail, not the mean. A drawn run reports every 600 drawn frames; its first
-report (loading, shader builds) is left out, the rest merged: mean
-weighted by samples, p99 and max the largest of the reports', spikes
+mean / p50 / p99 / max, then the count of samples past 25 ms (perf::SPIKE)
+where the log gives it: a stutter is the tail, not the mean. A drawn run reports every 600 drawn frames; its
+"opening" reports (menus, loading, the game under its loading page) are left
+out but for `opening max ms`, their longest frame interval; `page up ms` is
+how long the loading page was up; the rest merged: mean
+weighted by samples (p50 likewise, an approximation: not the merged
+median; left out when a report lacks it, as old logs do), p99 and max the largest of the reports', spikes
 summed. The
 renderer's series (perf/gpu.rs: gpu_*, draws_*, ...) follow by name,
 then its GPU memory, MB, as last reported.
@@ -20,7 +23,8 @@ medians' first number. A case that failed in any repeat (run.sh's
 `failed` mark) says FAILED: its figures are not to be compared. One
 whose pinned core's SMT sibling was busy in any repeat (SIBLING_BUSY)
 says DISTURBED: its wall time and cycles are not to be trusted, its
-instructions are.
+instructions are. So does one run.sh started on a busy machine (its
+`disturbed` mark: cargo, rustc or openregent running, or a high load).
 """
 
 import argparse
@@ -36,8 +40,9 @@ SIBLING_BUSY = 5.0
 # The timers in the order shown; `steps` is a count, not ms.
 TIMERS = ["main", "interval", "wait", "step", "steps", "publish", "asked", "clone", "fog", "deep", "snapshot", "fold", "henchmen", "ground"]
 
-PERF = re.compile(r"maj_perf: (\w+) (\w+) n (\d+) mean ([\d.]+) p99 ([\d.]+) max ([\d.]+)(?: over (\d+))?")
+PERF = re.compile(r"maj_perf: (\w+) (\w+) n (\d+) mean ([\d.]+)(?: p50 ([\d.]+))? p99 ([\d.]+) max ([\d.]+)(?: over (\d+))?")
 STARTUP = re.compile(r"maj_perf: startup (\w+) (\d+) ms")
+DRAPE = re.compile(r"maj_perf: drape frame \d+ ms (\d+)")
 MEMORY_GPU = re.compile(r"maj_perf: memory gpu allocated ([\d.]+) reserved ([\d.]+) .* images \d+ ([\d.]+)")
 MEMORY_ART = re.compile(r"maj_perf: memory art sized \d+ ([\d.]+) plain \d+ ([\d.]+) map \d+ ([\d.]+)")
 MEMORY = ["gpu alloc MB", "gpu resv MB", "images MB", "art sized MB", "art plain MB", "art map MB"]
@@ -58,6 +63,21 @@ def case(dir: Path) -> dict:
             if "ctx" in fields:
                 figures["ctx k"] = float(fields["ctx"]) / 1000
                 figures["faults"] = float(fields["faults"])
+            # The threads' waits: voluntary context switches.
+            if "vol" in fields:
+                figures["vol k"] = float(fields["vol"]) / 1000
+    # The machine's heat while the case ran (run.sh): a throttled case
+    # is slower for that, not for what it draws.
+    heat = dir / "heat.txt"
+    if heat.exists():
+        rows = [[float(x) for x in line.split()] for line in heat.read_text().splitlines() if len(line.split()) == 3]
+        if rows:
+            temps, cpus, gpus = zip(*rows)
+            figures["temp C"] = sum(temps) / len(temps)
+            figures["temp max C"] = max(temps)
+            figures["cpu MHz"] = sum(cpus) / len(cpus)
+            if any(gpus):
+                figures["gpu MHz"] = sum(gpus) / len(gpus)
     siblings = dir / "siblings.txt"
     if siblings.exists():
         busy = re.search(r"busy=([\d.]+)%", siblings.read_text())
@@ -82,6 +102,8 @@ def case(dir: Path) -> dict:
             figures["cycles G"] = sum(cycles) / 1e9
     if (dir / "failed").exists():
         figures["failed"] = True
+    if (dir / "disturbed").exists():
+        figures["busy"] = True
 
     log = dir / "out.log"
     # Only the report lines, read a line at a time: a log can be gigabytes.
@@ -90,15 +112,30 @@ def case(dir: Path) -> dict:
         with log.open(errors="replace") as lines:
             text = "".join(ANSI.sub("", line) for line in lines if "maj_perf" in line)
     reports = {}
-    for what, timer, n, mean, p99, top, over in PERF.findall(text):
-        reports.setdefault(timer, []).append((what, int(n), float(mean), float(p99), float(top), over))
+    for what, timer, n, mean, p50, p99, top, over in PERF.findall(text):
+        # Old logs have no p50: the mean stands in, and the figure is marked absent below.
+        reports.setdefault(timer, []).append((what, int(n), float(mean), float(p99), float(top), over, p50))
     for timer, rows in reports.items():
-        # A drawn run's first report covers its loading.
-        if rows[0][0] == "drawn" and len(rows) > 1:
+        # A drawn run's loading and its game's first frames are reported
+        # as "opening": kept apart. Logs from before that: the first
+        # report covers the loading.
+        opening = [r for r in rows if r[0] == "opening"]
+        play = [r for r in rows if r[0] != "opening"]
+        if opening and play:
+            rows = play
+            if timer == "interval":
+                figures["opening max ms"] = max(r[4] for r in opening)
+        elif rows[0][0] == "drawn" and len(rows) > 1:
             rows = rows[1:]
         n = sum(r[1] for r in rows)
         mean = sum(r[1] * r[2] for r in rows) / n
-        figures[timer] = (mean, max(r[3] for r in rows), max(r[4] for r in rows))
+        p50s = [r[6] for r in rows]
+        # p50 shown only when every report has one.
+        if all(p50s):
+            p50 = sum(r[1] * float(r[6]) for r in rows) / n
+            figures[timer] = (mean, p50, max(r[3] for r in rows), max(r[4] for r in rows))
+        else:
+            figures[timer] = (mean, max(r[3] for r in rows), max(r[4] for r in rows))
         if all(r[5] for r in rows):
             figures[timer] += (sum(int(r[5]) for r in rows),)
     for pattern, keys in ((MEMORY_GPU, MEMORY[:3]), (MEMORY_ART, MEMORY[3:])):
@@ -107,6 +144,8 @@ def case(dir: Path) -> dict:
             figures.update(zip(keys, map(float, found[-1])))
     for what, ms in STARTUP.findall(text):
         figures[f"to {what} ms"] = float(ms)
+    for ms in DRAPE.findall(text)[:1]:
+        figures["page up ms"] = float(ms)
     return figures
 
 
@@ -180,8 +219,8 @@ def main() -> None:
     runs = [run(p) for p in paths]
     # The cases of the last run: a comparison shows those run now.
     names = list(runs[-1])
-    order = ["wall s", "cpu s", "rss MB", "ctx k", "faults", "sibling %", "instr G", "cycles G", "to drawn ms", "to game ms"] + TIMERS
-    known = set(order) | set(MEMORY) | {"failed"}
+    order = ["wall s", "cpu s", "rss MB", "ctx k", "vol k", "faults", "sibling %", "temp C", "temp max C", "cpu MHz", "gpu MHz", "instr G", "cycles G", "to drawn ms", "to game ms", "page up ms", "opening max ms"] + TIMERS
+    known = set(order) | set(MEMORY) | {"failed", "busy"}
     named = sorted({k for r in runs for _, rs in r.values() for c in rs for k in c if k not in known})
     order += named + MEMORY
     width = max(len(k) for k in order)
@@ -191,12 +230,17 @@ def main() -> None:
     repeats = sorted({len(rs) for r in runs for _, rs in r.values()})
     if repeats != [1]:
         print(f"repeats: {', '.join(map(str, repeats))}; median [min-max]")
-    print("timers in ms, mean/p99/max[/count past 25 ms] (steps: a count)\n")
+    print("timers in ms, mean/[p50/]p99/max[/count past 25 ms] (steps: a count)\n")
     for name in names:
         args = next(r[name][0] for r in runs if name in r)
         failed = any(c.get("failed") for r in runs for c in r.get(name, ("", []))[1])
         disturbed = any(c.get("sibling %", 0) > SIBLING_BUSY for r in runs for c in r.get(name, ("", []))[1])
-        marks = ("  FAILED" if failed else "") + ("  DISTURBED (sibling busy)" if disturbed else "")
+        busy = any(c.get("busy") for r in runs for c in r.get(name, ("", []))[1])
+        marks = (
+            ("  FAILED" if failed else "")
+            + ("  DISTURBED (sibling busy)" if disturbed else "")
+            + ("  DISTURBED (machine busy)" if busy else "")
+        )
         print(f"{name}: {args}{marks}")
         for key in order:
             values = [[c.get(key) for c in r.get(name, ("", []))[1]] for r in runs]

@@ -3,7 +3,8 @@
 //!
 //! ```text
 //!  base ──> plugins, cameras, every game system (frame)
-//!  install    a made game's resources ──> Screen::Playing
+//!  install    a made game's resources ──> Screen::Playing, under its
+//!             loading page until its drawing settles (menu::drape)
 //!  uninstall  its entities gone, its corpus and art onto the shelf
 //!  frame_start  once: on the palace, the map as bounds
 //! ```
@@ -21,17 +22,16 @@ pub(crate) mod shot;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use bevy::camera::CameraOutputMode;
 use bevy::camera::visibility::RenderLayers;
 use bevy::ecs::resource::IsResource;
 use bevy::prelude::*;
-use bevy::render::render_resource::BlendState;
 use bevy_egui::{EguiGlobalSettings, EguiPlugin, PrimaryEguiContext};
 
 #[cfg(test)]
 use regent_core::sim::game::Input;
 #[cfg(test)]
 use regent_core::sim::world::cheat::{Cheat, CheatCode};
+use regent_draw::compose;
 use regent_draw::data::Corpus;
 use regent_draw::map::load::Loaded;
 use regent_draw::map::reel::Reel;
@@ -93,7 +93,8 @@ pub enum Display {
 ///
 /// ```text
 ///  base ──> menus, Maker, Shelf, Player ──> Screen::Menu
-///    the command line's game: its loading page, begin ──> Screen::Playing
+///    the command line's game: its loading page, begin ──> Screen::Playing,
+///    the page over it until its drawing settles
 /// ```
 ///
 /// # Errors
@@ -226,7 +227,7 @@ fn defaults(
     (display, sound): (Display, Sound),
     mode: crate::files::config::WindowMode,
 ) -> bevy::app::PluginGroupBuilder {
-    let plugins = DefaultPlugins
+    let plugins = threads::plugins(DefaultPlugins.build())
         .set(WindowPlugin {
             primary_window: Some(Window {
                 title: "OpenRegent".to_owned(),
@@ -400,8 +401,9 @@ pub fn uninstall(world: &mut World) {
 
 /// The drawing's resources, a game's: the view and what is drawn; the
 /// game's thread, its corpus, map and save's records, which it is made
-/// with ([`install`]).
+/// with ([`install`]). Its start-up work, the app's.
 fn plugin(app: &mut App) {
+    app.add_plugins(regent_draw::settle::Plugin);
     app.per_game_as(|| stage::View {
         zoom: START_ZOOM,
         ..default()
@@ -588,6 +590,7 @@ fn base(speed: Option<f32>, settings: Settings, output: (Display, Sound)) -> App
         );
 
     crate::perf::install(&mut app);
+    app.add_plugins(threads::Executors);
     app
 }
 
@@ -611,10 +614,9 @@ fn upscaling(
     mode.set_if_neq(wanted);
 }
 
-/// The world camera on only in a game: on the menus its passes (the
-/// shadow resolve over the whole window, its copy to the window) drew
-/// nothing egui does not cover. Without it egui's camera is the first to
-/// write the window, so it clears it first.
+/// The world camera on only in a game: on the menus its passes drew
+/// nothing egui does not cover. The window is written by egui's camera,
+/// last (`regent_draw::compose`): cleared, the world, egui over it.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -622,37 +624,12 @@ fn upscaling(
 fn world_shown(
     screen: Option<Res<State<Screen>>>,
     world: Single<&mut Camera, With<stage::WorldCamera>>,
-    egui: Single<&mut Camera, (With<PrimaryEguiContext>, Without<stage::WorldCamera>)>,
 ) {
-    let screen = screen.map_or(Screen::Menu, |s| *s.get());
-    let shown = screen == Screen::Playing;
-    let (mut world, mut egui) = (world.into_inner(), egui.into_inner());
-    let cleared = matches!(
-        egui.output_mode,
-        CameraOutputMode::Write {
-            clear_color: ClearColorConfig::Default,
-            ..
-        }
-    );
+    let shown = screen.is_some_and(|s| *s.get() == Screen::Playing);
+    let mut world = world.into_inner();
 
     if world.is_active != shown {
         world.is_active = shown;
-    }
-
-    if cleared == shown {
-        egui.output_mode = egui_output(screen);
-    }
-}
-
-/// How egui's camera writes the window: over the world camera's picture
-/// in a game, else over the clear colour.
-const fn egui_output(screen: Screen) -> CameraOutputMode {
-    CameraOutputMode::Write {
-        blend_state: Some(BlendState::ALPHA_BLENDING),
-        clear_color: match screen {
-            Screen::Playing => ClearColorConfig::None,
-            Screen::Menu => ClearColorConfig::Default,
-        },
     }
 }
 
@@ -725,10 +702,12 @@ fn cameras(mut commands: Commands, mut egui: ResMut<EguiGlobalSettings>) {
         RenderLayers::none(),
         Camera {
             order: present::TOP_ORDER,
-            output_mode: egui_output(Screen::Playing),
-            clear_color: ClearColorConfig::Custom(Color::NONE),
+            // Kept between frames: cleared where egui draws again
+            // (`regent_draw::kept`).
+            clear_color: ClearColorConfig::None,
             ..default()
         },
+        compose::Compose,
     ));
 }
 
@@ -787,6 +766,7 @@ pub(crate) fn frame_start(
 
 #[cfg(test)]
 mod lifecycle;
+mod threads;
 
 #[cfg(test)]
 mod tests {

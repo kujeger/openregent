@@ -8,7 +8,10 @@
 //!  drawn     every WINDOW drawn frames: main, interval, wait; on the sim
 //!            thread step, steps, publish, asked, clone (each world copy);
 //!            LAN: snapshot (sim thread), fold (its worker); entities,
-//!            meshes and visible meshes counted
+//!            meshes and visible meshes counted; each frame the entities
+//!            spawned and despawned, pieces and missiles drawn anew, its
+//!            start-up work (regent_draw::settle; uploads) (maj_perf=debug:
+//!            a line a frame)
 //!  headless  at the end: step, and every PROBE_EVERY frames clone, deep, henchmen
 //!  startup   once each: ms from start to the first drawn frame, and to the game's
 //! ```
@@ -19,17 +22,24 @@
 //!  MAJ_PERF_UNCAPPED=1  no vsync: the frame interval is the frame's cost, not 16.7 ms
 //!  MAJ_PERF_GPU=1       with MAJ_PERF: GPU time per pass and per frame, draw calls,
 //!                       GPU memory (gpu)
+//!  MAJ_PERF_HIDE=a,b    with MAJ_PERF: classes of world meshes hidden (hide)
+//!  MAJ_PERF_HELD=<file> with MAJ_PERF: the art service's pictures written out (held)
 //!  MAJ_PERF_PIPELINED=1 a screenshot's game in pipelined mode, as played
 //!                       (`game::thread::Mode`): game frames by the wall clock
+//!  MAJ_PERF_PRELOAD=all every sprite made under the loading page; else those seen
 //! ```
 
 mod gpu;
+mod held;
+mod hide;
+mod repaint;
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
-use bevy::log::info;
+use bevy::log::{debug, info};
 use bevy::prelude::*;
 use bevy::window::PresentMode;
 
@@ -44,6 +54,10 @@ pub const UNCAPPED: &str = "MAJ_PERF_UNCAPPED";
 /// The environment variable that runs a screenshot's game pipelined,
 /// e.g. `MAJ_PERF_PIPELINED=1`.
 pub const PIPELINED: &str = "MAJ_PERF_PIPELINED";
+
+/// The environment variable that says which sprites a game's loading
+/// page waits for, e.g. `MAJ_PERF_PRELOAD=all`.
+pub const PRELOAD: &str = "MAJ_PERF_PRELOAD";
 
 /// The log target the reports go to: `RUST_LOG=warn,maj_perf=info`
 /// shows them.
@@ -132,6 +146,51 @@ impl Timer {
     }
 }
 
+/// What a drawn frame counts of the entities' churn, noted at its end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Churn {
+    /// Entities with a `Transform` spawned.
+    Spawned,
+    /// Entities with a `Transform` despawned.
+    Despawned,
+    /// Pieces despawned and drawn anew as their key changed: a tinted
+    /// one's (`map::pieces`).
+    Respawns,
+    /// Drawings given a new key's frames in their own entities: pieces,
+    /// missiles and effects (`map::pieces::lay`).
+    Rekeys,
+    /// Missiles drawn the first time (`map::pieces::missiles`).
+    Missiles,
+    /// Pieces whose new key takes a body material the old did not:
+    /// another sheet page, palette or pass (`map::pieces`).
+    Swaps,
+}
+
+impl Churn {
+    const ALL: [Churn; 6] = [
+        Churn::Spawned,
+        Churn::Despawned,
+        Churn::Respawns,
+        Churn::Rekeys,
+        Churn::Missiles,
+        Churn::Swaps,
+    ];
+
+    const fn name(self) -> &'static str {
+        match self {
+            Churn::Spawned => "spawned",
+            Churn::Despawned => "despawned",
+            Churn::Respawns => "respawns",
+            Churn::Rekeys => "rekeys",
+            Churn::Missiles => "missiles",
+            Churn::Swaps => "swaps",
+        }
+    }
+}
+
+/// This frame's churn, in [`Churn::ALL`]'s order.
+static CHURN: [AtomicU32; Churn::ALL.len()] = [const { AtomicU32::new(0) }; Churn::ALL.len()];
+
 /// Each timer's samples since the last report, in [`Timer::ALL`]'s order.
 static SERIES: Mutex<[Vec<f64>; Timer::ALL.len()]> =
     Mutex::new([const { Vec::new() }; Timer::ALL.len()]);
@@ -147,6 +206,26 @@ pub fn on() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
 
     *ON.get_or_init(|| std::env::var_os(ENV).is_some())
+}
+
+/// Which sprites a game's loading page waits for ([`PRELOAD`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Preload {
+    /// Those its start shows; the rest as play needs them.
+    Seen,
+    /// Every sprite of the game: a longer wait and more memory, none
+    /// made in play.
+    All,
+}
+
+/// [`PRELOAD`]'s value, read once: `all`, else `seen`.
+pub fn preload() -> Preload {
+    static PRELOADED: OnceLock<Preload> = OnceLock::new();
+
+    *PRELOADED.get_or_init(|| match std::env::var(PRELOAD).as_deref() {
+        Ok("all") => Preload::All,
+        _ => Preload::Seen,
+    })
 }
 
 /// The window's present mode: without vsync when [`UNCAPPED`] is set,
@@ -207,6 +286,13 @@ pub fn named(name: &str, value: f64) {
     }
 }
 
+/// `n` added to this frame's `what`, if timing.
+pub fn churn(what: Churn, n: u32) {
+    if on() {
+        CHURN[what as usize].fetch_add(n, Ordering::Relaxed);
+    }
+}
+
 /// `f` run, timed as `timer`.
 pub fn timed<T>(timer: Timer, f: impl FnOnce() -> T) -> T {
     let t = start();
@@ -216,10 +302,11 @@ pub fn timed<T>(timer: Timer, f: impl FnOnce() -> T) -> T {
     out
 }
 
+/// What [`startup`] has said.
+static SAID: Mutex<Vec<&str>> = Mutex::new(Vec::new());
+
 /// One line, `what`'s ms since the process started: once per `what`.
 pub fn startup(what: &'static str) {
-    static SAID: Mutex<Vec<&str>> = Mutex::new(Vec::new());
-
     if on()
         && let (Some(t), Ok(mut said)) = (STARTED.get(), SAID.lock())
         && !said.contains(&what)
@@ -229,10 +316,25 @@ pub fn startup(what: &'static str) {
     }
 }
 
+/// The loading page's lift ([`lifted`]): ms up and drawn frames, for the
+/// frame's line.
+static LIFTED: Mutex<Option<(f64, u32)>> = Mutex::new(None);
+
+/// A new game's loading page (`menu::drape`) gone after `ms` and
+/// `frames` drawn frames: logged with the frame's number, as
+/// `drape frame 61 ms 210 frames 13`.
+pub fn lifted(ms: f64, frames: u32) {
+    if on()
+        && let Ok(mut lifted) = LIFTED.lock()
+    {
+        *lifted = Some((ms, frames));
+    }
+}
+
 /// Each non-empty series logged, `what` the run's part, and emptied:
 ///
 /// ```text
-///  drawn step n 600 mean 2.026 p99 13.136 max 26.985 over 1
+///  drawn step n 600 mean 2.026 p50 1.9 p99 13.136 max 26.985 over 1
 /// ```
 ///
 /// `over`: the samples past [`SPIKE`].
@@ -242,10 +344,10 @@ pub fn report(what: &str) {
     };
 
     for (timer, samples) in Timer::ALL.iter().zip(series.iter_mut()) {
-        if let Some((mean, p99, max)) = stats(samples) {
+        if let Some((mean, p50, p99, max)) = stats(samples) {
             info!(
                 target: TARGET,
-                "{what} {} n {} mean {mean:.3} p99 {p99:.3} max {max:.3} over {}",
+                "{what} {} n {} mean {mean:.3} p50 {p50:.3} p99 {p99:.3} max {max:.3} over {}",
                 timer.name(),
                 samples.len(),
                 spikes(samples)
@@ -264,10 +366,10 @@ pub fn report(what: &str) {
                 format!(" over {}", spikes(samples))
             };
 
-            if let Some((mean, p99, max)) = stats(samples) {
+            if let Some((mean, p50, p99, max)) = stats(samples) {
                 info!(
                     target: TARGET,
-                    "{what} {name} n {} mean {mean:.3} p99 {p99:.3} max {max:.3}{over}",
+                    "{what} {name} n {} mean {mean:.3} p50 {p50:.3} p99 {p99:.3} max {max:.3}{over}",
                     samples.len(),
                 );
             }
@@ -285,6 +387,53 @@ struct Drawn {
     ended: Option<Instant>,
     /// Drawn frames since the last report.
     frames: u32,
+    /// Drawn frames since the start, this one counted: a spike's number.
+    total: u32,
+    /// The run's part: its reports' name.
+    part: Part,
+}
+
+/// A drawn run's part. A game's first frames, under its loading page
+/// (`menu::drape`), compose the ground and read art, sounds and pipelines
+/// for the first time: reported apart, so `drawn` holds play alone.
+///
+/// ```text
+///  menus, loading ──> the game under its loading page ──> the page gone: play
+///  └──────────────────── "opening" ─────────────────┘     "drawn"
+/// ```
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Part {
+    #[default]
+    Opening,
+    Play,
+}
+
+/// What a frame showed.
+#[derive(Clone, Copy)]
+enum Shows {
+    /// No game yet ([`startup`]'s `game` not said), or the game under its
+    /// loading page.
+    Opening,
+    /// The game, its page gone.
+    Game,
+}
+
+impl Part {
+    /// The part after a frame that showed `shows`: play stays.
+    const fn after(self, shows: Shows) -> Part {
+        match (self, shows) {
+            (Part::Play, _) | (_, Shows::Game) => Part::Play,
+            (Part::Opening, Shows::Opening) => Part::Opening,
+        }
+    }
+
+    /// The name its reports go by.
+    const fn name(self) -> &'static str {
+        match self {
+            Part::Opening => "opening",
+            Part::Play => "drawn",
+        }
+    }
 }
 
 /// With the timers on, the main schedule and the drawn frames timed.
@@ -292,9 +441,20 @@ pub fn install(app: &mut App) {
     if on() {
         app.init_resource::<Drawn>()
             .init_resource::<GroundClock>()
+            .init_resource::<Uploads>()
             .add_systems(First, began)
-            .add_systems(Last, ended);
+            .add_systems(
+                Last,
+                (uploads, ended)
+                    .chain()
+                    .after(regent_draw::settle::Noted)
+                    .after(crate::menu::lift),
+            )
+            .add_observer(|_: On<Add<Transform>>| churn(Churn::Spawned, 1))
+            .add_observer(|_: On<Despawn<Transform>>| churn(Churn::Despawned, 1));
         gpu::install(app);
+        hide::install(app);
+        held::install(app);
     }
 }
 
@@ -339,34 +499,175 @@ fn began(mut drawn: ResMut<Drawn>) {
     drawn.began = Some(Instant::now());
 }
 
-/// The frame's main schedule and interval noted; each [`WINDOW`]
-/// frames, the entity counts and a report.
-fn ended(mut drawn: ResMut<Drawn>, entities: Query<()>, meshes: Meshes) {
+/// Bytes of images given to the render world this frame, new or
+/// changed: what it uploads next.
+#[derive(Resource, Default)]
+struct Uploads(u64);
+
+/// Bytes in a KiB.
+const KIB: f64 = 1024.0;
+
+/// This frame's new and changed images' bytes added to [`Uploads`].
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+fn uploads(
+    mut events: MessageReader<AssetEvent<Image>>,
+    images: Res<Assets<Image>>,
+    mut uploaded: ResMut<Uploads>,
+) {
+    use bevy::asset::RenderAssetUsages;
+
+    let bytes: usize = events
+        .read()
+        .filter_map(|e| match e {
+            AssetEvent::Added { id } | AssetEvent::Modified { id } => images.get(*id),
+            _ => None,
+        })
+        .filter(|i| i.asset_usage.contains(RenderAssetUsages::RENDER_WORLD))
+        .filter_map(|i| i.data.as_ref().map(Vec::len))
+        .sum();
+
+    uploaded.0 += bytes as u64;
+}
+
+/// The frame's start-up work, noted as series and returned for its
+/// lines: sprite pages put on for what is drawn, page jobs for it and
+/// asked early, pipelines waiting, ground patches pending, KiB of images
+/// uploaded.
+fn work(settle: Option<&regent_draw::settle::Settle>, uploads: &mut Uploads) -> [f64; 6] {
+    let pending = settle
+        .map(regent_draw::settle::Settle::pending)
+        .unwrap_or_default();
+    #[allow(clippy::cast_precision_loss, reason = "counts and bytes of a frame")]
+    let work = [
+        f64::from(pending.pages),
+        pending.jobs as f64,
+        pending.early as f64,
+        pending.pipelines as f64,
+        pending.patches as f64,
+        std::mem::take(&mut uploads.0) as f64 / KIB,
+    ];
+
+    for (name, value) in WORK.iter().zip(work) {
+        named(name, value);
+    }
+
+    work
+}
+
+/// [`work`]'s series, in its order.
+const WORK: [&str; 6] = [
+    "pages",
+    "jobs",
+    "early",
+    "compiling",
+    "patches",
+    "upload_kb",
+];
+
+/// The frame's main schedule, interval and churn noted; each [`WINDOW`]
+/// frames, the entity counts and a report, named by the run's [`Part`].
+fn ended(
+    (mut drawn, drape): (ResMut<Drawn>, Option<Res<crate::menu::Drape>>),
+    (entities, meshes): (Query<()>, Meshes),
+    (settle, mut uploads): (Option<Res<regent_draw::settle::Settle>>, ResMut<Uploads>),
+) {
     let now = Instant::now();
     let ms = |t: Instant| now.duration_since(t).as_secs_f64() * 1e3;
 
     startup("drawn");
 
-    if let Some(t) = drawn.began {
-        note(Timer::Main, ms(t));
+    let main = drawn.began.map(ms);
+    let interval = drawn.ended.map(ms);
+
+    if let Some(main) = main {
+        note(Timer::Main, main);
     }
-    if let Some(t) = drawn.ended {
-        note(Timer::Interval, ms(t));
+    if let Some(interval) = interval {
+        note(Timer::Interval, interval);
     }
 
     drawn.ended = Some(now);
     drawn.frames += 1;
+    drawn.total += 1;
 
-    if drawn.frames == WINDOW {
+    // A frame's line, to set slow frames beside their churn:
+    // `frame 812 main 4.1 interval 16.7 spawned 120 despawned 118 respawns 3 missiles 2`.
+    let churned = Churn::ALL.map(|c| CHURN[c as usize].swap(0, Ordering::Relaxed));
+
+    for (what, n) in Churn::ALL.iter().zip(churned) {
+        named(what.name(), f64::from(n));
+    }
+
+    let [spawned, despawned, respawns, rekeys, missiles, swaps] = churned;
+    let [pages, jobs, early, pipelines, patches, upload_kb] = work(settle.as_deref(), &mut uploads);
+
+    debug!(
+        target: TARGET,
+        "frame {} main {:.3} interval {:.3} spawned {spawned} despawned {despawned} respawns {respawns} rekeys {rekeys} missiles {missiles} swaps {swaps} pages {pages} jobs {jobs} early {early} compiling {pipelines} patches {patches} upload_kb {upload_kb:.0}",
+        drawn.total,
+        main.unwrap_or(0.0),
+        interval.unwrap_or(0.0)
+    );
+
+    // A spike's frame named, so runs can be compared frame by frame, with
+    // the start-up work it did.
+    if main.into_iter().chain(interval).any(|t| t > SPIKE) {
+        info!(
+            target: TARGET,
+            "spike frame {} main {:.1} interval {:.1} wait {:.1} step {:.1} ground {:.1} pages {pages} jobs {jobs} early {early} compiling {pipelines} patches {patches} upload_kb {upload_kb:.0}",
+            drawn.total,
+            main.unwrap_or(0.0),
+            interval.unwrap_or(0.0),
+            latest(Timer::Wait),
+            latest(Timer::Step),
+            latest(Timer::Ground)
+        );
+    }
+
+    if let Some((ms, frames)) = LIFTED.lock().ok().and_then(|mut l| l.take()) {
+        info!(target: TARGET, "drape frame {} ms {ms:.0} frames {frames}", drawn.total);
+    }
+
+    let was = drawn.part;
+    let game = SAID.lock().is_ok_and(|said| said.contains(&"game"));
+    let shows = if game && crate::menu::undraped(drape) {
+        Shows::Game
+    } else {
+        Shows::Opening
+    };
+
+    drawn.part = was.after(shows);
+
+    // A window's report, or the opening's as play begins.
+    if drawn.frames == WINDOW || (was != Part::Play && drawn.part == Part::Play) {
         drawn.frames = 0;
         counted(&entities, &meshes);
-        report("drawn");
+        report(was.name());
     }
 }
 
-/// The named series that count things, not ms: [`counted`]'s, and
-/// `fog_moved`, 1 for a fog take whose explored ground changed.
-const COUNTS: [&str; 4] = ["entities", "meshes", "visible", "fog_moved"];
+/// The named series that count things, not ms: [`counted`]'s, [`Churn`]'s,
+/// `fog_moved`, 1 for a fog take whose explored ground changed, and
+/// [`WORK`]'s.
+const COUNTS: [&str; 14] = [
+    "entities",
+    "meshes",
+    "visible",
+    "fog_moved",
+    "spawned",
+    "despawned",
+    "respawns",
+    "missiles",
+    "pages",
+    "jobs",
+    "early",
+    "compiling",
+    "patches",
+    "upload_kb",
+];
 
 /// Every mesh, and whether a camera drew it last frame.
 type Meshes<'w, 's> = Query<'w, 's, &'static ViewVisibility, With<Mesh3d>>;
@@ -383,8 +684,9 @@ fn counted(entities: &Query<()>, meshes: &Meshes) {
     named("visible", visible as f64);
 }
 
-/// Mean, 99th percentile and maximum; `None` for no samples.
-fn stats(samples: &mut [f64]) -> Option<(f64, f64, f64)> {
+/// Mean, median, 99th percentile and maximum; `None` for no samples.
+/// The median shows the typical sample: one hitch moves the mean.
+fn stats(samples: &mut [f64]) -> Option<(f64, f64, f64, f64)> {
     samples.sort_by(f64::total_cmp);
 
     let max = *samples.last()?;
@@ -392,7 +694,22 @@ fn stats(samples: &mut [f64]) -> Option<(f64, f64, f64)> {
     let mean = samples.iter().sum::<f64>() / samples.len() as f64;
     let p99 = samples[(samples.len() - 1) * 99 / 100];
 
-    Some((mean, p99, max))
+    // Even counts: the middle two averaged.
+    let low = samples[(samples.len() - 1) / 2];
+    let high = samples[samples.len() / 2];
+    let p50 = f64::midpoint(low, high);
+
+    Some((mean, p50, p99, max))
+}
+
+/// `timer`'s last sample since the report, 0 for none: a drawn frame's
+/// own in sync mode.
+fn latest(timer: Timer) -> f64 {
+    SERIES
+        .lock()
+        .ok()
+        .and_then(|series| series[timer as usize].last().copied())
+        .unwrap_or(0.0)
 }
 
 /// How many samples are past [`SPIKE`].
@@ -410,10 +727,19 @@ mod tests {
     }
 
     #[test]
-    fn stats_are_mean_p99_and_max() {
+    fn stats_are_mean_median_p99_and_max() {
         let mut samples: Vec<f64> = (1..=100).rev().map(f64::from).collect();
 
-        assert_eq!(stats(&mut samples), Some((50.5, 99.0, 100.0)));
+        assert_eq!(stats(&mut samples), Some((50.5, 50.5, 99.0, 100.0)));
+        assert_eq!(stats(&mut [3.0, 1.0, 2.0]), Some((2.0, 2.0, 2.0, 3.0)));
         assert_eq!(stats(&mut []), None);
+    }
+
+    /// The opening ends as the game shows, its page gone; play stays.
+    #[test]
+    fn a_games_opening_ends_as_its_page_goes() {
+        assert_eq!(Part::Opening.after(Shows::Opening).name(), "opening");
+        assert_eq!(Part::Opening.after(Shows::Game).name(), "drawn");
+        assert_eq!(Part::Play.after(Shows::Opening).name(), "drawn");
     }
 }

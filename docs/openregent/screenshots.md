@@ -8,6 +8,9 @@ a hidden display.
 
 What a shot holds fixed:
 
+- A new game has taken its first three steps under its loading page
+  (`thread::PRIMING`) before the view is framed: a shot of one shows game
+  frame 3, not 0, its `--frames` counted on from there.
 - The fog is lifted, as the captures' reveal cheat did. The game is paused
   and muted, settings are the defaults, rings are the art's (`--rings`
   picks another), no side ring (`--side-ring true`).
@@ -94,7 +97,7 @@ features no ring cleared, each in its set with its slot and frame
  tick:   owed game time ──> Game::frame per 50 ms ──> World::shown
  ground and scatter: regent_draw's map::redraw::redraw on the Source, BLDG and VHCL off
  a placement: Board::relaid ──> ground::relay: ground and GRND from the world, cleared scatter despawned
- pieces: one entity each, a child per frame, shown by map::reel::show at game time
+ pieces: one entity each, a child per layer, stepped by map::reel::step at game time
 ```
 
 ## Game time and speed

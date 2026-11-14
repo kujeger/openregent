@@ -6,6 +6,9 @@
 import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput;
 import regent_draw::shaders::srgb::{to_srgb, from_srgb};
 @group(0) @binding(0) var screen: texture_2d<f32>;
+// Whole pixels each output pixel reads back by: its pixel p takes the
+// screen's p − shift (`shadow::Written::Under`), else 0.
+@group(0) @binding(1) var<uniform> shift: vec4<i32>;
 
 /// A colour as the original's screen shows it: 565, shifted up.
 fn present(rgb: vec3<f32>) -> vec4<f32> {
@@ -18,7 +21,7 @@ fn present(rgb: vec3<f32>) -> vec4<f32> {
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> @location(0) vec4<f32> {
-    let there = textureLoad(screen, vec2<i32>(in.position.xy), 0);
+    let there = textureLoad(screen, vec2<i32>(in.position.xy) - shift.xy, 0);
 
 @if(SOFT) {
     // Alpha holds the most coverage any shadow gave, 255 none, 1 full;

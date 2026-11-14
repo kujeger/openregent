@@ -41,9 +41,10 @@ home=${SHOT_HOME:-$root/local/shot-scratch}
 mkdir -p "$home"
 export XDG_DATA_HOME=$home/data XDG_CACHE_HOME=$home/cache XDG_CONFIG_HOME=$home/config
 
-# A dev build links Bevy dynamically: its library is in deps/.
+# A dev build links Bevy dynamically: its library is in deps/, or beside
+# the binary (cargo names it by version: hashed there, plain here).
 toolchain=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/lib
-export LD_LIBRARY_PATH=$(dirname "$bin")/deps:$toolchain
+export LD_LIBRARY_PATH=$(dirname "$bin")/deps:$(dirname "$bin"):$toolchain
 
 export WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1
 unset DISPLAY

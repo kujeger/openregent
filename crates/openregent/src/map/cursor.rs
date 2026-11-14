@@ -29,7 +29,7 @@ use crate::game::scope::Scoped;
 use crate::game::seen::{Frame, Watch};
 use crate::input::orders::{FlagKind, Mode, Orders, Rules};
 use crate::map::select::{Picked, Picker, Pointing, Selected, Through};
-use crate::menu::{Menu, Screen};
+use crate::menu::{Menu, Screen, undraped};
 use regent_draw::art::{ArtSource, Sprites};
 
 /// The cursor's resources, a game's: as it ends, no piece hovered, no
@@ -41,7 +41,11 @@ pub fn plugin(app: &mut App) {
         .per_game::<SideHover>()
         .per_game::<Tipped>()
         .per_game::<Portrait>()
-        .add_systems(Update, menus.run_if(in_state(Screen::Menu)));
+        // The menus' cursor over a new game's loading page too.
+        .add_systems(
+            Update,
+            menus.run_if(in_state(Screen::Menu).or_else(not(undraped))),
+        );
 }
 
 /// The piece the hover ring marks, by agent.

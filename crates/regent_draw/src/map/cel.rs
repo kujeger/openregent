@@ -2,11 +2,13 @@
 //! ([`Drawing`]), and who makes them ([`Paint`]).
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use bevy::prelude::*;
 
 use regent_core::content::imagery::{self, Animation, Blitted, FrameSource, Pose};
 use regent_core::data::catalogue::Catalogue;
+use regent_core::data::fourcc::FourCc;
 use regent_core::data::imag::{Blit, Pass, SetKind};
 use regent_core::sim::footprint::ArtRect;
 use regent_core::sim::movement::action::frame_ms;
@@ -15,6 +17,7 @@ use regent_core::view::{Backdrop, Ink, PaletteSource, Sprite as Frame};
 
 use super::Item;
 use crate::data::Corpus;
+use crate::instance::Framed;
 use crate::plain::{Alpha, Plain};
 use crate::smooth::Sampling;
 use crate::wind::{Gust, Sway};
@@ -37,8 +40,16 @@ pub type Palettes = BTreeMap<Colours, Handle<Image>>;
 /// What makes a redraw's materials: a frame's ([`cel`]). openregent's is
 /// its art service, which keeps them.
 pub trait Paint {
-    /// Frame `source` as materials.
-    fn cel(&mut self, corpus: &Corpus, store: &mut Store, source: FrameSource) -> Option<Cel>;
+    /// Frame `source` as materials: on its `owner`'s sheet where given
+    /// and that holds the frame ([`super::sheet`]), else on its own
+    /// texture; pending while its sheet's pages are on their way.
+    fn cel(
+        &mut self,
+        corpus: &Corpus,
+        store: &mut Store,
+        source: FrameSource,
+        owner: Option<Owner>,
+    ) -> super::sheet::Paged;
 
     /// A whole redraw begins.
     fn begin(&mut self) {}
@@ -46,7 +57,7 @@ pub trait Paint {
 
 /// Palette identity. [`regent_core::view::PaletteSource`] alone cannot tell
 /// embedded palettes apart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Colours {
     /// The `index`th `SPLT` of an archive, shared by every tile naming it.
     Splt(usize, usize),
@@ -76,6 +87,13 @@ impl Mobility {
         }
     }
 }
+
+/// A slot effect's part: its set, slot, offset and owner.
+type Lent = (Animation, usize, (i32, i32), Option<Owner>);
+
+/// Whose sheet a frame is on: its `IMAG` record, and the set (low 16
+/// bits) it is drawn in, whose pages are made when it first draws.
+pub type Owner = (FourCc, u16);
 
 /// Low half of a packed set id; the top byte is the layer, and all layers
 /// draw together.
@@ -173,18 +191,26 @@ fn picture(
         .enumerate()
         .any(|(i, drawn)| *drawn && matches!(frame.ink(i, Blit::World), Ink::Shade(_)))
         .then(|| {
-            store.bands.add(material::Band {
+            let ramps = soft::Ramps::of(frame.mode);
+            let feet = crate::lie::feet(store.images.get(&indices)?, ramps);
+            let feet = store.images.add(feet);
+
+            Some(store.bands.add(material::Band {
                 indices: indices.clone(),
                 rows: crate::lie::ROWS,
                 // `shadow::follow` sets the wanted one.
                 shadows: crate::shadow::Shadows::default(),
-                ramps: soft::Ramps::of(frame.mode),
+                ramps,
                 sway: Sway::Still,
                 gust: Gust::STILL,
+                feet,
                 sampling: Sampling::Nearest,
                 painted: crate::material::Painted::Kept,
-            })
-        });
+                table: crate::instance::TABLE,
+                on: crate::material::On::Own,
+            }))
+        })
+        .flatten();
 
     let body = store.bodies.add(material::Body {
         indices,
@@ -210,7 +236,7 @@ pub struct Cel {
     /// The band's indices where a model casts the ground shadow: what is
     /// left to draw, a flag or a fire's smoke ([`keep_parts`]). Absent if
     /// nothing is.
-    pub aloft: Option<Handle<Image>>,
+    pub aloft: Option<Aloft>,
     /// A translucent frame's lift, clearing the shadow's coverage under it
     /// ([`crate::soft::lifts`]); absent on an opaque one.
     pub lift: Option<Handle<material::Body>>,
@@ -220,14 +246,28 @@ pub struct Cel {
     pub anchor: Vec2,
     /// The tile drawn: archive, index.
     pub tile: (usize, usize),
+    /// Its texels in its texture: its sheet page's rectangle, or all of
+    /// its own; its instances' rows carry it ([`crate::instance`]).
+    pub frame: Framed,
+}
+
+/// A band's pictures where a model casts the ground shadow ([`Cel::aloft`]).
+#[derive(Clone)]
+pub struct Aloft {
+    pub indices: Handle<Image>,
+    /// `indices`' feet ([`crate::lie::feet`]): holes cut runs short.
+    pub feet: Handle<Image>,
+    /// Its band's page, or textures of its own, tile-sized.
+    pub on: crate::material::On,
 }
 
 /// One layer of a descriptor's picture, ready to place.
 #[derive(Clone)]
 pub struct Drawing {
     /// Frames in playback order; one if held. `None` for unresolved tiles,
-    /// keeping the cycle length.
-    pub cels: Vec<Option<Cel>>,
+    /// keeping the cycle length. Shared by every layer entity drawing
+    /// them ([`super::reel::Layer`]).
+    pub cels: Arc<[Option<Cel>]>,
     /// The pose offset, y negated.
     pub pose: Vec2,
     /// Layer index from the set id's top byte, not list position (dropped
@@ -255,7 +295,7 @@ impl Drawing {
     /// shadows land on whatever is below.
     pub(super) fn of(
         corpus: &Corpus,
-        cel: &mut dyn FnMut(FrameSource) -> Option<Cel>,
+        cel: &mut dyn FnMut(FrameSource, Option<Owner>) -> Option<Cel>,
         object: &Item,
         moves: Mobility,
         still: Option<u16>,
@@ -283,16 +323,18 @@ impl Drawing {
     /// pose of the set's slots, `still` a frame or the whole stream. A
     /// layer of several streams gives one drawing a stream, in order, each
     /// frame at its nudge ([`regent_core::content::imagery::Pose::blits`]); `cel` makes a
-    /// frame's materials ([`cel`], or a cache of them). The slot effects
-    /// of `catalogue` follow the layers.
+    /// frame's materials ([`cel`], or a cache of them), told the `IMAG`
+    /// record it is drawn from. The slot effects of `catalogue` follow
+    /// the layers.
     pub fn layers(
         catalogue: &Catalogue<'_>,
         unit: &regent_core::content::unit::Unit<'_>,
         named: u16,
         slot: &dyn Fn(usize) -> usize,
         still: Option<u16>,
-        cel: &mut dyn FnMut(FrameSource) -> Option<Cel>,
+        cel: &mut dyn FnMut(FrameSource, Option<Owner>) -> Option<Cel>,
     ) -> Vec<Self> {
+        let own = unit.art.map(|link| (link.id, named));
         let base = unit.stack(named).next();
 
         // A part per layer and pass, numbered as `UnitIMG` makes them.
@@ -311,7 +353,7 @@ impl Drawing {
 
         // Then a part per slot effect of each first-pass part, last entry
         // first: the set's slot, at the entry's offset.
-        let effects: Vec<(Animation, usize, (i32, i32))> = parts
+        let effects: Vec<Lent> = parts
             .iter()
             .filter(|(_, _, pass, _)| *pass == Pass::First)
             .flat_map(|(.., pose)| pose.effects.iter().rev())
@@ -323,35 +365,38 @@ impl Drawing {
                     slot(set.poses.len())
                 };
 
-                Some((set, at, entry.offset()))
+                let owner = entry.image().map(|i| (i, low(set.id)));
+
+                Some((set, at, entry.offset(), owner))
             })
             .collect();
 
         // A new effect part starts on frame 0.
-        let effect_parts = effects
-            .iter()
-            .enumerate()
-            .filter_map(|(nth, (set, at, offset))| {
-                let pose = set.poses.get(*at)?;
+        let effect_parts =
+            effects
+                .iter()
+                .enumerate()
+                .filter_map(|(nth, (set, at, offset, record))| {
+                    let pose = set.poses.get(*at)?;
 
-                Some((
-                    count + nth,
-                    set,
-                    Pass::First,
-                    pose,
-                    *offset,
-                    still.map(|_| 0),
-                ))
-            });
+                    Some((
+                        count + nth,
+                        set,
+                        Pass::First,
+                        pose,
+                        (*offset, *record),
+                        still.map(|_| 0),
+                    ))
+                });
 
         parts
             .iter()
-            .map(|&(part, set, pass, pose)| (part, set, pass, pose, (0, 0), still))
+            .map(|&(part, set, pass, pose)| (part, set, pass, pose, ((0, 0), own), still))
             .chain(effect_parts)
             .flat_map(|(part, set, pass, pose, offset, still)| {
                 (0..pose.streams.max(1)).map(move |s| (part, set, pass, pose, offset, still, s))
             })
-            .filter_map(|(part, set, pass, pose, (x, y), still, stream)| {
+            .filter_map(|(part, set, pass, pose, ((x, y), record), still, stream)| {
                 let blits = pose.blits(stream, pass);
 
                 // Saved frame or whole stream; missing frames fall back to the first.
@@ -360,9 +405,9 @@ impl Drawing {
                     None => blits,
                 };
 
-                let cels: Vec<Option<Cel>> = wanted
+                let cels: Arc<[Option<Cel>]> = wanted
                     .into_iter()
-                    .map(|blit| nudged(&mut *cel, blit?))
+                    .map(|blit| nudged(&mut *cel, blit?, record))
                     .collect();
 
                 // Skip all-hole layers. The first resolved frame sizes it.
@@ -415,15 +460,20 @@ pub fn rungs(layers: &[Drawing]) -> Vec<usize> {
     rungs
 }
 
-/// A blitted frame as materials, its anchor moved by its nudge.
-fn nudged(cel: &mut dyn FnMut(FrameSource) -> Option<Cel>, blit: Blitted) -> Option<Cel> {
+/// A blitted frame of `record` as materials, its anchor moved by its
+/// nudge.
+fn nudged(
+    cel: &mut dyn FnMut(FrameSource, Option<Owner>) -> Option<Cel>,
+    blit: Blitted,
+    record: Option<Owner>,
+) -> Option<Cel> {
     let source = FrameSource::Tile {
         archive: blit.archive,
         index: blit.index,
         flags: 0,
     };
     let (x, y) = blit.nudge;
-    let mut cel = cel(source)?;
+    let mut cel = cel(source, record)?;
 
     cel.anchor -= Vec2::new(f32::from(x), -f32::from(y));
     Some(cel)
@@ -444,11 +494,22 @@ pub fn keep_parts(
         let overlay = damage && drawing.part > 0 && drawing.pass == Pass::First;
         let posed = drawing.posed();
 
-        for cel in drawing.cels.iter_mut().flatten() {
+        // Made just now, so not yet shared.
+        let Some(cels) = Arc::get_mut(&mut drawing.cels) else {
+            continue;
+        };
+
+        for cel in cels.iter_mut().flatten() {
             let Some(band) = &cel.band else { continue };
+            let band = store.bands.get(band);
+            let ramps = band.map(|band| band.ramps).unwrap_or_default();
 
             cel.aloft = if overlay {
-                store.bands.get(band).map(|band| band.indices.clone())
+                band.map(|band| Aloft {
+                    indices: band.indices.clone(),
+                    feet: band.feet.clone(),
+                    on: band.on,
+                })
             } else {
                 stands
                     .and_then(|stands| {
@@ -461,7 +522,11 @@ pub fn keep_parts(
 
                         texture::without_shadow(&frame, |i| frame.aloft(i, stands, shift))
                     })
-                    .map(|image| store.images.add(image))
+                    .map(|image| Aloft {
+                        feet: store.images.add(crate::lie::feet(&image, ramps)),
+                        indices: store.images.add(image),
+                        on: crate::material::On::Own,
+                    })
             };
         }
     }
@@ -491,6 +556,12 @@ pub fn cel(
         size,
         anchor,
         tile: (archive, index),
+        frame: Framed(regent_core::view::pack::Rect {
+            x: 0,
+            y: 0,
+            w: u32::from(frame.width),
+            h: u32::from(frame.height),
+        }),
     })
 }
 
@@ -514,7 +585,7 @@ mod tests {
         let bazaar = regent_core::content::unit::Unit::find(catalogue, FourCc(*b"ABl1"))
             .expect("the Bazaar")
             .expect("it resolves");
-        let mut cel = |source: FrameSource| {
+        let mut cel = |source: FrameSource, _| {
             Some(Cel {
                 body: Picture::Colour(Handle::default()),
                 band: None,
@@ -523,6 +594,7 @@ mod tests {
                 size: Vec2::ONE,
                 anchor: Vec2::ZERO,
                 tile: source.tile()?,
+                frame: Framed::default(),
             })
         };
         let drawn = Drawing::layers(catalogue, &bazaar, 0x65, &|_| 0, None, &mut cel);

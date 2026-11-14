@@ -37,14 +37,8 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 here=$root/tools/perf
 
-# The 1-minute load average above which the machine is busy, whatever
-# its core count: one 4-job cargo build lifts the load to about 4, an idle
-# desktop stays near or below 1 (**Inferred**: neither measured alone).
-# 2 is between: room for a browser, not a build.
-max_load=2.0
-
-# What makes the machine busy: builds and other games.
-busy_names=(cargo rustc clippy-driver openregent)
+# busy(), max_load: whether the machine is busy (shared with run.sh).
+source "$here/busy.sh"
 
 # The groups run when none is named: about 6 minutes a repeat (weak:
 # lavapipe, about 9; trace: its own build).
@@ -150,18 +144,6 @@ for word in "${wanted[@]}"; do
     fi
 done
 
-# What makes the machine busy now, one line each; nothing when quiet.
-busy() {
-    local name load
-    for name in "${busy_names[@]}"; do
-        pgrep -a -x "$name" | cut -c1-120 | sed 's/^/  running: /' || true
-    done
-    load=$(cut -d' ' -f1 /proc/loadavg)
-    if awk -v a="$load" -v b="$max_load" 'BEGIN { exit !(a > b) }'; then
-        echo "  load: $load (over $max_load)"
-    fi
-}
-
 # Refuses to go on while busy, unless --force.
 quiet_or_stop() {
     local found
@@ -246,7 +228,7 @@ mkdir -p "$out"
 for ((i = 1; i <= count; i++)); do
     echo "== repeat $i of $count, load $(cut -d' ' -f1 /proc/loadavg)"
     echo "$i $(cat /proc/loadavg)" >>"$out/load.txt"
-    "$here/run.sh" "$out/$i" "${cases[@]}" >"$out/$i.log" 2>&1 || echo "repeat $i: run.sh failed ($out/$i.log)" >&2
+    PERF_GUARD=off "$here/run.sh" "$out/$i" "${cases[@]}" >"$out/$i.log" 2>&1 || echo "repeat $i: run.sh failed ($out/$i.log)" >&2
     grep -E 'failed' "$out/$i.log" >&2 || true
 done
 echo "end $(cat /proc/loadavg)" >>"$out/load.txt"

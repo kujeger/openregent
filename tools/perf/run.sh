@@ -3,7 +3,7 @@
 # The fixed perf runs (tools/perf/cases), each into <out-dir>/<case>/,
 # then one summary table: <out-dir>/summary.txt (tools/perf/summary.py).
 #
-#   tools/perf/build.sh [trace]               release, frame pointers
+#   tools/perf/build.sh [trace|dist]          release, frame pointers
 #   tools/perf/run.sh <out-dir> [case...]     every case, or those named
 #   tools/perf/summary.py <before> <after>    two runs side by side
 #   tools/perf/quiet.sh [case|group...]       repeated, kept, compared
@@ -26,9 +26,21 @@
 # them a case runs under /usr/bin/time alone, with a warning.
 #
 # The binary is $PERF_BIN, else build.sh's; BUILD=trace cases' is
-# $PERF_TRACE_BIN, else `build.sh trace`'s. Its Bevy links dynamically:
-# LD_LIBRARY_PATH takes its deps/ and the toolchain's lib/. Keep
+# $PERF_TRACE_BIN, else `build.sh trace`'s; BUILD=dist cases' is
+# $PERF_DIST_BIN, else `build.sh dist`'s. The others' Bevy links
+# dynamically: LD_LIBRARY_PATH takes their deps/ and the toolchain's lib/
+# (the dist build is static: it needs none). Keep
 # <out-dir> out of tracked folders: local/ (quiet.sh's default) is ignored.
+#
+# Heat: each case's <case>/heat.txt samples the hottest thermal zone and
+# the CPU's and an Intel GPU's clocks every 2 s (the summary: `temp C`,
+# `cpu MHz`, `gpu MHz`, means, and `temp max C`). PERF_COOL=<seconds>
+# rests the machine before each case: a fanless one throttles as it warms.
+#
+# Busy machine (busy.sh: cargo, rustc, clippy-driver or openregent
+# running, or a 1-minute load above its max_load) at start: a warning, and
+# <out-dir>/disturbed; the summary marks the cases DISTURBED. PERF_GUARD=off
+# skips the check (quiet.sh, which has its own).
 
 set -euo pipefail
 
@@ -36,6 +48,7 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 here=$root/tools/perf
 bin=$(realpath "${PERF_BIN:-$root/target/perf/release/openregent}")
 trace_bin=$(realpath -m "${PERF_TRACE_BIN:-$root/target/perf-trace/release/openregent}")
+dist_bin=$(realpath -m "${PERF_DIST_BIN:-$root/target/perf-dist/dist/openregent}")
 
 # This machine's performance cores (cores.sh; M1 Pro: 2-9). Unpinned,
 # a run's timers turn bimodal as threads land on either type.
@@ -50,6 +63,7 @@ fi
 out=$(realpath -m "$1")
 shift
 mkdir -p "$out"
+rm -f "$out/disturbed"
 
 case $out/ in
 "$root"/*)
@@ -72,12 +86,26 @@ if [[ -f $env_file ]]; then
     done <"$env_file"
 fi
 
-toolchain=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/lib
-export LD_LIBRARY_PATH=$(dirname "$bin")/deps:$toolchain
+# Without rustc (a machine given a dist build as $PERF_BIN), no toolchain
+# lib: a static binary needs none.
+toolchain=
+if command -v rustc >/dev/null; then
+    toolchain=$(rustc --print sysroot)/lib/rustlib/$(rustc -vV | sed -n 's/^host: //p')/lib
+fi
+# Bevy's library: in deps/, or beside the binary (cargo's version decides).
+export LD_LIBRARY_PATH=$(dirname "$bin")/deps:$(dirname "$bin"):$toolchain
 export MAJ_PERF=1 RUST_LOG=warn,maj_perf=info
 
 # Mesa's software Vulkan (lavapipe), for the cases' VK_ICD_FILENAMES.
 lavapipe=/usr/share/vulkan/icd.d/lvp_icd.$(uname -m).json
+
+# The integrated GPU's name, for the cases' WGPU_ADAPTER_NAME: $PERF_IGPU,
+# else the last parenthesis of the first integrated Vulkan adapter's
+# deviceName ("... (RADV RAPHAEL_MENDOCINO)" -> "RADV RAPHAEL_MENDOCINO");
+# empty when there is none.
+igpu=${PERF_IGPU-$(vulkaninfo --summary 2>/dev/null |
+    awk '/deviceType/ { integrated = /INTEGRATED_GPU/ } /deviceName/ && integrated { print; exit }' |
+    sed -n 's/.*(\([^()]*\))[^()]*$/\1/p' || true)}
 
 # The LAN case's port.
 port=47613
@@ -93,7 +121,8 @@ fi
 measured() {
     # ctx: involuntary context switches, faults: major page faults (swap,
     # cold files); either high marks a repeat another load disturbed.
-    local -a timed=(/usr/bin/time -f "wall=%e user=%U sys=%S rss_kb=%M ctx=%c faults=%F" -o "$dir/time.txt" "$@")
+    # vol: voluntary context switches, the threads' waits.
+    local -a timed=(/usr/bin/time -f "wall=%e user=%U sys=%S rss_kb=%M ctx=%c vol=%w faults=%F" -o "$dir/time.txt" "$@")
 
     if [[ $counted == yes ]]; then
         LC_ALL=C perf stat -x, -e instructions:u,cycles:u,task-clock -o "$dir/stat.csv" -- "${timed[@]}"
@@ -137,6 +166,31 @@ isolated() {
     mkdir -p "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME"
 }
 
+# The machine's heat now, one line: the hottest thermal zone (°C), the
+# first CPU's clock and an Intel GPU's (MHz); 0 where there is none.
+heat() {
+    local temp=0 zone cpu=0 gpu=0 file
+    for zone in /sys/class/thermal/thermal_zone*/temp; do
+        [[ -r $zone ]] && (($(<"$zone") > temp)) && temp=$(<"$zone")
+    done
+    file=/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq
+    [[ -r $file ]] && cpu=$(($(<"$file") / 1000))
+    for file in /sys/class/drm/card*/gt_act_freq_mhz; do
+        [[ -r $file ]] && gpu=$(<"$file")
+    done
+    echo "$((temp / 1000)) $cpu $gpu"
+}
+
+# `heat` every $heat_every seconds into $1, until killed: a fanless
+# machine slows as it warms, and a case's figures with it.
+heat_every=2
+heated() {
+    while true; do
+        heat >>"$1"
+        sleep "$heat_every"
+    done
+}
+
 run_case() {
     local name=$1 kind=$2
     shift 2
@@ -144,11 +198,12 @@ run_case() {
     rm -rf "$dir"
     mkdir -p "$dir"
     echo "$kind $*" >"$dir/args.txt"
+    [[ -f $out/disturbed ]] && cp "$out/disturbed" "$dir/disturbed"
     echo "== $name: $kind $*"
 
     # Leading NAME=value words: the case's environment. CPUS=<list> pins
     # it to those cores (taskset), CPUS=all to none; BUILD=trace runs build.sh's timeline
-    # build, its trace to <case>/trace.json.
+    # build, its trace to <case>/trace.json; BUILD=dist the shipped profile's.
     local game=$bin
     local -a with=(env) pin=()
     [[ -n $cpus ]] && pin=(taskset -c "$cpus")
@@ -168,7 +223,12 @@ run_case() {
         CPUS=*) pin=(taskset -c "${1#CPUS=}") ;;
         BUILD=trace)
             game=$trace_bin
-            with+=("TRACE_CHROME=$dir/trace.json" "LD_LIBRARY_PATH=$(dirname "$game")/deps:$toolchain")
+            with+=("TRACE_CHROME=$dir/trace.json" "LD_LIBRARY_PATH=$(dirname "$game")/deps:$(dirname "$game"):$toolchain")
+            ;;
+        BUILD=dist) game=$dist_bin ;;
+        WGPU_ADAPTER_NAME=)
+            echo "$name: no integrated GPU here (PERF_IGPU names one)" >&2
+            return 1
             ;;
         *) with+=("$1") ;;
         esac
@@ -182,14 +242,22 @@ run_case() {
     local before
     before=$(jiffies "${sibs[@]}")
 
+    # The heat sampled while the case runs; first, $PERF_COOL seconds' rest.
+    sleep "${PERF_COOL:-0}"
+    heated "$dir/heat.txt" &
+    local sampler=$!
+
     case $kind in
     headless)
         (isolated run && cd "$root" && measured "${with[@]}" "$game" --headless "$@" >"$dir/out.log" 2>&1)
         ;;
     drawn | startup)
+        # A shot that fails (no display, no library) fails the case.
+        local shot=0
         (SHOT_HOME=$dir/shot measured "${with[@]}" "$root/tools/shot.sh" "$game" "$dir/shot.png" "$@" \
-            >"$dir/shot.out" 2>&1)
+            >"$dir/shot.out" 2>&1) || shot=$?
         cp "$dir/shot.png.log" "$dir/out.log"
+        [[ $shot -eq 0 && -s $dir/shot.png ]]
         ;;
     lan)
         (isolated host && cd "$root" &&
@@ -209,6 +277,9 @@ run_case() {
     esac
     local status=$?
 
+    kill "$sampler" 2>/dev/null
+    wait "$sampler" 2>/dev/null || true
+
     # The siblings' busy share while the case ran, e.g. "cpus=15 busy=0.4%".
     if [[ ${#sibs[@]} -gt 0 ]]; then
         read -r busy total <<<"$(paste -d' ' <(echo "$before") <(jiffies "${sibs[@]}") |
@@ -221,6 +292,16 @@ run_case() {
 }
 
 wanted=("$@")
+
+# A busy machine skews every case: warn, and mark the run for the summary.
+if [[ ${PERF_GUARD:-on} != off ]]; then
+    source "$here/busy.sh"
+    found=$(busy)
+    if [[ -n $found ]]; then
+        printf 'WARNING: machine busy; timings skewed (marked DISTURBED):\n%s\n' "$found" >&2
+        echo "$found" >"$out/disturbed"
+    fi
+fi
 
 while read -r name kind args; do
     [[ -z $name || $name == \#* ]] && continue

@@ -21,7 +21,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use bevy::asset::AssetId;
 use bevy::ecs::query::QueryItem;
 use bevy::prelude::*;
 
@@ -29,6 +28,7 @@ use regent_core::sim::world::cheat::Cheats;
 use regent_core::sim::world::{World, draw_view::Shown, reveal::Explored};
 use regent_core::view::map::fog;
 use regent_draw::data::Corpus;
+use regent_draw::map::reel::{Layer, Role, Stepped, SteppedItem};
 use regent_draw::map::things::Record;
 use regent_draw::map::{Maps, SCATTER};
 use regent_draw::material::Body;
@@ -40,6 +40,7 @@ use crate::game::seen::Watch;
 use crate::map::effects::{Effects, Hung};
 use crate::map::ground;
 use crate::map::mirror::Pieces;
+use crate::map::pieces::{Keyed, make_over};
 use regent_draw::art::Sprites;
 use regent_draw::art::world::Variant;
 
@@ -330,19 +331,13 @@ const fn visibility(sight: Sight) -> Visibility {
     }
 }
 
-/// A body darkened: what it was made from and which palette.
-#[derive(Component)]
-pub struct Dimmed {
-    source: Handle<Body>,
-    made: AssetId<Body>,
-}
-
 /// A scatter frame hidden: its mesh, put back when seen.
 #[derive(Component)]
 pub struct Shrouded(Handle<Mesh>);
 
 /// The palette each drawn piece or effect entity was last given; the
-/// darkened bodies are the art service's (`art::world::Variant::Dark`).
+/// darkened bodies are the art service's (`art::world::Variant::Dark`),
+/// its layers' [`regent_draw::map::reel::Own`].
 #[derive(Resource, Default)]
 pub struct Darkened {
     given: HashMap<Entity, usize>,
@@ -362,9 +357,10 @@ pub struct Stores<'w> {
     bodies: ResMut<'w, Assets<Body>>,
 }
 
-/// Each piece and effect hidden or darkened by its seen level. Before
-/// the tint: a tinted piece draws its tint's palette, not a darkened one
-/// (sprite blit takes the tint first), so its bodies go back.
+/// Each piece and effect hidden or darkened by its seen level, and again
+/// as its key changes (its layers given new frames). Before the tint: a
+/// tinted piece draws its tint's palette, not a darkened one (sprite blit
+/// takes the tint first), so its bodies go back.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -380,8 +376,9 @@ pub fn units(
     pieces: Pieces,
     hung: Res<Hung>,
     children: Query<&Children>,
-    mut bodies_on: Query<(&mut MeshMaterial3d<Body>, Option<&Dimmed>)>,
-    mut visible: Query<&mut Visibility>,
+    keys: Query<Ref<Keyed>>,
+    mut layers: Query<Stepped>,
+    mut visible: Query<&mut Visibility, Without<Layer>>,
     mut stores: Stores,
 ) {
     let drawn = pieces.iter().filter_map(|s| {
@@ -423,16 +420,15 @@ pub fn units(
             }
         }
 
-        if stores.darkened.given.get(&entity) != Some(&k) {
+        let rekeyed = keys.get(entity).is_ok_and(|key| key.is_changed());
+
+        if stores.darkened.given.get(&entity) != Some(&k) || rekeyed {
             for child in children.get(entity).into_iter().flatten() {
-                if let Ok((mut material, dimmed)) = bodies_on.get_mut(*child) {
-                    dim(
-                        &mut commands,
-                        *child,
-                        (&mut material, dimmed),
-                        k,
-                        &mut stores,
-                    );
+                // Its bodies; a lift keeps its frame's.
+                if let Ok(mut layer) = layers.get_mut(*child)
+                    && layer.layer.role == Role::Body
+                {
+                    dim(&mut commands, &mut layer, k, &mut stores);
                 }
             }
 
@@ -447,8 +443,7 @@ type Strewn = (
     Ref<'static, Record>,
     Option<&'static Mesh3d>,
     Option<&'static Shrouded>,
-    Option<&'static mut MeshMaterial3d<Body>>,
-    Option<&'static Dimmed>,
+    Option<Stepped>,
 );
 
 /// Every scatter frame hidden or darkened by its cell's seen level, as
@@ -541,7 +536,7 @@ pub fn scatter(
 fn hide(
     commands: &mut Commands,
     fog: &Fog,
-    (entity, _, mesh, shrouded, material, dimmed): QueryItem<Strewn>,
+    (entity, _, mesh, shrouded, layer): QueryItem<Strewn>,
     cell: Option<(i32, i32)>,
     stores: &mut Stores,
 ) {
@@ -564,14 +559,9 @@ fn hide(
         _ => {}
     }
 
-    if let Some(mut material) = material {
-        dim(
-            commands,
-            entity,
-            (&mut material, dimmed),
-            fog::palette(level),
-            stores,
-        );
+    // Its bodies and lifts; not its band.
+    if let Some(mut layer) = layer.filter(|l| l.layer.role != Role::Band) {
+        dim(commands, &mut layer, fog::palette(level), stores);
     }
 }
 
@@ -656,43 +646,16 @@ fn moved(was: &Explored, now: &Explored, mask: u8) -> Vec<(i32, i32)> {
     moved
 }
 
-/// Body `material` of entity `entity` in palette `k`: its source's
-/// darkened, or its source again for 0. A body some other system swapped
-/// in since is the new source.
-fn dim(
-    commands: &mut Commands,
-    entity: Entity,
-    (material, dimmed): (&mut MeshMaterial3d<Body>, Option<&Dimmed>),
-    k: usize,
-    stores: &mut Stores,
-) {
-    let current = material.0.id();
-    let source = match dimmed {
-        Some(d) if d.made == current => d.source.clone(),
-        _ => material.0.clone(),
-    };
-    let made = match k {
-        0 => None,
-        _ => darkened(&source, k, stores),
-    };
-
-    if let Some(made) = made {
-        if made.id() != current {
-            material.0 = made.clone();
-        }
-
-        commands.entity(entity).try_insert(Dimmed {
-            source,
-            made: made.id(),
-        });
-    } else {
-        if source.id() != current {
-            material.0 = source;
-        }
-
-        if dimmed.is_some() {
-            commands.entity(entity).try_remove::<Dimmed>();
-        }
+/// Layer `layer`'s bodies in palette `k`: its frames' darkened, or its
+/// frames' own again for 0.
+fn dim(commands: &mut Commands, layer: &mut SteppedItem, k: usize, stores: &mut Stores) {
+    match k {
+        0 => make_over(commands, layer, None),
+        _ => make_over(
+            commands,
+            layer,
+            Some(&mut |source: &Handle<Body>| darkened(source, k, stores)),
+        ),
     }
 }
 

@@ -34,8 +34,8 @@
 //! and a model is rigid, so a model's relief is the same wherever it
 //! stands, and changes only with the sun.
 
+use crate::instance::Tag;
 use bevy::asset::{RenderAssetUsages, uuid_handle};
-use bevy::mesh::MeshTag;
 use bevy::prelude::*;
 use bevy::render::render_resource::{
     Extent3d, TextureDimension, TextureFormat, TextureViewDescriptor, TextureViewDimension,
@@ -73,7 +73,7 @@ pub const SHADED: f32 = 1.0e9;
 /// shadows, as before.
 pub const SLOTS: u32 = 1024;
 
-/// A [`MeshTag`] naming a slot: the exponent bits of an f32's infinity,
+/// A [`Tag`] naming a slot: the exponent bits of an f32's infinity,
 /// which no footing's height has (`stand`), the slot in the rest.
 const SLOT_TAG: u32 = 0x7F80_0000;
 
@@ -99,8 +99,8 @@ const STEEPEST: f32 = 4.0;
 
 /// The tag of a body on slot `slot`'s building.
 #[must_use]
-pub const fn model_tag(slot: u32) -> MeshTag {
-    MeshTag::new(SLOT_TAG | slot)
+pub const fn model_tag(slot: u32) -> Tag {
+    Tag(SLOT_TAG | slot)
 }
 
 /// A grid of square texels, rows down from its top-left corner.
@@ -738,7 +738,7 @@ mod tests {
     #[test]
     fn a_slot_tag_is_no_footing() {
         for slot in [0, 1, SLOTS - 1] {
-            let tag = model_tag(slot).value;
+            let tag = model_tag(slot).0;
 
             assert!(!f32::from_bits(tag).is_finite());
             assert_ne!(tag, 0);

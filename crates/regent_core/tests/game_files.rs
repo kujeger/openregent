@@ -1675,6 +1675,40 @@ fn tile_width_bounds_every_run() {
     assert_eq!(short, 571, "tiles falling short of their width changed");
 }
 
+/// A version 3 tile's canvas is close to its drawn box: cut to the
+/// pixels its runs draw, the indexed tiles keep 98.7% of their texels;
+/// ten draw nothing.
+#[test]
+fn a_tiles_canvas_is_nearly_its_drawn_box() {
+    let root = common::hd();
+    let (mut canvas, mut drawn_box, mut empty) = (0u64, 0u64, 0);
+
+    for path in archives(&root) {
+        let data = std::fs::read(&path).unwrap();
+        let archive = cam::Archive::parse(&data).unwrap();
+
+        for (chunk, r) in archive.records() {
+            if chunk.tag != b"TILE"
+                || tile::Tile::version_word(r.data).unwrap() != tile::VERSION_RLE
+            {
+                continue;
+            }
+
+            let t = tile::Tile::parse(r.data).unwrap();
+            let Some(indices) = t.indices() else { continue };
+            let (w, h) = (u32::from(t.width()), u32::from(t.height()));
+            let found = regent_core::view::pack::bounds(w, h, |i| indices[i].is_some());
+
+            canvas += u64::from(w) * u64::from(h);
+            drawn_box += found.map_or(0, |b| b.area());
+            empty += usize::from(found.is_none());
+        }
+    }
+
+    assert_eq!((drawn_box, canvas), (281_130_019, 284_916_546));
+    assert_eq!(empty, 10, "tiles drawing nothing");
+}
+
 /// Rasterising covers every stored pixel and nothing else.
 ///
 /// Equality, not a bound: `parse_row` refuses runs leaving the canvas, and runs

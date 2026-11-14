@@ -19,9 +19,24 @@ use crate::material::CUTOFF;
 pub enum Alpha {
     /// Drawn whole where its alpha reaches [`CUTOFF`], else not at all.
     Mask,
+    /// As [`Alpha::Mask`], but in Bevy's opaque phase, which draws before
+    /// the mask phase: what a `Mask` lays under it then fails the early
+    /// depth test, not shaded. The ground's patches over the floor
+    /// (`map::floor`).
+    MaskFirst,
     /// Blended over, in draw order.
     #[default]
     Blend,
+}
+
+/// Whether a ground mesh reads the models' shadows (`lit.wesl`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Shade {
+    /// Nothing casts: no lookup, alpha 1, as the lookup gives then.
+    #[default]
+    Bare,
+    /// Models cast (`sun::Cast::Models`): the lookup, into alpha.
+    Cast,
 }
 
 /// Where a [`Plain`] mesh's vertices are.
@@ -46,6 +61,7 @@ pub struct Plain {
     pub picture: Option<Handle<Image>>,
     pub alpha: Alpha,
     pub lay: Lay,
+    pub shade: Shade,
 }
 
 impl Default for Plain {
@@ -55,6 +71,7 @@ impl Default for Plain {
             picture: None,
             alpha: Alpha::Blend,
             lay: Lay::Card,
+            shade: Shade::Bare,
         }
     }
 }
@@ -70,12 +87,12 @@ impl Plain {
     }
 
     /// The ground's: `picture`, cut out at [`CUTOFF`] (cells without art
-    /// leave holes).
+    /// leave holes), drawn first ([`Alpha::MaskFirst`]).
     #[must_use]
     pub fn ground(picture: Handle<Image>) -> Plain {
         Plain {
             picture: Some(picture),
-            alpha: Alpha::Mask,
+            alpha: Alpha::MaskFirst,
             lay: Lay::Ground,
             ..default()
         }
@@ -88,6 +105,7 @@ pub struct Key {
     pub alpha: Alpha,
     pub lay: Lay,
     pub pictured: bool,
+    pub shade: Shade,
 }
 
 impl From<&Plain> for Key {
@@ -96,6 +114,7 @@ impl From<&Plain> for Key {
             alpha: plain.alpha,
             lay: plain.lay,
             pictured: plain.picture.is_some(),
+            shade: plain.shade,
         }
     }
 }
@@ -119,6 +138,20 @@ pub fn define(descriptor: &mut RenderPipelineDescriptor, defs: &[ShaderDefVal]) 
 /// The vertex stage's def for a [`Lay::Ground`] mesh (`card.wesl`).
 pub const GROUND: &str = "GROUND";
 
+/// The fragment stage's def for a ground mesh under [`Shade::Cast`].
+pub const CAST: &str = "CAST";
+
+/// The ground's defs: [`GROUND`], and [`CAST`] under [`Shade::Cast`].
+pub fn grounded(shade: Shade) -> Vec<ShaderDefVal> {
+    let cast = (shade == Shade::Cast).then_some(CAST);
+
+    [Some(GROUND), cast]
+        .into_iter()
+        .flatten()
+        .map(Into::into)
+        .collect()
+}
+
 impl Plain {
     /// [`Material::specialize`]'s work, without Bevy's pipeline: the
     /// compile tests call it.
@@ -126,18 +159,18 @@ impl Plain {
         unculled(descriptor);
 
         let alpha = match key.alpha {
-            Alpha::Mask => Some("MASK"),
+            Alpha::Mask | Alpha::MaskFirst => Some("MASK"),
             Alpha::Blend => None,
         };
-        let defs: Vec<ShaderDefVal> = [
-            alpha,
-            key.pictured.then_some("PICTURE"),
-            (key.lay == Lay::Ground).then_some(GROUND),
-        ]
-        .into_iter()
-        .flatten()
-        .map(Into::into)
-        .collect();
+        let mut defs: Vec<ShaderDefVal> = [alpha, key.pictured.then_some("PICTURE")]
+            .into_iter()
+            .flatten()
+            .map(Into::into)
+            .collect();
+
+        if key.lay == Lay::Ground {
+            defs.extend(grounded(key.shade));
+        }
 
         define(descriptor, &defs);
     }
@@ -157,6 +190,8 @@ impl Material for Plain {
     fn alpha_mode(&self) -> AlphaMode {
         match self.alpha {
             Alpha::Mask => AlphaMode::Mask(CUTOFF),
+            // The shader still cuts out (`MASK`).
+            Alpha::MaskFirst => AlphaMode::Opaque,
             Alpha::Blend => AlphaMode::Blend,
         }
     }
@@ -214,5 +249,44 @@ impl bevy::app::Plugin for Plugin {
         load_shader_library!(app, "shaders/card.wesl");
 
         app.add_plugins(MaterialPlugin::<Plain>::default());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The ground draws in the opaque phase, before the mask phase the
+    /// floor under it draws in, and still cuts out its holes.
+    #[test]
+    fn the_ground_draws_before_the_floor_and_cuts_out() {
+        let ground = Plain::ground(Handle::default());
+        let mut descriptor = RenderPipelineDescriptor::default();
+
+        Plain::shape(&mut descriptor, Key::from(&ground));
+
+        assert_eq!(ground.alpha_mode(), AlphaMode::Opaque);
+        assert!(descriptor.vertex.shader_defs.contains(&"MASK".into()));
+    }
+
+    /// The defs a ground pipeline takes for `alpha` and `shade`.
+    fn ground_defs(alpha: Alpha, shade: Shade) -> Vec<ShaderDefVal> {
+        let ground = Plain {
+            alpha,
+            shade,
+            ..Plain::ground(Handle::default())
+        };
+        let mut descriptor = RenderPipelineDescriptor::default();
+
+        Plain::shape(&mut descriptor, Key::from(&ground));
+        descriptor.vertex.shader_defs
+    }
+
+    /// The ground reads the shadow map only while models cast.
+    #[test]
+    fn the_ground_reads_the_shadow_map_only_while_models_cast() {
+        assert!(!ground_defs(Alpha::MaskFirst, Shade::Bare).contains(&CAST.into()));
+        assert!(ground_defs(Alpha::MaskFirst, Shade::Cast).contains(&CAST.into()));
+        assert!(ground_defs(Alpha::MaskFirst, Shade::Cast).contains(&GROUND.into()));
     }
 }

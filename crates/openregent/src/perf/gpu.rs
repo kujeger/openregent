@@ -8,8 +8,14 @@
 //!  gpu_<pass>         ms per pass, Bevy's RenderDiagnosticsPlugin (timestamp
 //!  cpu_<pass>         queries); cpu_ the pass's command encoding
 //!  frag_<pass>        fragment shader invocations, where the driver counts
+//!  gpu_copy_<n>       ms, camera order n's final copy and egui pass
+//!  gpu_egui_<n>       (time spans: no frag_)
 //!  render             ms, the render world's schedule (its own thread)
 //!  draws_*, items     draw calls and phase items, per frame (count)
+//!  egui_redrawn       pixels of egui's texture drawn again (kept), and
+//!  egui_whole         1 where all of it
+//!  area_egui          pixels egui's triangles cover in their clip rects,
+//!                     overlaps each time: about its pass's fragments
 //!  pipelines, binds   pipeline and material bind group changes (count)
 //!  memory gpu ...     wgpu's allocator: bytes allocated and reserved;
 //!                     Bevy's images; the largest allocations by label
@@ -26,10 +32,14 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Instant;
 
 use bevy::core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d};
+use bevy::core_pipeline::upscaling::upscaling;
+use bevy::core_pipeline::{Core2d, Core2dSystems, Core3d, Core3dSystems};
 use bevy::diagnostic::{DiagnosticsPlugin, DiagnosticsStore};
 use bevy::log::{info, warn};
 use bevy::pbr::{PreparedMaterial, RenderMaterialInstances};
 use bevy::prelude::*;
+use bevy::render::camera::ExtractedCamera;
+use bevy::render::diagnostic::RecordDiagnostics;
 use bevy::render::diagnostic::RenderDiagnosticsPlugin;
 use bevy::render::render_asset::RenderAssets;
 use bevy::render::render_phase::{
@@ -39,22 +49,28 @@ use bevy::render::render_resource::{BindGroupId, CachedRenderPipelineId};
 use bevy::render::renderer::{
     PendingCommandBuffers, RenderDevice, RenderGraph, RenderGraphSystems, RenderQueue,
 };
+use bevy::render::renderer::{RenderContext, ViewQuery};
+use bevy_egui::render::{EguiCameraView, egui_pass, prepare_egui_pass};
+use regent_draw::compose::{Composing, Marking};
+use regent_draw::kept::{Wipe, Wiping};
 // Renamed: regent_draw's art_service test bans the module's path followed
 // by `::` in openregent, where it would mean regent_draw's texture module.
+use bevy::platform::collections::{HashMap, HashSet};
 use bevy::render::erased_render_asset::ErasedRenderAssets;
 use bevy::render::material_bind_groups::MaterialBindGroupAllocators;
 use bevy::render::sync_world::MainEntity;
 use bevy::render::texture as gpu_images;
 use bevy::render::{Render, RenderApp, RenderStartup, RenderSystems};
-use bevy_egui::EguiRenderOutput;
 use bevy_egui::egui::epaint::Primitive;
+use bevy_egui::egui::{self, TextureId};
+use bevy_egui::{EguiContext, EguiRenderOutput};
 use gpu_images::GpuImage;
 use wgpu::{
     Buffer, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, Features, MapMode, QuerySet,
     QuerySetDescriptor, QueryType,
 };
 
-use super::{TARGET, WINDOW, named};
+use super::{SPIKE, TARGET, WINDOW, named};
 
 /// The environment variable that turns these on, e.g. `MAJ_PERF_GPU=1`.
 pub const ENV: &str = "MAJ_PERF_GPU";
@@ -80,8 +96,10 @@ pub fn install(app: &mut App) {
             app.add_plugins(DiagnosticsPlugin);
         }
 
-        app.add_plugins(RenderDiagnosticsPlugin)
-            .add_systems(Last, (passes, egui, art).before(super::ended));
+        app.add_plugins(RenderDiagnosticsPlugin).add_systems(
+            Last,
+            (passes, egui.before(Marking), redrawn.after(Marking), art).before(super::ended),
+        );
 
         app.sub_app_mut(RenderApp)
             .add_systems(RenderStartup, stamps)
@@ -96,6 +114,26 @@ pub fn install(app: &mut App) {
                         .after(RenderSystems::Cleanup),
                 ),
             )
+            // Each 2D camera's egui pass and final copy, timed apart.
+            .add_systems(
+                Core2d,
+                (
+                    egui_opened
+                        .before(Wiping)
+                        .after(Core2dSystems::MainPass)
+                        .after(prepare_egui_pass)
+                        .before(egui_pass),
+                    egui_closed
+                        .after(egui_pass)
+                        .before(copy_opened)
+                        .before(Composing),
+                    copy_opened
+                        .after(Core2dSystems::PostProcess)
+                        .after(Composing)
+                        .before(upscaling),
+                    copy_closed.after(upscaling),
+                ),
+            )
             .add_systems(
                 RenderGraph,
                 (
@@ -105,7 +143,57 @@ pub fn install(app: &mut App) {
                         .before(RenderGraphSystems::Submit),
                 ),
             );
+
+        // Each camera's whole graph timed, its passes under it.
+        if std::env::var_os(VIEWS).is_some() {
+            app.sub_app_mut(RenderApp)
+                .add_systems(
+                    Core3d,
+                    (
+                        view_opened.before(Core3dSystems::Prepass),
+                        view_closed.after(upscaling),
+                    ),
+                )
+                .add_systems(
+                    Core2d,
+                    (
+                        view_opened.before(Core2dSystems::Prepass),
+                        view_closed.after(copy_closed),
+                    ),
+                );
+        }
     }
+}
+
+/// The environment variable that counts egui's paint, e.g.
+/// `MAJ_PERF_EGUI=1` (with [`ENV`]): `area_egui` and the repaint series
+/// (`perf::repaint`). Apart from the rest: they visit every triangle each
+/// frame, about half a late game's main schedule again.
+const PAINT: &str = "MAJ_PERF_EGUI";
+
+/// Whether [`PAINT`] is set, read once.
+fn painted() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+    *ON.get_or_init(|| std::env::var_os(PAINT).is_some())
+}
+
+/// The environment variable that times each camera's whole graph, e.g.
+/// `MAJ_PERF_VIEWS=1` (with [`ENV`]): `gpu_view_<order>`, and each pass
+/// inside it as `gpu_view_<order>_<pass>`. What a view's passes leave of
+/// it is its clears, barriers and unspanned work; what the views leave of
+/// `gpu_frame` is work outside every camera.
+const VIEWS: &str = "MAJ_PERF_VIEWS";
+
+/// The span bracketing a camera's graph ([`VIEWS`]).
+const VIEW: &str = "view";
+
+fn view_opened(view: ViewQuery<&ExtractedCamera>, mut ctx: RenderContext) {
+    open(VIEW, view.into_inner(), &mut ctx);
+}
+
+fn view_closed(_view: ViewQuery<&ExtractedCamera>, mut ctx: RenderContext) {
+    close(&mut ctx);
 }
 
 /// Each new render diagnostic noted, summed per frame: a pass drawn by
@@ -166,27 +254,208 @@ fn series(path: &str) -> Option<String> {
     Some(format!("{kind}_{pass}"))
 }
 
-/// egui's draw calls this frame, one a mesh, and its texture changes.
-fn egui(outputs: Query<&EguiRenderOutput>) {
+/// egui's draw calls this frame, one a mesh, and its texture changes;
+/// the distinct textures drawn, and the calls split by a clip rect alone
+/// (`clips_egui`: same texture as the call before). With [`DUMP`] set to
+/// a frame, that frame's calls are logged one a line.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+fn egui(
+    outputs: Query<(Entity, &EguiRenderOutput)>,
+    mut contexts: Query<&mut EguiContext>,
+    art: Option<Res<regent_draw::art::Art>>,
+    (mut frames, mut repaint): (Local<u32>, Local<super::repaint::Repaint>),
+) {
     let mut draws = 0_u32;
     let mut binds = 0_u32;
+    let mut clips = 0_u32;
+    let mut textures = HashSet::new();
+    let mut area = 0.0_f64;
 
-    for output in &outputs {
+    *frames += 1;
+
+    for (entity, output) in &outputs {
         let mut last = None;
+        let scale = contexts
+            .get_mut(entity)
+            .map_or(1.0, |mut c| c.get_mut().pixels_per_point());
+
+        if painted() {
+            repaint.frame(&output.paint_jobs, scale);
+        }
 
         for job in &output.paint_jobs {
             draws += 1;
-            if let Primitive::Mesh(mesh) = &job.primitive
-                && last != Some(mesh.texture_id)
-            {
-                last = Some(mesh.texture_id);
-                binds += 1;
+            if let Primitive::Mesh(mesh) = &job.primitive {
+                textures.insert(mesh.texture_id);
+                if painted() {
+                    area += f64::from(shaded(mesh, job.clip_rect) * scale * scale);
+                }
+
+                if last.is_some_and(|(t, _)| t == mesh.texture_id) {
+                    clips += 1;
+                } else {
+                    binds += 1;
+                }
+                last = Some((mesh.texture_id, job.clip_rect));
             }
         }
     }
 
     named("draws_egui", f64::from(draws));
+    if painted() {
+        named("area_egui", area);
+    }
     named("binds_egui", f64::from(binds));
+    named("clips_egui", f64::from(clips));
+    #[allow(clippy::cast_precision_loss, reason = "a count")]
+    named("textures_egui", textures.len() as f64);
+
+    if dump_at() == Some(*frames) {
+        dumped(&outputs, &mut contexts, art.as_deref());
+    }
+}
+
+/// The pixels of egui's texture drawn again this frame
+/// (`regent_draw::kept`): `egui_redrawn`, and `egui_whole` 1 where all.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+fn redrawn(cameras: Query<(&Camera, &Wipe)>) {
+    for (camera, wipe) in &cameras {
+        let size = camera.physical_target_size().unwrap_or_default();
+        let (pixels, whole) = match wipe {
+            Wipe::All => (size.element_product(), 1.0),
+            Wipe::Rects(rects) => (rects.iter().map(|r| r.size().element_product()).sum(), 0.0),
+        };
+
+        named("egui_redrawn", f64::from(pixels));
+        named("egui_whole", whole);
+    }
+}
+
+/// Points² `mesh`'s triangles cover inside `clip`, overlaps counted
+/// each time: about the fragments egui's pass shades for it.
+fn shaded(mesh: &egui::Mesh, clip: egui::Rect) -> f32 {
+    mesh.indices
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|t| {
+            let corners: Vec<egui::Pos2> =
+                t.iter().map(|i| mesh.vertices[*i as usize].pos).collect();
+
+            clipped_area(corners, clip)
+        })
+        .sum()
+}
+
+/// The area of polygon `corners` cut to `clip` (Sutherland–Hodgman).
+fn clipped_area(mut corners: Vec<egui::Pos2>, clip: egui::Rect) -> f32 {
+    // Each edge of the clip: how far inside a point is.
+    let edges: [fn(egui::Pos2, egui::Rect) -> f32; 4] = [
+        |p, r| p.x - r.min.x,
+        |p, r| r.max.x - p.x,
+        |p, r| p.y - r.min.y,
+        |p, r| r.max.y - p.y,
+    ];
+
+    for inside in edges {
+        let mut out = Vec::with_capacity(corners.len() + 1);
+
+        for (i, &a) in corners.iter().enumerate() {
+            let b = corners[(i + 1) % corners.len()];
+            let (da, db) = (inside(a, clip), inside(b, clip));
+
+            if da >= 0.0 {
+                out.push(a);
+            }
+
+            if (da >= 0.0) != (db >= 0.0) {
+                out.push(a + (b - a) * (da / (da - db)));
+            }
+        }
+
+        corners = out;
+
+        if corners.is_empty() {
+            break;
+        }
+    }
+
+    let twice: f32 = (0..corners.len())
+        .map(|i| {
+            let (a, b) = (corners[i], corners[(i + 1) % corners.len()]);
+
+            a.x * b.y - b.x * a.y
+        })
+        .sum();
+
+    twice.abs() / 2.0
+}
+
+/// The environment variable that logs one frame's egui draw calls, e.g.
+/// `MAJ_PERF_EGUI_DUMP=1700` (with [`ENV`]).
+const DUMP: &str = "MAJ_PERF_EGUI_DUMP";
+
+/// The frame [`DUMP`] names, read once.
+fn dump_at() -> Option<u32> {
+    static AT: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+
+    *AT.get_or_init(|| std::env::var(DUMP).ok()?.parse().ok())
+}
+
+/// Each egui draw call, one a line: texture, its name (an egui texture's,
+/// or the art service's picture), clip rect, vertices' bounds and count.
+///
+/// ```text
+///  egui 12 tex User(40) Pic(Set { record: .. }) clip [0 0 1920 1200] at [1700 0 1920 400] verts 4
+/// ```
+fn dumped(
+    outputs: &Query<(Entity, &EguiRenderOutput)>,
+    contexts: &mut Query<&mut EguiContext>,
+    art: Option<&regent_draw::art::Art>,
+) {
+    let mut names: HashMap<TextureId, String> = art
+        .map(regent_draw::art::Art::names)
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+
+    for mut context in contexts.iter_mut() {
+        let manager = context.get_mut().tex_manager();
+        for (id, meta) in manager.read().allocated() {
+            names.insert(*id, meta.name.clone());
+        }
+    }
+
+    let jobs = outputs.iter().flat_map(|(_, o)| o.paint_jobs.iter());
+    for (at, job) in jobs.enumerate() {
+        let r = |r: egui::Rect| {
+            format!(
+                "[{:.0} {:.0} {:.0} {:.0}]",
+                r.min.x, r.min.y, r.max.x, r.max.y
+            )
+        };
+
+        if let Primitive::Mesh(mesh) = &job.primitive {
+            let name = names.get(&mesh.texture_id).map_or("?", String::as_str);
+
+            info!(
+                target: TARGET,
+                "egui {at} tex {:?} {name} clip {} at {} verts {}",
+                mesh.texture_id,
+                r(job.clip_rect),
+                r(mesh.calc_bounds()),
+                mesh.vertices.len()
+            );
+        } else {
+            info!(target: TARGET, "egui {at} callback clip {}", r(job.clip_rect));
+        }
+    }
 }
 
 /// Every [`WINDOW`] frames, the art service's textures: upscaled
@@ -215,6 +484,49 @@ fn art(art: Option<Res<regent_draw::art::Art>>, mut frames: Local<u32>) {
     }
 }
 
+/// The span bracketing a 2D camera's final copy (Bevy's `upscaling`):
+/// `gpu_copy_<order>`, the camera's order.
+const COPY: &str = "copy";
+
+/// The span bracketing a camera's egui pass: `gpu_egui_<order>`.
+const EGUI: &str = "egui";
+
+/// A time span `<prefix>_<order>` opened on the view's encoder. Neither
+/// Bevy's copy nor egui's pass holds a pass span, so they have no `frag_`
+/// series: a copy shades its scissor rect, the window or the camera's
+/// viewport.
+fn open(prefix: &str, camera: &ExtractedCamera, ctx: &mut RenderContext) {
+    let diagnostics = ctx.diagnostic_recorder();
+    let name = format!("{prefix}_{}", camera.order);
+
+    diagnostics
+        .as_deref()
+        .begin_time_span(ctx.command_encoder(), name.into());
+}
+
+/// The span [`open`] opened, closed.
+fn close(ctx: &mut RenderContext) {
+    let diagnostics = ctx.diagnostic_recorder();
+
+    diagnostics.as_deref().end_time_span(ctx.command_encoder());
+}
+
+fn copy_opened(view: ViewQuery<&ExtractedCamera>, mut ctx: RenderContext) {
+    open(COPY, view.into_inner(), &mut ctx);
+}
+
+fn copy_closed(_view: ViewQuery<&ExtractedCamera>, mut ctx: RenderContext) {
+    close(&mut ctx);
+}
+
+fn egui_opened(view: ViewQuery<&ExtractedCamera, With<EguiCameraView>>, mut ctx: RenderContext) {
+    open(EGUI, view.into_inner(), &mut ctx);
+}
+
+fn egui_closed(_view: ViewQuery<(), With<EguiCameraView>>, mut ctx: RenderContext) {
+    close(&mut ctx);
+}
+
 /// When the render world's schedule began.
 #[derive(Resource)]
 struct Began(Instant);
@@ -227,9 +539,18 @@ fn began(mut commands: Commands) {
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
 )]
-fn ended(began: Option<Res<Began>>) {
+fn ended(began: Option<Res<Began>>, mut frames: Local<u32>) {
+    *frames += 1;
+
     if let Some(began) = began {
-        named("render", began.0.elapsed().as_secs_f64() * 1e3);
+        let ms = began.0.elapsed().as_secs_f64() * 1e3;
+
+        named("render", ms);
+
+        // A spike's render frame named, as the main world's.
+        if ms > SPIKE {
+            info!(target: TARGET, "spike render frame {} ms {ms:.1}", *frames);
+        }
     }
 }
 
@@ -570,6 +891,24 @@ fn harvest(stamps: Option<Res<Stamps>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A triangle's area cut to a clip rect: whole inside, half where the
+    /// rect halves it, none outside.
+    #[test]
+    fn a_triangle_shades_its_area_inside_the_clip() {
+        let triangle = || {
+            vec![
+                egui::pos2(0.0, 0.0),
+                egui::pos2(10.0, 0.0),
+                egui::pos2(0.0, 10.0),
+            ]
+        };
+        let rect = |x0, x1| egui::Rect::from_min_max(egui::pos2(x0, -5.0), egui::pos2(x1, 20.0));
+
+        assert!((clipped_area(triangle(), rect(-5.0, 20.0)) - 50.0).abs() < 1e-3);
+        assert!((clipped_area(triangle(), rect(5.0, 20.0)) - 12.5).abs() < 1e-3);
+        assert!(clipped_area(triangle(), rect(11.0, 20.0)).abs() < 1e-3);
+    }
 
     #[test]
     fn series_names_are_one_word() {

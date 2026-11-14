@@ -1,10 +1,11 @@
 // The composed ground read sharp-bilinear (`regent_draw::smooth::Sheet`):
 // one linear tap at a uv warped as `sharp.wesl`'s, so each texel is flat
 // and the blend to the next one physical pixel wide. A cell without art
-// is a hole, as with its `plain::Plain`. Its alpha is the models'
-// shadows on it (`lit.wesl`).
+// is a hole, as with its `plain::Plain`. While models cast
+// (`CAST`), its alpha is their shadows on it (`lit.wesl`).
 
 import regent_draw::shaders::card::{Card, Vertex, place};
+@if(CAST)
 import regent_draw::shaders::lit::{covered, shade};
 
 @group(constants::MATERIAL_BIND_GROUP) @binding(0) var picture: texture_2d<f32>;
@@ -43,7 +44,10 @@ fn fragment(mesh: Card) -> @location(0) vec4<f32> {
     // A hole's texels are 0 (`Sheet::blank`): over the weight of the rest,
     // the blend of those alone.
     // Alpha: the models' shadows on its metric point, as coverage.
-    let alpha = shade(covered(mesh.world_position.xyz, mesh.position.xy));
+    var alpha = 1.0;
+
+@if(CAST)
+    alpha = shade(covered(mesh.world_position.xyz, mesh.position.xy));
 
     return vec4<f32>(colour.rgb / max(colour.a, 1e-6), alpha);
 }

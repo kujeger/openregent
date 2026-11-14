@@ -4,7 +4,7 @@
 
 | Tool | Does |
 |---|---|
-| `build.sh` | release with frame pointers into `target/perf` (`perf record --call-graph fp`; dwarf graphs truncate in deep GPL recursion) |
+| `build.sh [trace\|dist]` | release with frame pointers and symbols into `target/perf` (`perf record --call-graph fp`; dwarf graphs truncate in deep GPL recursion); `dist`: the shipped `dist` profile, below |
 | `run.sh <scratch-dir> [case...]` | runs `tools/perf/cases` with isolated XDG directories under `perf stat` and `/usr/bin/time` |
 | `summary.py` | prints one run, or two side by side |
 | `quiet.sh [case\|group...]` | the figures to keep (below) |
@@ -18,6 +18,16 @@ on the hidden display with `--running`, in sync mode and (`p*`, with
 `--look`): `pan` drags 12 points a frame round a square of 150-frame
 sides, `levels` toggles 1:1 and 2:1 each 30 frames, `wheel` steps smooth
 zoom a notch each 30 frames.
+
+The `preload` cases (`pl-*`) run a late 512-cell game and a fresh QU06
+with `MAJ_PERF_PRELOAD=seen` and `=all` (`all`: every sprite made
+under the loading page; anything else: those the start shows): page up
+ms, memory, and whether play makes pages (`drawn pages`) or pipelines.
+
+The `battle` cases (`d-battle`, `d-battle-4x`, `t-battle`) play
+`assets/scenes/battle.toml`, 40 heroes and 40 monsters fighting in view
+on a flat 128-cell map, on two cores without vsync, with the line a
+frame; `t-battle` is its trace.
 
 The `replay` cases (`r-*`) replay `assets/input_logs/` headless, the sim
 alone, on one performance core: The Forsaken Land, the shortest, to
@@ -39,10 +49,39 @@ The game's own timers are opt-in: `MAJ_PERF=1`
   `redraw_inset`) and the fog take (`fog`; `fog_moved`, the share of
   takes whose explored ground changed);
 - the entities, the meshes and the meshes a camera drew (`entities`,
-  `meshes`, `visible`).
+  `meshes`, `visible`);
+- each drawn frame's churn (`perf::Churn`): entities with a `Transform`
+  spawned and despawned (`spawned`, `despawned`, by observers), pieces
+  despawned and drawn anew as their key changed (`respawns`: a tinted
+  piece's), drawings given a new key's frames in their own entities
+  (`rekeys`), pieces whose new key takes a body material the old did
+  not (`swaps`: another sheet page, palette or pass) and missiles drawn
+  the first time (`missiles`). With `RUST_LOG=warn,maj_perf=debug`,
+  a line a frame sets its number, main and interval ms beside its churn.
+- each drawn frame's start-up work (`regent_draw::settle`): sprite pages
+  put on their sheets for what is drawn (`pages`, `map::sheet`), page jobs
+  queued or running for it (`jobs`) and asked early (`early`), pipelines queued or compiling as the
+  render world last stood (`compiling`; `pipelines` is those a frame
+  draws with), ground patches the view wants
+  and not yet made (`patches`), and KiB of new or changed images handed
+  to the render world (`upload_kb`). A spike line carries them, and the
+  frame's `ground` ms.
 
-Each series also counts its samples past 25 ms (`over`, `perf::SPIKE`): a
-stutter is the tail, not the mean.
+Each series logs `n`, `mean`, `p50` (median), `p99`, `max` and its samples
+past 25 ms (`over`, `perf::SPIKE`): a stutter is the tail, not the mean; one
+hitch moves the mean, not the median. A drawn frame whose `main` or
+`interval` is past `SPIKE` also logs `spike frame <n>` (drawn frames from
+the start) with its `main`, `interval`, `wait`, `step` and start-up work; with
+`MAJ_PERF_GPU`, a render schedule past it logs `spike render frame <n>`.
+`startup game` falls between the spike lines of the game's first frame.
+A drawn run's reports go by `opening` until the game's loading page
+goes (menus, loading, and the start's work under the page), then by
+`drawn`: play alone. The summary merges the `drawn` reports and gives
+the opening's longest interval as `opening max ms`, and how long the
+page was up as `page up ms`.
+`summary.py` merges a drawn run's
+reports by sample weight (p50 too: an approximation) and reads logs without
+`p50`.
 
 ## Pinning and clocks
 
@@ -52,6 +91,12 @@ cores, the highest `cpu_capacity` on ARM, none where every core is alike)
 unless the case sets `CPUS=` (`CPUS=all`: none; `CPUS=one`: the last
 performance core). Every case runs with `setarch -R`: no address
 randomising. Release links Bevy dynamically: the runner sets
+`LD_LIBRARY_PATH`.
+
+`build.sh dist` builds the shipped profile (thin LTO, Bevy linked
+statically: no `dev` feature), still with frame pointers and symbols, into
+`target/perf-dist/dist/openregent`. A case selects it with `BUILD=dist`
+(`PERF_DIST_BIN` overrides the path); a static build needs no
 `LD_LIBRARY_PATH`.
 
 Without hardware counters (`perf_event_paranoid` above 2, most VMs) a
@@ -72,6 +117,17 @@ min–max per figure) and `compare.txt` against the previous run there
 (`--against <run>`). Groups are the `#= ` lines of `cases`; the default
 is headless, replay, drawn, camera, startup, lan and gpu; `--list` shows each group's
 time.
+
+`run.sh` itself refuses nothing, but at start it checks the same
+condition (`busy.sh`, shared with `quiet.sh`), warns on stderr and writes
+`<out>/disturbed`; `summary.py` marks the cases DISTURBED (machine busy).
+`quiet.sh` sets `PERF_GUARD=off` for its repeats: it checks itself.
+
+A fanless machine slows as it warms, and its GPU more than its CPU:
+cases run one after another are not comparable there. `run.sh` samples
+the hottest thermal zone and the CPU's and an Intel GPU's clocks every
+2 s (`<case>/heat.txt`; the summary's `temp C`, `temp max C`, `cpu MHz`,
+`gpu MHz`), and `PERF_COOL=<seconds>` rests the machine before each case.
 
 Other load the load average misses still skews a case. `run.sh` records
 it: `ctx k` (thousands of involuntary context switches), `faults` (major
@@ -102,6 +158,48 @@ The renderer's cases (`g-*`, and the weak machines' `lvp-*`, `e1-*`,
   (`draws_*`, `items`, `pipelines`, `binds`; egui's from its paint jobs);
   and every 600 frames the GPU memory: wgpu's allocator report, Bevy's
   images, the art service's upscaled and plain textures.
+  `gpu_copy_<n>` and `gpu_egui_<n>` time camera order n's final copy
+  (Bevy's `upscaling`) and egui's pass: time spans, so no `frag_`; a copy
+  shades its scissor rect. The window is written by one pass,
+  `compose` (`regent_draw::compose`): the world, then egui's tiles.
+  `MAJ_PERF_VIEWS=1` also times each camera's whole graph,
+  `gpu_view_<n>`, its passes under it (`gpu_view_<n>_<pass>`): what a
+  view's passes leave is its clears and barriers.
+  With `MAJ_PERF_EGUI=1` (they cost main-thread time, so not otherwise),
+  `area_egui`: the pixels egui's triangles cover in their clip rects,
+  about its pass's fragments; `egui_same` (`perf::repaint`): 1 where
+  egui's primitives equal the frame before's, `egui_tiles` the compose
+  tiles whose triangles changed, and every 600 frames the regions that
+  changed most.
+  egui's draws: `draws_egui`, `binds_egui` (texture changes),
+  `clips_egui` (draws a clip rect alone splits) and `textures_egui`
+  (distinct textures). `MAJ_PERF_EGUI_DUMP=<frame>` logs that frame's
+  draws one a line: texture, picture, clip rect, bounds.
+
+- `MAJ_PERF_HELD=<file>` (`openregent/src/perf/held.rs`) writes the
+  art service's pieces, scatter pictures and tiles every 600 frames;
+  `regent_cli atlas --held <file>` reads it: what the run's sprites
+  take today, and as atlases of each grain.
+
+- `MAJ_PERF_HIDE=<class,...>` (`openregent/src/perf/hide.rs`) hides
+  classes of world meshes each frame, so two runs' `frag_` counts differ
+  by what a class drew: `floor`, `ground` (patches), `inset`, `veil`,
+  `bands`, `things` (the map's scatter), `pieces` (other opaque
+  bodies), `glass`, `lift`, `plain`, `rings`, and `tracking` (the
+  tracking window's camera off). With `MAJ_PERF` on, every 600 frames
+  also `quad_<kind>`, the world image's texels the main view's body and
+  band quads cover, and `art_<kind>`, the share of those their art
+  draws.
+
+Fragment counts are deterministic but for one thing: the masked phase
+draws its bins in pipeline id order, and ids follow the order pipelines
+are first specialised, which varies run to run. Where a body draws before
+one under it, the GPU's early depth test drops the one under, so a
+run's opaque count can differ from the last's by that. The ground
+(patches, inset) draws in the opaque phase, before every masked mesh
+(`plain::Alpha::MaskFirst`): the floor under it fails the early depth
+test every run, and the ground under bodies is shaded. Compare classes
+in runs with `tracking` hidden too: the window draws every second frame.
 
 Drivers: Asahi (Honeykrisp) gives no usable timestamp inside a pass (0
 or nonsense: left out), so on it only `gpu_frame` and Bevy's
@@ -112,6 +210,15 @@ lists `EXPERIMENTAL_COOPERATIVE_MATRIX` for it and the driver then
 refuses the device, so openregent asks for no experimental feature
 (`draw::UNUSED_FEATURES`, wgpu's `all_experimental_mask`).
 
+The `igpu` cases (`ig*`) run the `g128-early`, `g512-late` and a
+1280x720 game on the integrated GPU: `WGPU_ADAPTER_NAME` takes a substring
+of the adapter's name, `$igpu` in `cases`. `run.sh` sets it from
+`PERF_IGPU`, else from the last parenthesis of the first
+`INTEGRATED_GPU` `deviceName` in `vulkaninfo --summary` (e.g.
+`RADV RAPHAEL_MENDOCINO`). Without one a case fails (FAILED); it never
+falls back to the main GPU. The group is not in `quiet.sh`'s default
+groups; name it (`quiet.sh igpu`).
+
 Memory:
 
 - wgpu's allocator takes blocks of 8 to 64 MB
@@ -119,17 +226,53 @@ Memory:
   blocks held far more than the live allocations.
 - The xBRZ main menu holds its 8 running strips' 231 frames at window
   size; leaving the page keeps one frame a strip (`art::ui`'s `trim`).
+- egui's camera keeps a main texture of its own, two window-sized
+  textures (Bevy's a and b), apart from the shown camera's: the compose
+  pass reads both (`compose::Compose`).
 - Bevy checks each material type with an entity for specialization every
   frame, a parallel pass costing about as much for one entity as for
   thousands, so the idle upscale quads keep no material
   (`present::equip`).
+
+The `attribute` cases (`a-*`) show what a weak GPU's frame goes to: the
+late 512 game at 1920x1080 with one thing changed a case (size, zoom,
+`view_upscale`, `shadows`), and `a-no-*` with a class of meshes hidden.
+Each `a-no-*` hides the tracking window too, so they compare with
+`a-no-track`; `a-no-world` leaves the full-screen passes and the
+interface.
+
+## Threads
+
+Every schedule of the main and render worlds runs on Bevy's
+single-threaded executor (`openregent/src/draw/threads.rs`): the game
+thread, the main thread and the render thread do the frame. Bevy's
+multithreaded executor wakes pool threads for each system, about 1,000
+futex calls a frame in a late game; single-threaded, that frame takes
+about half the time on 1, 2 and 16 cores.
+
+The pools stay Bevy's: the ground's patches draw on the compute pool,
+upscaling on the async compute pool. Without the render thread a frame
+takes longer.
+
+Switches for the `threads` cases (`x-<config>-<cores>`):
+`MAJ_PERF_EXECUTOR=multi` (Bevy's executor), `MAJ_PERF_POOL=<n>` (compute
+pool threads; IO and async compute 1 each) and `MAJ_PERF_UNPIPELINED=1`
+(no render thread). The summary's `vol k` is the voluntary context
+switches in thousands: the threads' waits.
 
 ## Traces
 
 `tools/perf/build.sh trace` builds openregent's `trace` feature (Bevy's
 `trace_chrome`, off by default: spans cost) into `target/perf-trace`; the
 `t*` cases write `<case>/trace.json` to open in ui.perfetto.dev, or sum
-with `tools/perf/trace_top.py <trace.json> [count] [match]`. By hand:
+with `tools/perf/trace_top.py <trace.json> [count] [match]`: spans by total
+ms, per frame and calls, over the drawn frames from 10 after the game's first
+`game::clock::tick` (a trace with no game: after the first third); it names
+the rule used. `--schedule <Name>` (`PostUpdate`, `Update`, `Render`, ...)
+instead gives that schedule's wall ms per frame, the spans in it (its thread's
+outermost, and task-pool `system:` spans inside its intervals: another
+schedule's concurrent systems leak in), and the unattributed remainder, the
+executor's own cost. By hand:
 `TRACE_CHROME=<file> openregent ...` with that build; without
 `TRACE_CHROME` the file is `./trace-<time>.json`.
 
@@ -139,6 +282,21 @@ A late 512-cell game has 22,000 entities, of which a camera draws about
 200. Each measure below avoids visiting every entity, or every flag,
 each frame:
 
+- The floor (`map::floor`) is cut into pieces of 64 cells a side, each
+  culled for itself: a view shades the vertices of the pieces it meets,
+  not the map's 263,169, which each view (the tracking window's too)
+  shaded whatever it showed.
+- The ground reads the models' shadow map only while they cast
+  (`plain::Shade`, `sun::receive`): compiled out otherwise, the same
+  pixels.
+- egui's texture is kept between frames (`regent_draw::kept`): only the
+  16-pixel tiles whose triangles, or the pictures they show, changed are
+  cleared and drawn again, egui's paint cut to them; all of it after a
+  change of size or scale, an egui texture freed, or a frame not drawn.
+  A job (mesh) whose hash is last frame's keeps its tiles unread; only a
+  changed one is read triangle by triangle.
+  In a late game the message line typing out and the minimap change; in
+  a battle the names over the map.
 - `regent_draw::cull` parks the map's things far from the screen and the
   tracking window's ground: buckets of 512 world units, parked past
   half a view's span, back within a quarter. A parked thing has no
@@ -156,6 +314,51 @@ each frame:
   (`minimap::Cache::changed`).
 - `lie::tag` tags no parked band; one coming out is tagged that frame
   (after `cull`).
+- A drawing's layer is one entity for the drawing's life
+  (`map::reel::Layer`): a frame step writes its quad's transform, one
+  instance row and, where it differs, its material; nothing is spawned
+  or hidden to animate. `reel::step` visits only the layers that run
+  (`reel::Runs`: more than one frame, not held), so still scatter is
+  never visited. A piece, missile or effect whose key changes keeps its
+  entities, given the new frames (`map::pieces::lay`). Against an
+  entity a frame: a late 512-cell game has 1,530 fewer entities and 4%
+  fewer instructions; the battle spawns 84% fewer and takes 16% fewer
+  instructions at 1x.
+- Every sprite page is made on the compute pool, at most
+  `map::sheet::JOBS` sets at once of every source's (`Sprites::piece`,
+  `Sprites::frame`, `art::world::land`), never on the main thread; under
+  the loading page, as many as the compute pool has threads
+  (`sheet::Width`, `menu::drape::width`). Until
+  a thing's pages land it is not drawn; then at the frame it is on now.
+  A piece keeps the drawing it had, each layer held on its frame
+  (`map::pieces::Awaited`); a missile is first drawn where it flies
+  then; an effect may show late, or not at all the first time its kind
+  plays; a ghost, a mote and a ring wait alike. The build preview is
+  empty until its pages land; the palace's build list asks for its
+  buildings' as it shows them (`map::preview::listed`). A map's scatter
+  goes up once all its pages are in (`MapShown::scattered`), under the
+  loading page; a ground re-lay moves it, and a new drawing of a map
+  reuses the pages built. A shot holds its clock while pages are on
+  their way.
+- Pages are asked for before they are drawn (`map::early`): a building
+  first shown, a start's too, asks for its own sets
+  but its damage and fall, its upgrade's alike, and every set of each
+  unit it makes (`Produces`: the palace's peasants, tax collectors and
+  guards, a guild's heroes, a guardhouse's guards, a trading post's
+  caravan), its lair data names or its script spawns
+  (`regent_core::gpl::spawns` over the game's program), each with its slot effects' sets
+  (`Sprites::ask_unit`). A unit's missile and spells are named by
+  scripts, not data: not asked. They load behind play, a drawn set's job
+  first (`map::sheet::Need`); one drawn while asked goes ahead.
+- An ended effect's drawing is despawned: parking it for the next
+  effect of its kind saves no instructions once a drawing is a few
+  entities (the battle at 1x: 41.87 G parked, 41.75 G not).
+- A flying missile keeps its drawing (`map::pieces::missiles`): moved
+  each frame, its shadow layers kept on the ground under it; a new
+  picture or launch gives the same entities new frames.
+- A soft band's fragment reads its run's foot from `Band::feet`, made on
+  the CPU with the band (`lie::feet`), in place of searching the column
+  below it.
 - A `map::things::Thing` carries the unit quad's `Aabb` and
   `NoAutoAabb`, so Bevy computes no bounds for it. Ground meshes (veil,
   ground patches, area, reach) are culled by their `Aabb`, for each
@@ -240,7 +443,7 @@ Left as they are:
 - Bevy's `Disabled`: hidden from every query, a parked thing would need
   `Allow<Disabled>` in each system that changes it while far
   (`ground::relay` moves and despawns, `fog::scatter` hides and darkens,
-  `map::redraw::redraw` despawns, `map::reel::animate` cycles), and each
+  `map::redraw::redraw` despawns, `map::reel::step` steps), and each
   change marked again on the way back (transform, mesh, material,
   visibility), or Bevy's passes miss it; the saving is small.
 - `material::Body` bindless (`#[bindless]`, indices `R8Unorm` read as
@@ -251,6 +454,53 @@ Left as they are:
   instructions in late games, and slower lavapipe passes.
 
 ## Startup
+
+A new game's first drawn frames cost the most: the ground's first
+compose, the sprite pages its pieces first draw (`map::sheet`), the
+images handed to the GPU, the pipelines compiled. So a game made is put
+in under its loading page (`menu::drape`) and drawn beneath it until
+`regent_draw::settle` reports its start-up work done:
+
+```text
+ made ──> draw::install, page up ──> Screen::Playing: Settle::restart
+ each drawn frame, under the page: the world drawn; the clock held
+   (game::thread::Start::Held), no keys, picks or game sound
+ the page's second frame on: a new game steps to PRIMING (3) frames at
+   once, clock held (Start::Primed): its start's work drawn unseen
+ Last: those steps taken, nothing pending QUIET (3) frames in a row,
+   or 30 s up
+   ──> a held game's Start Quest offered; else the page goes
+ page gone ──> the next tick starts the clock
+```
+
+Pending: pipelines queued or compiling as the render world last stood
+(a failed one leaves Bevy's waiting list), the ground patches the view
+wants, sprite page jobs queued or running for what is drawn and their
+pages put on that frame. Pages asked early (`map::early`, the build list)
+are not waited for: they load behind play, after the page.
+Interface pictures upscaling (`art::busy`) are not waited for: they take
+minutes on a slow machine.
+
+A new game's first steps lay its start: the quests' placements relay the
+ground and clear scatter by step 3, new pieces come, and the fog shows
+no piece before step 2 (**Measured**, every shipped quest and freestyle
+but XQ01, which shows some at frame 0). Taken under the page, all at
+once, the drawing redoes the ground once and play starts without the
+pop-in. They are the steps the clock would take: no input comes, the
+day-0 autosave falls on step 1 as before, their sounds play as the page
+goes. A save, or a game warmed past frame 3, takes none.
+Without a renderer (`Display::Headless`) it is settled at once. A wait
+past 10 s logs what is pending, and again each 10 s. A LAN game is never
+covered.
+
+With `MAJ_PERF`, the page's going logs `drape frame <n> ms <ms> frames
+<count>`: the drawn frame it went on, how long and how many frames it
+was up. The `opening` report ends there; spike lines past `<n>` are
+play's. A shot
+(`draw::shot`) counts its `--frames` from the page's going. The game's
+first drawn frame no longer gives the clock its 1/60 s before the count,
+so a `--running` shot of `--frames N` shows what one of `N - 1` showed
+before the page; held shots are unchanged.
 
 A game without a screen (`--headless`) reads the archives without their
 `TILE` pixels (`cam::Defer::Pixels`, `regent_draw::data::headless`): they

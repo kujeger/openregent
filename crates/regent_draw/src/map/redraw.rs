@@ -21,7 +21,7 @@ use super::cel::{Paint, Store};
 use super::depth::GROUND_DEPTH;
 use super::project::{Composed, Projection, visible_in, wanted_in};
 use super::reel::Reel;
-use super::things::populate;
+use super::things::{self, populate};
 use super::{Maps, floor, patch};
 use crate::data::Corpus;
 use crate::plain::Plain;
@@ -65,7 +65,8 @@ pub fn redraw<P: Paint + Resource + Component<Mutability = Mutable>>(
     let projection = maps.projection();
 
     // A new map or toggle rebuilds everything; camera movement only
-    // the ground's patches.
+    // the ground's patches. The scatter goes up once its sprite pages
+    // are in, asked meanwhile: at once where they are.
     let whole = shown.mapped != Some(maps.revision);
 
     if whole {
@@ -76,6 +77,7 @@ pub fn redraw<P: Paint + Resource + Component<Mutability = Mutable>>(
         maps.patches = patch::Patches::new();
         maps.composed = None;
         shown.mapped = Some(maps.revision);
+        shown.scattered = None;
     }
 
     // Patches unseen by change detection: what watches `Maps` (the
@@ -97,8 +99,9 @@ pub fn redraw<P: Paint + Resource + Component<Mutability = Mutable>>(
     } else {
         patch::Kept::Same
     };
+    let scatter = shown.scattered != Some(maps.revision);
 
-    if !whole && kept == patch::Kept::Same {
+    if !whole && !scatter && kept == patch::Kept::Same {
         return;
     }
 
@@ -116,7 +119,7 @@ pub fn redraw<P: Paint + Resource + Component<Mutability = Mutable>>(
         None => String::new(),
     };
 
-    if !whole {
+    if !whole && !scatter {
         shown.status = format!("{}  {patches}", maps.summary());
         return;
     }
@@ -131,18 +134,31 @@ pub fn redraw<P: Paint + Resource + Component<Mutability = Mutable>>(
         quad,
     };
 
-    floor::lay(&mut commands, (&terrain, &ground), (&maps, &mut store));
+    if whole {
+        floor::lay(&mut commands, (&terrain, &ground), (&maps, &mut store));
 
-    let drawn = (&mut store, &mut *painter as &mut dyn Paint);
+        // The whole map, for fitting.
+        view.content = projection.extent();
+    }
+
     let scene = (&*maps, &*trees);
-    let up = populate(&mut commands, scene, &corpus, drawn, &reel, projection);
+    let ready = things::ready(
+        scene,
+        &corpus,
+        (&mut store, &mut *painter as &mut dyn Paint),
+    );
 
-    maps.placed = up.placed;
-    maps.reach = up.reach;
+    if ready {
+        let drawn = (&mut store, &mut *painter as &mut dyn Paint);
+        let up = populate(&mut commands, scene, &corpus, drawn, &reel, projection);
 
-    // The whole map, for fitting.
-    view.content = projection.extent();
-    shown.status = format!("{}  {patches}", maps.summary());
+        maps.placed = up.placed;
+        maps.reach = up.reach;
+        shown.scattered = Some(maps.revision);
+        shown.status = format!("{}  {patches}", maps.summary());
+    } else {
+        "scatter: sprite pages on their way".clone_into(&mut shown.status);
+    }
 }
 
 /// The render layer of the inset's ground: its camera's alone.

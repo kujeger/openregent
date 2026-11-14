@@ -39,6 +39,7 @@ mod patch;
 pub mod project;
 pub mod redraw;
 pub mod reel;
+pub mod sheet;
 mod source;
 pub mod things;
 
@@ -141,6 +142,13 @@ impl Maps {
 
     pub fn terrain(&self) -> Option<Terrain<'_>> {
         self.current()?.terrain()
+    }
+
+    /// The ground's patches the view wants and not yet made: a few are
+    /// made a frame.
+    #[must_use]
+    pub const fn pending(&self) -> usize {
+        self.patches.pending()
     }
 
     /// One line naming the map drawn, for the status line.

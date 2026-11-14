@@ -404,6 +404,37 @@ fn a_units_kind_is_read_off_its_descriptor_alone() {
     assert_eq!(cat.unit_kind(FourCc::new(b"!!!!")), None);
 }
 
+/// A building upgrade is its own `IMAG` record: every building with an
+/// `UpgradeFrom` names art its base does not, so a level's art is read
+/// only where a building of that level stands.
+#[test]
+fn an_upgrade_draws_its_own_art() {
+    let files = regent_core::content::dataset::Install::new(
+        &common::hd(),
+        regent_core::content::dataset::Bytecode::Install,
+    )
+    .files(regent_core::content::dataset::Datasets::Expansion)
+    .expect("the expansion dataset");
+    let library = Library::from_files(&files.archives).expect("its archives");
+    let cat = library.catalogue().expect("every archive parses");
+    let art = |code: FourCc| Unit::find(&cat, code)?.ok()?.art.map(|link| link.id);
+    let mut upgrades = 0;
+
+    for (_, record) in cat.tagged(b"DUNT") {
+        let Some(Ok(unit)) = Unit::find(&cat, record.id) else {
+            continue;
+        };
+        let Some(from) = unit.desc.building().and_then(|b| b.upgrade_from()) else {
+            continue;
+        };
+
+        assert_ne!(art(record.id), art(from), "{} from {from}", record.id);
+        upgrades += 1;
+    }
+
+    assert_eq!(upgrades, 25, "upgrades in the expansion dataset changed");
+}
+
 /// A record may name a set its unit lacks (the Healer's `Walk-2`): it
 /// draws the first set of that family. A set it has draws as named.
 #[test]

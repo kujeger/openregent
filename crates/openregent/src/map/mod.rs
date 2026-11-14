@@ -3,6 +3,7 @@
 
 pub(crate) mod cast;
 pub(crate) mod cursor;
+pub(crate) mod early;
 pub(crate) mod effects;
 pub(crate) mod fog;
 pub(crate) mod ground;
@@ -17,6 +18,7 @@ pub(crate) mod quake;
 pub(crate) mod reach;
 pub(crate) mod rings;
 pub(crate) mod select;
+pub(crate) mod tie;
 pub(crate) mod trail;
 pub(crate) mod words;
 pub(crate) mod zoom;

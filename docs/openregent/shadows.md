@@ -105,6 +105,12 @@ shadow is drawn after it and never darkened. `soft` alone
   change; the shader writes `frag_depth`. Pieces between two placed rows
   sort by row within them (`Depth::at`), so the comparison holds between
   rows too.
+- **The foot found once a picture.** As a band is made, `lie::feet`
+  gives each darkening pixel its rows down to its run's foot (one byte a
+  pixel, two in a tile with a run taller than 255): `Band::feet`, the
+  shader reads it and searches nothing. A model-casting band's tile
+  without its ground shadow has its own (`cel::Aloft`): holes there cut
+  runs short.
 - **Glows and untagged bands** test at their caster's depth: a band with
   no `Footing` (effects, trails, the placing preview) keeps no `MeshTag`.
 
@@ -114,12 +120,19 @@ shadow is drawn after it and never darkened. `soft` alone
    transparency.
 2. **Shadows**, in the later `Transparent3d`, depth-tested against bodies,
    writing no depth.
-3. **One full-screen pass** (`shadow::resolve`), straight into the camera's
-   output (window or world image), cleared to the clear colour and cut to
-   its viewport: Bevy's own copy (`upscaling`) is skipped for that camera
+3. **The resolve** (`shadow::resolve`), into the camera's output when that
+   is an image (`view_upscale` sharp above one texel a pixel, fsr,
+   fsr-sprite), cleared to the clear colour and cut to its viewport:
+   Bevy's own copy (`upscaling`) is skipped for that camera
    (`CameraOutputMode::Skip`), and `shadow::attach` gives it the output
-   Bevy gives only a camera that copies. On the menus the world camera is
-   off (`draw::world_shown`); egui's clears the window.
+   Bevy gives only a camera that copies. Into the window, it is the
+   compose pass's first draw (`regent_draw::compose`): the one pass that
+   writes the window, last, egui's camera's. Under sharp at one texel a
+   pixel it reads the image shifted to where the quad would put it, and
+   also writes the shown camera's main texture under the hit point bars,
+   which that camera draws over and the compose pass copies out
+   (`shadow::Written::Under`). On the menus the world camera is off
+   (`draw::world_shown`).
 
 Order comes from the depth test, not a sort key: a shadow is rejected where
 something nearer stands, nearer than its caster or, under `soft`, than
@@ -140,6 +153,19 @@ Shadows would land on ground but not on buildings.
   over a body. Sort once and number. The depth band is 1,000 units wide:
   orthographic projection maps z linearly, so 9,000 objects within a fraction
   of a unit quantise back into ties.
+- **A tie is ordered.** Things on one row still share a depth, and the
+  draw order Bevy picks changes from run to run. `map::tie::untie` sorts
+  every shown piece, effect and missile by (depth, `Who`) and moves each
+  within `depth::TIE` (2⁻¹¹, four depth-buffer steps) of the one before
+  to `TIE` past it. `Who`: pieces, then effects, then missiles (**Game**,
+  the user: missiles draw over units; effects between, **Inferred**),
+  each by agent id or unit handle, lower behind (**Inferred**: the
+  engine's list order, [vm.md](../gpl/vm.md#what-an-effect-shows)). The
+  lowest of a run keeps its depth. A run moves `TIE` a member: 16
+  (0.0073) at most in a late 512 game, under a layer's 0.01, so a tie
+  orders layer by layer, not drawing by drawing; 45 reach a quarter
+  rank over 9,000 placed rows. A thing within `TIE` of a placed thing,
+  or of a shadow lying on the ground, may cross it.
 - **One ruin is direct colour.** 47 of 73,219 frame references carry no palette
   index: 38 `Interface` portraits (never on this path) and nine frames of the
   Fairgrounds collapsing (`a_units_frames_are_indexed_bar_the_fairgrounds_ruin`). A third material, `plain::Plain` (2D's

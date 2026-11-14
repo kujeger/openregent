@@ -798,6 +798,17 @@ impl Art {
         }
     }
 
+    /// Each plain texture held, and its picture: the perf runs' draw
+    /// dump names the textures egui draws with.
+    #[must_use]
+    pub fn names(&self) -> Vec<(TextureId, String)> {
+        self.entries
+            .plain
+            .iter()
+            .filter_map(|(want, held)| Some((held.as_ref()?.0.id(), format!("{:?}", want.picture))))
+            .collect()
+    }
+
     /// Whether pictures are upscaled.
     fn on(&self) -> bool {
         self.mode != Upscale::None
@@ -1091,10 +1102,10 @@ impl Art {
             let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
             let task = pool.spawn(async move { levels::Levels::new(image, quests, &lits, dir) });
 
-            self.levels = Some(Map::Making(task, Count::new()));
+            self.levels = Some(Map::Making(task));
         }
 
-        if let Some(Map::Making(task, _)) = &mut self.levels {
+        if let Some(Map::Making(task)) = &mut self.levels {
             let made = match when {
                 When::Now => Some(bevy::tasks::block_on(task)),
                 When::Ahead => check_ready(task),
@@ -1691,9 +1702,10 @@ impl Art {
 }
 
 /// The quest map's levels: their table and the map's own level being
-/// made, then made.
+/// made, then made. Uncounted as pending work: the map's page waits on
+/// the task, and no other page's picture needs it.
 enum Map {
-    Making(Task<levels::Levels>, Count),
+    Making(Task<levels::Levels>),
     Ready(levels::Levels),
 }
 

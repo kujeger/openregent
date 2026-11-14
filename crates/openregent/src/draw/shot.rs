@@ -3,7 +3,7 @@
 //!
 //! ```text
 //!  window at --size pixels, scale --scale (1), fog lifted, paused, muted
-//!  opening view framed ──> --frames drawn frames ──> Screenshot
+//!  opening view framed, the loading page gone ──> --frames drawn frames ──> Screenshot
 //!  captured ──> PNG at --screenshot ──> exit: 0, or 1 if the size is off
 //! ```
 //!
@@ -587,7 +587,10 @@ pub fn install(app: &mut App, shot: Shot) {
         .insert_resource(wind)
         .insert_resource(TimeUpdateStrategy::ManualDuration(FRAME))
         .add_systems(OnEnter(Screen::Playing), (hold, open).chain())
-        .add_systems(Last, (choose, arm, count, ending).run_if(in_game))
+        .add_systems(
+            Last,
+            (choose, arm, count.after(crate::menu::lift), ending).run_if(in_game),
+        )
         .add_systems(First, point)
         .add_systems(
             bevy_egui::EguiPrimaryContextPass,
@@ -745,7 +748,7 @@ fn count_menu(
     let sized = as_asked(&shot, &windows);
 
     shot.settled = if sized { shot.settled + 1 } else { 0 };
-    advance(&mut commands, &mut shot, &prepared);
+    advance(&mut commands, &mut shot, (&prepared, Pages::Landed));
 }
 
 /// Whether a window is `shot`'s size, in logical points: its pixels
@@ -762,16 +765,28 @@ fn as_asked(shot: &Shot, windows: &Query<&Window, With<PrimaryWindow>>) -> bool 
     })
 }
 
+/// Whether sprite pages are on their way (`regent_draw::settle`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pages {
+    Pending,
+    Landed,
+}
+
 /// A drawn frame's [`Step`] taken: a frame counted, or the capture
 /// asked for; the next frame's clock stepping on a counted one alone.
-fn advance(commands: &mut Commands, shot: &mut Shot, prepared: &Prepared) {
+fn advance(commands: &mut Commands, shot: &mut Shot, (prepared, pages): (&Prepared, Pages)) {
     shot.waited += 1;
 
     let pending = regent_draw::art::busy() || !prepared.0.load(Ordering::Relaxed);
 
     shot.ready = if pending { 0 } else { shot.ready + 1 };
 
-    let step = step(shot);
+    // Sprite pages on their way: held, so the game steps only once its
+    // pieces draw the keys it gave them.
+    let step = match pages {
+        Pages::Pending => Step::Wait,
+        Pages::Landed => step(shot),
+    };
 
     match step {
         Step::Capture => {
@@ -833,7 +848,8 @@ const fn step(shot: &Shot) -> Step {
 /// scale, 3260 × 2037 for 1920 × 1200 at 1.7, and the bound would keep a
 /// framing made in that room. At zero, with the window the asked size
 /// for [`SETTLED`] frames, ask for the capture; after [`WAIT`] frames, ask
-/// regardless, to fail on the size. The game is held paused.
+/// regardless, to fail on the size. The game is held paused. Nothing is
+/// counted under the game's loading page (`menu::drape`).
 ///
 /// Only counted frames step the clock ([`Step`]), so a `--running` game
 /// plays `--frames` frames whatever the waits: every run the same frame.
@@ -843,11 +859,12 @@ const fn step(shot: &Shot) -> Step {
 )]
 fn count(
     mut commands: Commands,
-    mut framed: ResMut<Framed>,
+    (mut framed, drape): (ResMut<Framed>, Res<crate::menu::Drape>),
     mut shot: ResMut<Shot>,
     mut paused: ResMut<Paused>,
     mut view: ResMut<View>,
     (windows, prepared): (Query<&Window, With<PrimaryWindow>>, Res<Prepared>),
+    settle: Res<regent_draw::settle::Settle>,
 ) {
     // The window measured, not the room: the room ends above the bottom
     // bar, so its corner is never the window's.
@@ -868,11 +885,17 @@ fn count(
 
     shot.settled = if sized { shot.settled + 1 } else { 0 };
 
-    if framed.0 {
+    if framed.0 && !drape.is_up() {
         // Framed again each frame, but under a moving camera once
         // settled: its moves would be undone.
         framed.0 = shot.camera.is_some() && shot.settled >= SETTLED;
-        advance(&mut commands, &mut shot, &prepared);
+        let pages = if settle.pending().jobs > 0 {
+            Pages::Pending
+        } else {
+            Pages::Landed
+        };
+
+        advance(&mut commands, &mut shot, (&prepared, pages));
     }
 }
 
@@ -1119,6 +1142,8 @@ mod tests {
     #[derive(Clone, Copy)]
     enum Over {
         Game,
+        /// The game, under its loading page this many frames.
+        Draped(u32),
         Menus,
     }
 
@@ -1148,9 +1173,16 @@ mod tests {
             .id();
 
         match over {
-            Over::Game => {
+            Over::Game | Over::Draped(_) => {
+                let drape = match over {
+                    Over::Draped(_) => crate::menu::Drape::up(),
+                    Over::Game | Over::Menus => crate::menu::Drape::default(),
+                };
+
                 app.insert_resource(Framed(true))
                     .insert_resource(view)
+                    .insert_resource(drape)
+                    .init_resource::<regent_draw::settle::Settle>()
                     .init_resource::<Paused>()
                     .init_resource::<Fog>()
                     .add_systems(Update, count);
@@ -1176,10 +1208,21 @@ mod tests {
             // The opening view framed again each frame, as `draw` does.
             app.insert_resource(Framed(true));
 
-            if matches!(
+            let counted = matches!(
                 app.world().resource::<TimeUpdateStrategy>(),
                 TimeUpdateStrategy::ManualDuration(d) if *d == FRAME
-            ) {
+            );
+
+            // The page gone: frames count from the next.
+            if let Over::Draped(up) = over {
+                assert!(!counted || frame > up, "counted at {frame}, under the page");
+
+                if frame == up {
+                    app.insert_resource(crate::menu::Drape::default());
+                }
+            }
+
+            if counted {
                 steps += 1;
             }
 
@@ -1200,13 +1243,13 @@ mod tests {
     }
 
     /// A `--running` shot, and a menu shot, plays `--frames` frames
-    /// however long the window, the art and the pipelines keep it
-    /// waiting.
+    /// however long the window, the art, the pipelines and the game's
+    /// loading page keep it waiting; none under the page.
     #[test]
     fn a_running_shot_plays_its_frames_whatever_the_waits() {
         let runs = [(0, 0), (70, 0), (0, 9), (75, 30)];
 
-        for over in [Over::Game, Over::Menus] {
+        for over in [Over::Game, Over::Draped(40), Over::Draped(90), Over::Menus] {
             let steps = runs.map(|(sizing, late)| stepped(sizing, late, over));
 
             assert_eq!(steps, [FRAMES; 4]);

@@ -12,6 +12,9 @@
 //!                                     └─ no ─────────> made
 //! ```
 //!
+//! A frame whose textures, views and samplers are last frame's, listed
+//! in the same order, keeps last frame's bind groups whole: most frames.
+//!
 //! What egui draws is the same: each texture is drawn from its own view
 //! and sampler, wherever it sits.
 
@@ -49,6 +52,8 @@ struct Kept {
     free: BTreeSet<usize>,
     /// Each chunk's textures and bind group.
     chunks: HashMap<usize, (Chunk, BindGroup)>,
+    /// Every texture last made for, its view and sampler, as listed.
+    seen: Vec<(Key, TextureViewId, SamplerId)>,
 }
 
 /// Puts `queue` in place of `bevy_egui`'s system: after `EguiPlugin`,
@@ -79,6 +84,10 @@ impl bevy::app::Plugin for Plugin {
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
 )]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "a system's arguments are its dependencies"
+)]
 fn queue(
     mut commands: Commands,
     textures: ExtractedEguiTextures,
@@ -86,17 +95,38 @@ fn queue(
     images: Res<RenderAssets<GpuImage>>,
     cache: Res<PipelineCache>,
     pipeline: Res<EguiPipeline>,
+    made: Option<Res<EguiTextureBindGroups>>,
     mut kept: Local<Kept>,
 ) {
-    let layout = cache.get_bind_group_layout(&pipeline.texture_bind_group_layout);
-    let size = pipeline
-        .bindless
-        .and_then(|n| usize::try_from(n.get()).ok())
-        .unwrap_or(1);
     let live: Vec<_> = textures
         .handles()
         .filter_map(|(texture, id)| Some((key(&texture), texture, images.get(id)?)))
         .collect();
+    let seen: Vec<_> = live
+        .iter()
+        .map(|(key, _, image)| (*key, image.texture_view.id(), image.sampler.id()))
+        .collect();
+
+    // Last frame's textures as they were: its bind groups stand.
+    if made.is_none() || seen != kept.seen {
+        let layout = cache.get_bind_group_layout(&pipeline.texture_bind_group_layout);
+        let groups = grouped(&mut kept, live, (&device, &layout, pipeline.bindless));
+
+        kept.seen = seen;
+        commands.insert_resource(EguiTextureBindGroups(groups));
+    }
+}
+
+/// Each live texture's bind group and place in it, `kept`'s chunks made
+/// again where their textures changed.
+fn grouped(
+    kept: &mut Kept,
+    live: Vec<(Key, EguiTextureId, &GpuImage)>,
+    (device, layout, bindless): (&RenderDevice, &BindGroupLayout, Option<NonZero<u32>>),
+) -> HashMap<EguiTextureId, (BindGroup, Option<u32>)> {
+    let size = bindless
+        .and_then(|n| usize::try_from(n.get()).ok())
+        .unwrap_or(1);
     let mut chunks: BTreeMap<usize, Vec<_>> = BTreeMap::new();
 
     kept.place(live.iter().map(|(key, ..)| *key));
@@ -125,13 +155,13 @@ fn queue(
             _ => {
                 let images: Vec<&GpuImage> = chunk.iter().map(|(_, _, image)| *image).collect();
 
-                bind(&device, &layout, &images, pipeline.bindless)
+                bind(device, layout, &images, bindless)
             }
         };
 
         // Bindless, each texture is its place in the array.
         for (offset, (_, texture, _)) in (0u32..).zip(chunk) {
-            let offset = pipeline.bindless.map(|_| offset);
+            let offset = bindless.map(|_| offset);
 
             groups.insert(texture, (group.clone(), offset));
         }
@@ -140,7 +170,7 @@ fn queue(
     }
 
     kept.chunks = made;
-    commands.insert_resource(EguiTextureBindGroups(groups));
+    groups
 }
 
 impl Kept {

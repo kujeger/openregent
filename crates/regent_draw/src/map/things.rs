@@ -1,5 +1,5 @@
 //! Every object of the map put up: gathered by chunk, sorted by screen
-//! depth, each frame of each layer an entity.
+//! depth, each layer an entity stepping its frames (`reel::Layer`).
 
 use std::collections::BTreeMap;
 
@@ -12,12 +12,14 @@ use regent_core::data::desc::UnitKind;
 use regent_core::data::fourcc::FourCc;
 use regent_core::data::settings::RELIEF;
 
-use super::cel::{Drawing, Mobility, Paint, Picture, Store, rungs};
+use super::cel::{Cel, Drawing, Mobility, Owner, Paint, Store, rungs};
 use super::depth::{FURTHEST, NEAREST, sorted_at};
 use super::project::{Projection, aloft, item_height, lift_at};
-use super::reel::{Cycle, Reel, cycles};
+use super::reel::{Beat, Layer, Reel, Role, Sways, cycles, dress};
+use super::sheet::Paged;
 use super::{BLDG, CHUNKS, LIFT, Maps, Placed, VHCL};
 use crate::data::Corpus;
+use crate::instance::Lean;
 use crate::lie::Footing;
 use crate::terrain::Drawn;
 use crate::wind;
@@ -112,7 +114,12 @@ fn things(
 ) -> Populated {
     let mut cache: BTreeMap<Key, Vec<Drawing>> = BTreeMap::new();
     let scene = (maps, trees);
-    let (mut standing, reach) = gather(scene, corpus, (store, paint), &mut cache);
+    let (mut standing, reach) = gather(
+        scene,
+        corpus,
+        (store, paint),
+        (&mut cache, &mut Pages::Landed),
+    );
 
     // Before the sort: in chunk and record order, as `positions` gives.
     let placed = standing.iter().map(Standing::placed).collect();
@@ -165,92 +172,51 @@ fn things(
                 px => sorted_at(&rows, thing.cell.y, px, step),
             };
 
-            // All frames spawned, all but one hidden; see `Cycle`.
-            let frames = u16::try_from(drawing.cels.len()).unwrap_or(u16::MAX);
+            // Where it stands: its soft shadow lies from there, and the
+            // models' shadows find it there (`crate::sun`).
+            let footing = Footing {
+                row: thing.cell.y,
+                ground: ground.y,
+            };
+            let beat = Beat {
+                start: thing.start,
+                from: 0,
+                ms: drawing.ms,
+            };
+            // A tree's lean takes it past the unit quad; its foot and
+            // bend go in its rows (`instance::Lean`), frame by frame.
+            let sways = trees
+                .get(thing.key.0)
+                .map(|tree| sways(trees, tree, &drawing.cels));
 
-            for (index, cel) in drawing.cels.iter().enumerate() {
-                let Some(cel) = cel else { continue };
+            // A body, then a band where a frame casts (each shader
+            // discards the other's pixels), then a lift where a frame is
+            // translucent, clearing the coverage of shadows sorted before
+            // it.
+            for role in [Role::Body, Role::Band, Role::Lift] {
+                let layer = Layer::new(drawing.cels.clone(), role, beat, base);
 
-                let place = base - cel.anchor;
-                let put = Transform {
-                    translation: place.extend(depth + above),
-                    scale: cel.size.extend(1.0),
-                    ..default()
-                };
-                let cycle = (frames > 1).then(|| Cycle {
-                    index: u16::try_from(index).unwrap_or(u16::MAX),
-                    frames,
-                    start: thing.start,
-                    ms: drawing.ms,
-                    from: 0,
-                });
-                let seen = match cycle {
-                    Some(cycle) if !cycle.showing(reel.ms) => Visibility::Hidden,
-                    _ => Visibility::Inherited,
-                };
-
-                let mut spawned = match &cel.body {
-                    Picture::Indexed(body) => commands.spawn((
-                        Drawn,
-                        Thing,
-                        thing.record,
-                        Mesh3d(store.quad.clone()),
-                        MeshMaterial3d(body.clone()),
-                        put,
-                        seen,
-                    )),
-                    Picture::Colour(colour) => commands.spawn((
-                        Drawn,
-                        Thing,
-                        thing.record,
-                        Mesh3d(store.quad.clone()),
-                        MeshMaterial3d(colour.clone()),
-                        put,
-                        seen,
-                    )),
-                };
-
-                if let Some(cycle) = cycle {
-                    spawned.insert(cycle);
+                if role != Role::Body && !layer.draws() {
+                    continue;
                 }
 
-                // Where it stands: its soft shadow lies from there, and the
-                // models' shadows find it there (`crate::sun`).
-                let footing = Footing {
-                    row: thing.cell.y,
-                    ground: ground.y,
-                };
+                let mut spawned = commands.spawn((
+                    Drawn,
+                    Thing,
+                    thing.record,
+                    Mesh3d(store.quad.clone()),
+                    Lean::default(),
+                ));
 
-                spawned.insert(footing);
+                dress(&mut spawned, layer, reel.ms, depth + above);
 
-                // A tree's lean takes it past the unit quad.
-                let bounds = match trees.get(thing.key.0) {
-                    Some(tree) => {
-                        let bend = trees.bend(tree, wind::foot(cel), cel.size.y);
-
-                        wind::bounds(cel, bend)
-                    }
-                    None => UNIT_QUAD,
-                };
-
-                spawned.insert(bounds);
-
-                // The shadow rides with its frame; each shader discards the other's
-                // pixels. A translucent frame's lift rides with it too,
-                // clearing the coverage of shadows sorted before it.
-                let at = (thing.record, &store.quad, put, seen, cycle);
-
-                // A soft shadow lies on the ground about the thing's.
-                if let Some(band) = &cel.band {
-                    part(
-                        commands,
-                        at,
-                        (MeshMaterial3d(band.clone()), footing, bounds),
-                    );
+                if role != Role::Lift {
+                    spawned.insert(footing);
                 }
 
-                if let Some(lift) = &cel.lift {
-                    part(commands, at, (MeshMaterial3d(lift.clone()), bounds));
+                if let Some(sways) = &sways {
+                    spawned.insert(sways.clone());
+                    lean(&mut spawned, sways, beat.up(reel.ms, drawing.cels.len()));
                 }
             }
         }
@@ -259,31 +225,24 @@ fn things(
     Populated { reach, placed }
 }
 
-/// A thing's frame as its second quads take it: record, quad, place,
-/// visibility and cycle.
-type Body<'a> = (
-    Record,
-    &'a Handle<Mesh>,
-    Transform,
-    Visibility,
-    Option<Cycle>,
-);
+/// A tree layer's lean and bounds for each of `cels`.
+fn sways(trees: &wind::Trees, tree: wind::Tree, cels: &[Option<Cel>]) -> Sways {
+    let each = cels.iter().map(|cel| {
+        cel.as_ref().map_or((Lean::default(), UNIT_QUAD), |cel| {
+            let foot = wind::foot(cel);
+            let bend = trees.bend(tree, foot, cel.size.y);
 
-/// A second quad of thing `record`'s frame, drawn by `material`, at its
-/// body's place, visibility and cycle.
-fn part(commands: &mut Commands, (record, quad, put, seen, cycle): Body, material: impl Bundle) {
-    let mut part = commands.spawn((
-        Drawn,
-        Thing,
-        record,
-        Mesh3d(quad.clone()),
-        material,
-        put,
-        seen,
-    ));
+            (Lean { foot, bend }, wind::bounds(cel, bend))
+        })
+    });
 
-    if let Some(cycle) = cycle {
-        part.insert(cycle);
+    Sways(each.collect())
+}
+
+/// A tree layer `spawned` leaning as frame `up` of `sways` does.
+fn lean(spawned: &mut EntityCommands, sways: &Sways, up: u16) {
+    if let Some((lean, bounds)) = sways.0.get(usize::from(up)) {
+        spawned.insert((*lean, *bounds));
     }
 }
 
@@ -294,7 +253,7 @@ struct Standing {
     cell: Vec2,
     /// How high: [`super::project::item_height`].
     height: f32,
-    /// The frame the save caught it on. See [`Cycle::start`].
+    /// The frame the save caught it on. See [`Beat::start`].
     start: u16,
     record: Record,
 }
@@ -311,6 +270,26 @@ impl Standing {
     }
 }
 
+/// Whether every scatter thing's sprite pages are on their sheets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Pages {
+    Pending,
+    Landed,
+}
+
+/// Whether every object's pictures are ready to put up: their pages
+/// asked of `paint` where not, so a whole redraw can wait for them.
+pub(super) fn ready(
+    scene: (&Maps, &wind::Trees),
+    corpus: &Corpus,
+    drawn: (&mut Store, &mut dyn Paint),
+) -> bool {
+    let mut pages = Pages::Landed;
+
+    gather(scene, corpus, drawn, (&mut BTreeMap::new(), &mut pages));
+    pages == Pages::Landed
+}
+
 /// What [`gather`] found: draws, and building picture reach.
 type Gathered = (Vec<Standing>, BTreeMap<u32, f32>);
 
@@ -322,7 +301,7 @@ fn gather(
     (maps, trees): (&Maps, &wind::Trees),
     corpus: &Corpus,
     (store, paint): (&mut Store, &mut dyn Paint),
-    cache: &mut BTreeMap<Key, Vec<Drawing>>,
+    (cache, pending): (&mut BTreeMap<Key, Vec<Drawing>>, &mut Pages),
 ) -> Gathered {
     let mut standing: Vec<Standing> = Vec::new();
     let mut beside: BTreeMap<u32, f32> = BTreeMap::new();
@@ -360,12 +339,18 @@ fn gather(
             let still = (!cycles(kind)).then_some(picked.1);
             let key = (object.id, object.set, moves, picked.0, still);
             let found = cache.entry(key).or_insert_with(|| {
-                let mut cel = |s| paint.cel(corpus, store, s);
+                let mut cel = |s, record: Option<Owner>| match paint.cel(corpus, store, s, record) {
+                    Paged::Ready(cel) => cel,
+                    Paged::Pending => {
+                        *pending = Pages::Pending;
+                        None
+                    }
+                };
                 let drawings = Drawing::of(corpus, &mut cel, object, moves, still);
 
                 // A tree's materials bend in the wind, when it blows.
-                if let Some(tree) = trees.get(object.id) {
-                    wind::mark(&drawings, (tree, trees), store.bodies, store.bands);
+                if trees.get(object.id).is_some() {
+                    wind::mark(&drawings, trees, store.bodies, store.bands);
                 }
 
                 drawings
@@ -397,7 +382,6 @@ fn gather(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::map::cel::Cel;
     use crate::map::load::Loaded;
     use crate::map::project::positions;
     use crate::map::redraw::redraw;
@@ -421,8 +405,14 @@ mod tests {
     struct Artless;
 
     impl Paint for Artless {
-        fn cel(&mut self, _: &Corpus, _: &mut Store, _: FrameSource) -> Option<Cel> {
-            None
+        fn cel(
+            &mut self,
+            _: &Corpus,
+            _: &mut Store,
+            _: FrameSource,
+            _: Option<Owner>,
+        ) -> super::super::sheet::Paged {
+            super::super::sheet::Paged::Ready(None)
         }
     }
 

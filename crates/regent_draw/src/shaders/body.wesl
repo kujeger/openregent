@@ -6,7 +6,10 @@
 // sharp-bilinear on the pixels (`regent_draw::smooth`). An opaque one
 // writes the models' shadows on it as coverage (`lit.wesl`); one of a
 // building with a model at its point on the model, never in its own
-// shadow (`regent_draw::sun::relief`).
+// shadow (`regent_draw::sun::relief`). Each instance reads its row of
+// `table` by its tag (`regent_draw::instance`): its footing, and under
+// `SHEET` its frame's rectangle in the page (`regent_draw::map::sheet`);
+// else the frame is the whole texture.
 
 import bevy_pbr::render::mesh_functions;
 import bevy_pbr::render::view_transformations::position_world_to_clip;
@@ -24,6 +27,10 @@ import regent_draw::shaders::smooth::{blend, mixed};
 @group(constants::MATERIAL_BIND_GROUP) @binding(2) var<uniform> wind: Gust;
 @group(constants::MATERIAL_BIND_GROUP) @binding(3) var stands: texture_2d<f32>;
 @group(constants::MATERIAL_BIND_GROUP) @binding(4) var relief: texture_2d_array<f32>;
+@group(constants::MATERIAL_BIND_GROUP) @binding(5) var table: texture_2d<u32>;
+
+// `regent_draw::instance::WIDTH`: rows a texture row of `table`.
+const ROWS_ACROSS: u32 = 1024u;
 
 // `regent_draw::sun::relief`'s constants (a test there checks them): the
 // texel whose corner is the anchor, a tag's slot marker, and a texel the
@@ -47,7 +54,36 @@ struct VertexOutput {
     // or its building's slot (`relief::model_tag`); 0 none: no models'
     // shadows.
     @location(2) @interpolate(flat) footing: u32,
+    // The frame's texels in the texture: x, y, width, height.
+    @location(3) @interpolate(flat) frame: vec4<u32>,
 };
+
+// Instance `at`'s row: its tag, rectangle x | y << 16, width |
+// height << 16.
+fn row(at: u32) -> vec4<u32> {
+    return textureLoad(table, vec2<u32>(at % ROWS_ACROSS * 2u, at / ROWS_ACROSS), 0);
+}
+
+// Instance `at`'s tree lean: `wind` with its foot and bend.
+fn leaning(at: u32, wind: Gust) -> Gust {
+    let lean = textureLoad(table, vec2<u32>(at % ROWS_ACROSS * 2u + 1u, at / ROWS_ACROSS), 0);
+    var own = wind;
+
+    own.foot = bitcast<f32>(lean.x);
+    own.bend = bitcast<f32>(lean.y);
+    return own;
+}
+
+// The frame's rectangle in the texture from its row: the sheet's, else
+// all of it.
+fn framed(row: vec4<u32>) -> vec4<u32> {
+@if(SHEET) {
+    return vec4<u32>(row.y & 0xFFFFu, row.y >> 16u, row.z & 0xFFFFu, row.z >> 16u);
+}
+@else {
+    return vec4<u32>(vec2<u32>(0u), textureDimensions(indices));
+}
+}
 
 // Bevy's mesh vertex stage, bar a tree's lean under `SWAY` and the
 // pixel snap under `SNAP`.
@@ -55,9 +91,11 @@ struct VertexOutput {
 fn vertex(vertex: Vertex) -> VertexOutput {
     var out: VertexOutput;
     let world_from_local = mesh_functions::get_world_from_local(vertex.instance_index);
+    let tag = mesh_functions::get_tag(vertex.instance_index);
+    let row = row(tag);
 
 @if(SWAY) {
-    out.world_position = swayed(world_from_local, vertex.position, wind);
+    out.world_position = swayed(world_from_local, vertex.position, leaning(tag, wind));
 }
 @else {
     out.world_position = world_from_local * vec4<f32>(vertex.position, 1.0);
@@ -72,30 +110,31 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     let point = position_world_to_clip(vec3<f32>(lattice(top.xy, f32(constants::SNAP_LATTICE)), top.z));
     let corner = position_world_to_clip(top);
     let across = position_world_to_clip((world_from_local * vec4<f32>(0.5, 0.5, 0.0, 1.0)).xyz);
-    let texels = f32(textureDimensions(indices).x);
+    let texels = f32(framed(row).z);
     let below = f32(constants::SNAP_BELOW) / 100.0;
 
     out.position = snapped(out.position, point, corner, across, texels, view.viewport, below);
 }
 
     out.uv = vertex.uv;
-    out.footing = mesh_functions::get_tag(vertex.instance_index);
+    out.footing = row.x;
+    out.frame = framed(row);
 
     return out;
 }
 
 @if(SHARP)
-// The colour at `at`, or `fallback` off the tile, where it draws nothing
-// or an operation, or (translucent) no share: the art's edges stay
-// nearest (`regent_draw::smooth`).
-fn tap(at: vec2<i32>, fallback: vec4<f32>) -> vec4<f32> {
-    let size = vec2<i32>(textureDimensions(indices));
+// The colour at `at` of frame `frame`, or `fallback` off the frame,
+// where it draws nothing or an operation, or (translucent) no share:
+// the art's edges stay nearest (`regent_draw::smooth`).
+fn tap(at: vec2<i32>, fallback: vec4<f32>, frame: vec4<u32>) -> vec4<f32> {
+    let size = vec2<i32>(frame.zw);
 
     if any(at < vec2<i32>(0)) || any(at >= size) {
         return fallback;
     }
 
-    let index = textureLoad(indices, at, 0).r;
+    let index = textureLoad(indices, vec2<i32>(frame.xy) + at, 0).r;
 
     if index >= 247u {
         return fallback;
@@ -141,6 +180,9 @@ fn received(tag: u32, drawn: vec2<f32>, pixel: vec2<f32>) -> f32 {
 
 @fragment
 fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
+@if(SHEET)
+    let size = mesh.frame.zw;
+@else
     let size = textureDimensions(indices);
 @if(SHARP)
     let texel = mesh.uv * vec2<f32>(size);
@@ -150,7 +192,7 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     // Clamped, because a uv of exactly one lands a texel past the edge.
     let at = min(vec2<u32>(mesh.uv * vec2<f32>(size)), size - vec2<u32>(1u));
 
-    let index = textureLoad(indices, at, 0).r;
+    let index = textureLoad(indices, mesh.frame.xy + at, 0).r;
 
     if index >= 247u {
         discard;
@@ -163,9 +205,9 @@ fn fragment(mesh: VertexOutput) -> @location(0) vec4<f32> {
     let shown = mixed(
         b,
         colour,
-        tap(here + vec2<i32>(b.step.x, 0), colour),
-        tap(here + vec2<i32>(0, b.step.y), colour),
-        tap(here + b.step, colour),
+        tap(here + vec2<i32>(b.step.x, 0), colour, mesh.frame),
+        tap(here + vec2<i32>(0, b.step.y), colour, mesh.frame),
+        tap(here + b.step, colour, mesh.frame),
     );
 @else
     let shown = colour;

@@ -15,7 +15,8 @@
 //!             each view drawing it again before it draws
 //!  receivers  bodies and the ground sample the map at their metric point
 //!             (shaders/lit.wesl) and write coverage into alpha, as a band
-//!             does: shadows still do not stack. A body stands upright over
+//!             does: shadows still do not stack. The ground's shader reads
+//!             it only while models cast (plain::Shade, receive). A body stands upright over
 //!             its footing (its MeshTag, stood); a translucent one lifts
 //!             the coverage under it (material::Pass::Lift)
 //!  casters'   painted shadow dropped (`Band::painted`); their bodies
@@ -35,7 +36,8 @@ pub mod relief;
 
 use std::collections::HashMap;
 
-use bevy::asset::RenderAssetUsages;
+use bevy::asset::{AssetEventSystems, RenderAssetUsages};
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::camera::visibility::RenderLayers;
 use bevy::light::cascade::Cascade;
 use bevy::light::{
@@ -43,15 +45,18 @@ use bevy::light::{
     SimulationLightSystems,
 };
 use bevy::math::Vec3A;
-use bevy::mesh::{Mesh, MeshTag, PrimitiveTopology};
+use bevy::mesh::{Indices, Mesh, MeshTag, PrimitiveTopology};
 use bevy::prelude::*;
 use regent_core::data::fourcc::FourCc;
 
 use crate::cull::Parked;
 use crate::frame;
+use crate::instance::Tag;
 use crate::lie::Footing;
 use crate::map::Maps;
 use crate::material::Body;
+use crate::plain::{Alpha, Lay, Plain, Shade};
+use crate::smooth::{Sheet, touched};
 use crate::stage::{self, WorldCamera};
 use bare::{Bare, Sprites};
 use cast::Light;
@@ -169,13 +174,13 @@ pub struct Casters(pub Vec<Casting>);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Casts;
 
-/// A body's flat ground point's world height as its [`MeshTag`]: the
+/// A body's flat ground point's world height as its [`Tag`]: the
 /// bits, where 0 is none; a height of exactly 0 is written as −0.
 #[must_use]
-pub fn stand(ground: f32) -> MeshTag {
+pub fn stand(ground: f32) -> Tag {
     let ground = if ground == 0.0 { -0.0 } else { ground };
 
-    MeshTag::new(ground.to_bits())
+    Tag(ground.to_bits())
 }
 
 /// The sun.
@@ -376,6 +381,113 @@ fn aim(
     }
 }
 
+/// The ground's materials as models start or stop casting, and as they
+/// are made: [`Shade::Cast`] while they cast, else [`Shade::Bare`], so
+/// the ground reads the shadow map only while one is drawn.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value; that is the contract"
+)]
+fn receive(
+    (sun, casters): (Res<Sun>, Res<Casters>),
+    world: Single<&Camera, With<WorldCamera>>,
+    (mut made, mut laid): (
+        MessageReader<AssetEvent<Plain>>,
+        MessageReader<AssetEvent<Sheet>>,
+    ),
+    (mut plains, mut sheets): (ResMut<Assets<Plain>>, ResMut<Assets<Sheet>>),
+    warm: Res<Warm>,
+    mut was: Local<Shade>,
+) {
+    let shade = if casting(&sun, &casters, &world) {
+        Shade::Cast
+    } else {
+        Shade::Bare
+    };
+    let changed = *was != shade;
+
+    *was = shade;
+
+    for id in touched(&mut made, &plains, changed) {
+        let stale = plains
+            .get(id)
+            .is_some_and(|p| p.lay == Lay::Ground && p.shade != shade)
+            && !warm.plains.contains(&id);
+
+        if stale && let Some(mut plain) = plains.get_mut(id) {
+            plain.shade = shade;
+        }
+    }
+
+    for id in touched(&mut laid, &sheets, changed) {
+        let stale = sheets.get(id).is_some_and(|s| s.shade != shade) && !warm.sheets.contains(&id);
+
+        if stale && let Some(mut sheet) = sheets.get_mut(id) {
+            sheet.shade = shade;
+        }
+    }
+}
+
+/// The ground's pipelines of both [`Shade`]s, kept specialised: as models
+/// start or stop casting the ground switches to one already compiled,
+/// or Bevy would skip it while the new one compiles, a frame or more
+/// without ground. [`receive`] leaves their materials be.
+#[derive(Resource, Default)]
+struct Warm {
+    plains: Vec<AssetId<Plain>>,
+    sheets: Vec<AssetId<Sheet>>,
+}
+
+/// A mesh of the ground's attributes that draws nothing: its one
+/// triangle has no area.
+fn unseen() -> Mesh {
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD,
+    );
+
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, vec![[0.0_f32; 3]; 3]);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0.0_f32; 2]; 3]);
+    mesh.insert_indices(Indices::U32(vec![0, 1, 2]));
+    mesh
+}
+
+/// Each ground material's pipeline of each [`Shade`] specialised, on an
+/// [`unseen`] mesh every view draws: the patches' and the inset's, the
+/// floor's, the sharp patches'.
+fn warm(
+    mut commands: Commands,
+    (mut images, mut meshes): (ResMut<Assets<Image>>, ResMut<Assets<Mesh>>),
+    (mut plains, mut sheets): (ResMut<Assets<Plain>>, ResMut<Assets<Sheet>>),
+) {
+    let mesh = Mesh3d(meshes.add(unseen()));
+    let picture = images.add(Image::default());
+    let mut warm = Warm::default();
+
+    for shade in [Shade::Bare, Shade::Cast] {
+        for alpha in [Alpha::MaskFirst, Alpha::Mask] {
+            let plain = plains.add(Plain {
+                alpha,
+                shade,
+                ..Plain::ground(picture.clone())
+            });
+
+            warm.plains.push(plain.id());
+            commands.spawn((mesh.clone(), MeshMaterial3d(plain), NoFrustumCulling));
+        }
+
+        let sheet = sheets.add(Sheet {
+            picture: picture.clone(),
+            shade,
+        });
+
+        warm.sheets.push(sheet.id());
+        commands.spawn((mesh.clone(), MeshMaterial3d(sheet), NoFrustumCulling));
+    }
+
+    commands.insert_resource(warm);
+}
+
 /// A camera, as [`fitted`] reads it.
 type Viewed = (
     Entity,
@@ -525,10 +637,10 @@ type Standing = (
     Entity,
     Option<&'static Footing>,
     Option<&'static ChildOf>,
-    Option<&'static MeshTag>,
+    Option<&'static Tag>,
 );
 
-/// Each body's [`MeshTag`] while models cast: on a casting building's
+/// Each body's [`Tag`] while models cast: on a casting building's
 /// piece its slot ([`relief::model_tag`]), so it takes the other models'
 /// shadows, not its own; else its footing, its own or its parent's, as
 /// [`stand`] packs it; none (0) without one, or on a building past the
@@ -568,7 +680,7 @@ fn stood(
         let tag = match (slot, footing) {
             (Some(slot), _) => relief::model_tag(*slot),
             (None, Some(f)) => stand(maps.flat_y(f.row)),
-            (None, None) => MeshTag::new(0),
+            (None, None) => Tag(0),
         };
 
         if had != Some(&tag) {
@@ -629,12 +741,15 @@ impl bevy::app::Plugin for Plugin {
         app.init_resource::<Sun>()
             .init_resource::<Casters>()
             .init_resource::<Proxies>()
-            .add_systems(Startup, rig)
+            .init_resource::<Warm>()
+            .add_systems(Startup, (rig, warm))
             .add_systems(
                 PostUpdate,
                 (
                     place,
                     aim.before(SimulationLightSystems::UpdateDirectionalLightCascades),
+                    // Told the frame the light is: both read `casting`.
+                    receive.after(aim).after(AssetEventSystems),
                     fitted
                         .after(SimulationLightSystems::UpdateDirectionalLightCascades)
                         .before(SimulationLightSystems::UpdateLightFrusta),
@@ -654,8 +769,8 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp, reason = "the same bits back")]
     fn height_zero_is_tagged() {
-        assert_ne!(stand(0.0).value, 0);
-        assert_eq!(f32::from_bits(stand(-12.5).value), -12.5);
+        assert_ne!(stand(0.0).0, 0);
+        assert_eq!(f32::from_bits(stand(-12.5).0), -12.5);
     }
 
     /// The light as [`aim`] turns it, under the default sun.
