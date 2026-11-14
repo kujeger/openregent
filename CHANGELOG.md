@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Several performance improvements, allowing smooth play on older hardware
+
+### Changed
+
+- Book of Lore now reads Lair spawn info dynamically from data files
+
 ## [0.2.0] - 2026-11-12
 
 ### Added
