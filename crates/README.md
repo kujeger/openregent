@@ -150,6 +150,7 @@ cargo run --bin regent_cli -- terrain    --record AtoB ~/Games/majesty/data/{ter
 cargo run --bin regent_cli -- deps       --resolve ~/Games/majesty/data ~/Games/majesty/data/miscdata.cam
 cargo run --bin regent_cli -- ui-dump    ~/tmp/ui-art     # every UI picture as PNG, index.tsv
 cargo run --bin regent_cli -- codesec    ~/Games/majesty/data/bytecode.bcd
+cargo run --bin regent_cli -- lair-spawns                 # what each lair's spawn script can spawn
 cargo run --bin regent_cli -- resolve    "$MAJESTY_HD/SDK/OriginalQuests"
 cargo run --bin regent_cli -- check-data ~/Games/majesty/data ~/Games/majesty/datamx
 ```

@@ -8,6 +8,7 @@ mod config;
 mod descriptor;
 mod env;
 mod gpl;
+mod lairs;
 mod menu;
 mod panel;
 mod quest;
@@ -217,6 +218,11 @@ enum Command {
     /// List what a .bcd's section 2 defines, with body sizes
     Codesec { paths: Vec<String> },
 
+    /// What each spawning building's script can spawn, from `MAJESTY_HD`'s
+    /// expansion program: code, `.dat` instance, type, spawn function,
+    /// characters; then each quest's lines that differ
+    LairSpawns,
+
     /// Parse every recognised game file and report failures
     CheckData { dirs: Vec<String> },
 
@@ -310,6 +316,7 @@ fn main() -> ExitCode {
 
         Command::Datasec { paths } => bytecode::cmd_datasec(&paths),
         Command::Codesec { paths } => bytecode::cmd_codesec(&paths),
+        Command::LairSpawns => lairs::cmd_lair_spawns(),
 
         Command::Panels { record, paths } => panel::cmd_panels(record.as_deref(), &paths),
         Command::Menu {

@@ -37,6 +37,7 @@ pub(crate) mod parser;
 pub mod proj;
 pub mod resolve;
 pub mod runtime;
+pub mod spawns;
 pub mod startup;
 pub(crate) mod token;
 pub mod vm;

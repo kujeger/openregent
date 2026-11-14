@@ -1030,6 +1030,15 @@ is this exit's placement).
   `FillSpecialLairList` names, a falling lair's last spawns. **Corpus**:
   every freestyle start save's lairs are the chart's
   (**Measured**).
+- The script's name. **Corpus**: a spawner's `.dat` instance names its
+  `Spawn_Function`, which `Lair_Brains` runs on an interval. `Spawn`
+  spawns the instance's `Spawn_Type`; a lair with its own function names
+  its units as literals (`Graveyard_Spawn`, `Snake_Pit_Spawn`,
+  `Rat_Spawn`, `GoblinFortSpawn`). One script writes the member later:
+  the Spire of Death's quest sets `Spire_Spawn_Two` to `_Five` as spires
+  fall. `gpl::spawns` reads this off a loaded program: 36 spawners in
+  the expansion's, no spawn call's name left unresolved, and 3 more in
+  two quests'; `regent_cli lair-spawns` prints them.
 - A picked mobile is made with `APV:2` (Artifice) the picked entry's
   force, where not 0: the spawn item's `resource`, a `GSGL` entry's
   `rest[3]` (`world::new_map::LairEntry`). **Game**: the Undead

@@ -11,8 +11,8 @@ use regent_draw::art::{self, Answer, ArtSource, Pic, Picture, Place, Scene, Snap
 
 use crate::draw::frame;
 use crate::files::lore::{
-    self, Catalogue, Category, Entry, SPAWNS_AFTER, default_spawns, details_needed,
-    spawns_revealed, subtitle, unlock_text,
+    self, Catalogue, Category, Entry, SPAWNS_AFTER, details_needed, spawns_revealed, subtitle,
+    unlock_text,
 };
 use crate::files::profile::{LoreMark, Player, Profile};
 use crate::game::seen::{News, Watch};
@@ -535,7 +535,7 @@ fn spawn_list(ui: &mut egui::Ui, entry: &Entry, catalogue: &Catalogue, mark: Lor
         },
     );
     if spawns_revealed(mark) {
-        let spawns = default_spawns(entry.code);
+        let spawns = catalogue.spawns(entry.code);
         if spawns.is_empty() {
             ui.label("No regular spawns");
         } else {

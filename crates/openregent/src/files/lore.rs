@@ -19,96 +19,6 @@ const DETAILS_AFTER: u32 = 5;
 const BOSS_DETAILS_AFTER: u32 = 1;
 pub(crate) const SPAWNS_AFTER: u32 = 10;
 
-/// Normal lair spawns from shipped GPL `.dat` prototypes and spawn scripts.
-/// Special death spawns and quest event spawns are excluded.
-const LAIR_DEFAULTS: &[(FourCc, &[FourCc])] = &[
-    (FourCc(*b"BB01"), &[FourCc(*b"BV02")]),
-    (FourCc(*b"BBA1"), &[FourCc(*b"BVF1")]),
-    (FourCc(*b"BBB1"), &[FourCc(*b"BVS1")]),
-    (FourCc(*b"BBB2"), &[FourCc(*b"BVV1")]),
-    (FourCc(*b"BBB3"), &[FourCc(*b"BVP1")]),
-    (FourCc(*b"BBB4"), &[FourCc(*b"BVY1")]),
-    (FourCc(*b"BBH1"), &[FourCc(*b"BVL1")]),
-    (FourCc(*b"BBI1"), &[FourCc(*b"BVL1")]),
-    (FourCc(*b"BBJ1"), &[FourCc(*b"BVT1"), FourCc(*b"BVZ1")]),
-    (FourCc(*b"BBK1"), &[FourCc(*b"BVM1")]),
-    (FourCc(*b"BBL1"), &[FourCc(*b"BVZ1")]),
-    (FourCc(*b"BBM1"), &[FourCc(*b"BVZ1")]),
-    (FourCc(*b"BBO1"), &[FourCc(*b"BVZ1")]),
-    (FourCc(*b"BBP1"), &[FourCc(*b"BVZ1")]),
-    (FourCc(*b"BBQ1"), &[]),
-    (FourCc(*b"BBS1"), &[FourCc(*b"BVO1"), FourCc(*b"BVp1")]),
-    (
-        FourCc(*b"BBT1"),
-        &[
-            FourCc(*b"BVL1"),
-            FourCc(*b"BVL2"),
-            FourCc(*b"BVL3"),
-            FourCc(*b"BVL4"),
-            FourCc(*b"BVo1"),
-            FourCc(*b"BVJ1"),
-            FourCc(*b"BVT1"),
-            FourCc(*b"BVY1"),
-            FourCc(*b"BVX1"),
-            FourCc(*b"BVx1"),
-            FourCc(*b"BVm1"),
-        ],
-    ),
-    (FourCc(*b"BBa1"), &[FourCc(*b"BVQ1")]),
-    (FourCc(*b"BBb1"), &[FourCc(*b"BVD1")]),
-    (FourCc(*b"BBc1"), &[FourCc(*b"BVD1")]),
-    (FourCc(*b"BBd1"), &[FourCc(*b"BVH1")]),
-    (FourCc(*b"BBe1"), &[FourCc(*b"BVH1")]),
-    (FourCc(*b"BBf1"), &[FourCc(*b"BVM1")]),
-    (FourCc(*b"BBg1"), &[FourCc(*b"BVH1")]),
-    (FourCc(*b"BBh1"), &[FourCc(*b"BVZ1")]),
-    (FourCc(*b"BBi1"), &[FourCc(*b"BVH1")]),
-    (FourCc(*b"BBi2"), &[FourCc(*b"BVH1")]),
-    (FourCc(*b"BBl1"), &[FourCc(*b"BVH1")]),
-    (FourCc(*b"BBm1"), &[FourCc(*b"BVJ1")]),
-    (FourCc(*b"BBp1"), &[FourCc(*b"BVH1")]),
-    (FourCc(*b"BBu1"), &[FourCc(*b"BVT1")]),
-    (
-        FourCc(*b"BBv1"),
-        &[
-            FourCc(*b"BVH1"),
-            FourCc(*b"BVQ1"),
-            FourCc(*b"BVq1"),
-            FourCc(*b"BVr1"),
-            FourCc(*b"BVs1"),
-        ],
-    ),
-    (FourCc(*b"BBw1"), &[FourCc(*b"BVx1")]),
-    (
-        FourCc(*b"BBx1"),
-        &[
-            FourCc(*b"BVH1"),
-            FourCc(*b"BVQ1"),
-            FourCc(*b"BVq1"),
-            FourCc(*b"BVr1"),
-            FourCc(*b"BVs1"),
-        ],
-    ),
-    (FourCc(*b"BBy1"), &[]),
-    (
-        FourCc(*b"BBz1"),
-        &[
-            FourCc(*b"BVL1"),
-            FourCc(*b"BVL2"),
-            FourCc(*b"BVL3"),
-            FourCc(*b"BVL4"),
-            FourCc(*b"BVo1"),
-        ],
-    ),
-];
-
-pub(crate) fn default_spawns(code: FourCc) -> &'static [FourCc] {
-    LAIR_DEFAULTS
-        .iter()
-        .find(|(lair, _)| *lair == code)
-        .map_or(&[], |(_, spawns)| spawns)
-}
-
 pub(crate) const fn spawns_revealed(mark: LoreMark) -> bool {
     mark.owned || mark.kills >= SPAWNS_AFTER
 }
@@ -308,9 +218,49 @@ impl Entry {
 }
 
 #[derive(Resource, Default)]
-pub struct Catalogue(pub BTreeMap<FourCc, Entry>, pub Vec<PathBuf>);
+pub struct Catalogue(pub BTreeMap<FourCc, Entry>, pub Vec<PathBuf>, Spawned);
+
+/// Spawning buildings' monsters, read on first use: each set of programs
+/// is loaded for it, which a start should not wait for.
+#[derive(Default)]
+pub struct Spawned {
+    /// Each distinct set of programs a game loads.
+    sets: Vec<Programs>,
+    /// Descriptors by folded HEAD name.
+    units: BTreeMap<String, (FourCc, UnitKind)>,
+    found: std::sync::OnceLock<BTreeMap<FourCc, Vec<FourCc>>>,
+}
+
+impl Spawned {
+    const fn new(sets: Vec<Programs>, units: BTreeMap<String, (FourCc, UnitKind)>) -> Spawned {
+        Spawned {
+            sets,
+            units,
+            found: std::sync::OnceLock::new(),
+        }
+    }
+}
+
+/// A descriptor's HEAD name as the scripts' names are compared: folded.
+fn folded(name: &[u8]) -> String {
+    String::from_utf8_lossy(name).to_ascii_lowercase()
+}
 
 impl Catalogue {
+    /// The monsters `code`'s spawn script can spawn ([`spawns`]): a
+    /// lair's regular spawns. Not a falling lair's, nor a quest event's.
+    /// None where the programs will not read: logged, once.
+    pub(crate) fn spawns(&self, code: FourCc) -> &[FourCc] {
+        let found = self.2.found.get_or_init(|| {
+            spawns(&self.2.sets, &self.2.units).unwrap_or_else(|e| {
+                bevy::log::warn!("lore: lair spawns not read: {e}");
+                BTreeMap::new()
+            })
+        });
+
+        found.get(&code).map_or(&[], Vec::as_slice)
+    }
+
     /// Read each shipped archive once, without installed mods.
     pub fn read(hd: &Path) -> Result<Self, String> {
         Self::gathered(hd).map(|(catalogue, _)| catalogue)
@@ -318,9 +268,10 @@ impl Catalogue {
 
     /// [`Catalogue::read`], and what its buildings' attacks were read from.
     fn gathered(hd: &Path) -> Result<(Self, Armoury), String> {
-        let (mut paths, mut programs) = shipped(hd)?;
+        let shipped = shipped(hd)?;
+        let (mut paths, mut programs) = (shipped.archives, shipped.programs);
         let mut used = BTreeSet::new();
-        let mut entries = BTreeMap::new();
+        let (mut entries, mut units) = (BTreeMap::new(), BTreeMap::new());
         let mut images = BTreeSet::new();
         let mut help = BTreeMap::new();
         let mut help_panel = None;
@@ -351,6 +302,7 @@ impl Catalogue {
                         record.id,
                         String::from_utf8_lossy(unit.tail().script).into_owned(),
                     );
+                    units.insert(folded(unit.head.name), (record.id, unit.kind()));
 
                     if let Some(entry) = entry(record.id, &unit) {
                         entries.insert(
@@ -428,29 +380,97 @@ impl Catalogue {
                 })
                 .collect(),
             paths,
+            Spawned::new(shipped.sets, units),
         );
 
         Ok((catalogue, armoury))
     }
 }
 
+/// The `.bcd` programs one game loads, in load order.
+type Programs = Vec<PathBuf>;
+
 /// The shipped archives and `.bcd` programs: the expansion's, then each
-/// quest's.
-fn shipped(hd: &Path) -> Result<(Vec<PathBuf>, Vec<PathBuf>), String> {
+/// quest's. And each distinct set of programs a game loads, the
+/// expansion's first.
+struct Shipped {
+    archives: Vec<PathBuf>,
+    programs: Vec<PathBuf>,
+    sets: Vec<Programs>,
+}
+
+fn shipped(hd: &Path) -> Result<Shipped, String> {
     let install = dataset::Install::new(hd, Bytecode::Install);
     let files = install
         .files(Datasets::Expansion)
         .map_err(|e| e.to_string())?;
     let mut paths = files.archives;
-    let mut programs = files.programs;
+    let mut programs = files.programs.clone();
+    let mut sets = vec![files.programs];
 
     for quest in quest::offered(hd, &[]) {
         let files = install.quest(&quest).map_err(|e| e.to_string())?;
         paths.extend(files.archives);
-        programs.extend(files.programs);
+        programs.extend(files.programs.iter().cloned());
+
+        if !sets.contains(&files.programs) {
+            sets.push(files.programs);
+        }
     }
 
-    Ok((paths, programs))
+    Ok(Shipped {
+        archives: paths,
+        programs,
+        sets,
+    })
+}
+
+/// Each spawning building's monsters, by code: what its spawn script
+/// can spawn (`regent_core::gpl::spawns`), read from each of `sets`'
+/// programs; the first set that holds a building says. `units`:
+/// descriptors by folded HEAD name.
+///
+/// A script names a unit by its descriptor's HEAD name; a name that is
+/// no character's is left out (an overlay a rat lair spawns). The spawn
+/// function's monsters are in code order, a later stage's after them in
+/// the script's order (the Spire of Death's).
+fn spawns(
+    sets: &[Programs],
+    units: &BTreeMap<String, (FourCc, UnitKind)>,
+) -> Result<BTreeMap<FourCc, Vec<FourCc>>, String> {
+    let of_kind = |name: &str, kind: UnitKind| {
+        units
+            .get(&name.to_ascii_lowercase())
+            .filter(|(_, k)| *k == kind)
+            .map(|(code, _)| *code)
+    };
+    let characters = |names: &[String]| -> Vec<FourCc> {
+        names
+            .iter()
+            .filter_map(|name| of_kind(name, UnitKind::Character))
+            .collect()
+    };
+    let mut found = BTreeMap::new();
+
+    for set in sets {
+        let images = set
+            .iter()
+            .map(|path| std::fs::read(path).map_err(|e| format!("{}: {e}", path.display())))
+            .collect::<Result<Vec<_>, String>>()?;
+        let program = regent_core::gpl::load::Program::load(&images).map_err(|e| e.to_string())?;
+
+        for spawner in regent_core::gpl::spawns::spawners(&program) {
+            if let Some(lair) = of_kind(&spawner.instance, UnitKind::Building) {
+                let mut first = characters(&spawner.names);
+
+                first.sort_unstable();
+                first.extend(characters(&spawner.staged));
+                found.entry(lair).or_insert(first);
+            }
+        }
+    }
+
+    Ok(found)
 }
 
 /// `.dat` instance members, keys folded: text, as the compiler stored them.
@@ -759,14 +779,12 @@ mod tests {
 
     #[test]
     fn lair_spawns_unlock_after_ten_kills_or_ownership() {
-        let camp = FourCc(*b"BBH1");
         let marked = |kills, owned| LoreMark {
             seen: true,
             kills,
             owned,
         };
 
-        assert_eq!(default_spawns(camp), &[FourCc(*b"BVL1")]);
         assert!(!spawns_revealed(marked(9, false)));
         assert!(spawns_revealed(marked(10, false)));
         assert!(spawns_revealed(marked(0, true)));
@@ -932,11 +950,18 @@ mod tests {
         assert_eq!(catalogue.0[&FourCc(*b"ABJ4")].title, "Dark Palace");
     }
 
+    /// The Spire of Death's spawn function is set by its quest's script
+    /// as its spires fall: every stage's monsters are listed, the first
+    /// stage's in code order, the later ones' in the script's.
     #[test]
+    #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn spire_lore_includes_every_scripted_spawn() {
+        let hd = crate::files::env::path(crate::files::env::HD).expect("MAJESTY_HD");
+        let catalogue = Catalogue::read(&hd).expect("shipped data");
+
         assert_eq!(
-            default_spawns(FourCc(*b"BBT1")),
-            &[
+            catalogue.spawns(FourCc(*b"BBT1")),
+            [
                 FourCc(*b"BVL1"),
                 FourCc(*b"BVL2"),
                 FourCc(*b"BVL3"),
@@ -952,36 +977,53 @@ mod tests {
         );
     }
 
+    /// A lair's spawns are read from its spawn script: monsters all, an
+    /// overlay a rat lair spawns left out; a lair with its own spawn
+    /// function lists each unit that names; a tower lair spawns none.
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
-    fn lair_defaults_cover_shipped_lore() {
+    fn lair_spawns_are_read_from_the_spawn_scripts() {
         let hd = crate::files::env::path(crate::files::env::HD).expect("MAJESTY_HD");
         let catalogue = Catalogue::read(&hd).expect("shipped data");
-        let lairs: BTreeSet<_> = catalogue
+        let spawns = |code: &[u8; 4]| catalogue.spawns(FourCc(*code));
+        let lairs = catalogue
             .0
             .values()
-            .filter(|entry| entry.category == Category::Lairs)
-            .map(|entry| entry.code)
-            .collect();
-        let listed: BTreeSet<_> = LAIR_DEFAULTS.iter().map(|(code, _)| *code).collect();
+            .filter(|entry| entry.category == Category::Lairs);
 
-        assert_eq!(listed.len(), LAIR_DEFAULTS.len());
-        assert_eq!(listed, lairs);
-        for (lair, spawns) in LAIR_DEFAULTS {
-            for spawn in *spawns {
+        for lair in lairs {
+            for spawn in catalogue.spawns(lair.code) {
                 assert_eq!(
                     catalogue.0.get(spawn).map(|entry| entry.category),
                     Some(Category::Monsters),
-                    "{lair} -> {spawn}"
+                    "{} -> {spawn}",
+                    lair.code
                 );
             }
         }
+
+        // Graveyard_Spawn, Snake_Pit_Spawn, Rats_Nest; Krolm's altar is its quest's.
+        assert_eq!(spawns(b"BBJ1"), [FourCc(*b"BVT1"), FourCc(*b"BVZ1")]);
+        assert_eq!(spawns(b"BBS1"), [FourCc(*b"BVO1"), FourCc(*b"BVp1")]);
+        assert_eq!(
+            spawns(b"BBx1"),
+            [
+                FourCc(*b"BVH1"),
+                FourCc(*b"BVQ1"),
+                FourCc(*b"BVq1"),
+                FourCc(*b"BVr1"),
+                FourCc(*b"BVs1"),
+            ]
+        );
+        assert_eq!(spawns(b"BB01"), [FourCc(*b"BV02")]);
+        assert!(spawns(b"BBQ1").is_empty() && spawns(b"BBy1").is_empty());
     }
 
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn ordinary_lair_spawns_match_sdk() {
         let hd = crate::files::env::path(crate::files::env::HD).expect("MAJESTY_HD");
+        let catalogue = Catalogue::read(&hd).expect("shipped data");
         let sdk = hd.join("SDK");
         let mut names = BTreeMap::new();
         for file in [
@@ -1016,7 +1058,9 @@ mod tests {
                 let Some(&lair) = names.get(&prototype.name.to_ascii_lowercase()) else {
                     continue;
                 };
-                if !LAIR_DEFAULTS.iter().any(|(code, _)| *code == lair) {
+                let listed = catalogue.0.get(&lair).map(|entry| entry.category);
+
+                if listed != Some(Category::Lairs) {
                     continue;
                 }
 
@@ -1038,7 +1082,12 @@ mod tests {
                         }
                         _ => Vec::new(),
                     };
-                    assert_eq!(default_spawns(lair), expected, "{file}: {}", prototype.name);
+                    assert_eq!(
+                        catalogue.spawns(lair),
+                        expected,
+                        "{file}: {}",
+                        prototype.name
+                    );
                     checked.insert(lair);
                 }
             }
