@@ -6076,6 +6076,7 @@ dependencies = [
  "ariadne",
  "bink",
  "logos",
+ "memmap2",
  "png",
  "regent_corpus",
  "regent_testgame",

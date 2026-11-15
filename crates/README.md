@@ -14,7 +14,7 @@ separate so that what *they* depend on never reaches it. In one package,
 
 | Crate | Holds |
 |---|---|
-| `regent_core/` | The library. Four dependencies: `logos`, `ariadne`, `serde`, `toml` |
+| `regent_core/` | The library. Depends on `logos`, `ariadne`, `memmap2`, `serde`, `toml` |
 | `regent_cli/` | Inspection tools and the GPL compiler. Binary of the same name; takes `clap` |
 | `regent_corpus/` | Where the tests' corpora are (`.env`); every crate's tests take it |
 | `regent_testgame/` | A small made-up game, all authored here, so tests with no game data run the real simulation |
@@ -250,8 +250,9 @@ host and whether iroh uses a relay.
 | `save` | openregent's own save model |
 | `sim::game`, `sim::host` | The game driver, its input decoder, and the live host that answers GPL's builtins |
 
-Four dependencies: `logos` for the lexer, `ariadne` for diagnostics, `serde`
-for the save model, `toml` for the project's own files.
+Dependencies: `logos` for the lexer, `ariadne` for diagnostics, `memmap2`
+for the archives, `serde` for the save model, `toml` for the project's own
+files.
 The tests add `roxmltree` (the SDK's descriptor XML),
 `png` (captures), `toml` (scene files), `bink` (the videos), `ron` and `zstd`
 (saved snapshots), `regent_corpus`, `regent_testgame`, `regex` and

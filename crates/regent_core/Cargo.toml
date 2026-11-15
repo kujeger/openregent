@@ -1,7 +1,7 @@
 # The library: readers for the data files, the GPL language and VM, the
 # simulation, and what the screen shows of it, in acyclic layers (src/lib.rs).
 #
-# Four dependencies, readable off this one file — which is the reason the
+# Its dependencies are readable off this one file — which is the reason the
 # binaries are separate crates rather than extra targets here.
 [package]
 name = "regent_core"
@@ -14,6 +14,8 @@ description = "Readers for Majesty: The Fantasy Kingdom Sim (2000), its GPL comp
 [dependencies]
 ariadne = "0.6.0"
 logos = "0.16.1"
+# The larger archives are mapped, not read (`data::cam`).
+memmap2 = "0.9.12"
 # The save model only (`save`).
 serde = { workspace = true }
 toml = "1.2.0"

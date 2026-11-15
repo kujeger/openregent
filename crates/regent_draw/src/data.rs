@@ -12,6 +12,8 @@
 //!
 //! A file is read but its videos and sounds ([`cam::DEFERRED`]): a
 //! record of those reads its own bytes as it plays ([`cam::Record::bytes`]).
+//! The larger files are mapped, not read ([`cam::MAP_FROM`]): the pixels
+//! a game never draws take no memory.
 //!
 //! ```text
 //!  path ── cam::Image::read ── leaked ──> cam::Archive ─┐

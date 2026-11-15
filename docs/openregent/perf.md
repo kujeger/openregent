@@ -221,6 +221,13 @@ groups; name it (`quiet.sh igpu`).
 
 Memory:
 
+- Archives of 1 MB or more are mapped, not read (`cam::MAP_FROM`): the
+  kernel's file cache holds them, only the pages touched, and can drop
+  them. Read, HD's `TILE` archives held 225 MB from the main menu on; a
+  late 512-cell game touches 87 MB of them. Such a file truncated or
+  rewritten in place while the game runs ends it; on Windows it cannot
+  be replaced meanwhile. With nothing cached the first frame comes
+  sooner than it did reading: 2.4 s against 3.0 s on a Celeron N4020.
 - wgpu's allocator takes blocks of 8 to 64 MB
   (`MemoryHints::MemoryUsage`, `draw::defaults`); its larger default
   blocks held far more than the live allocations.
