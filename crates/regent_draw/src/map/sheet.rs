@@ -1115,12 +1115,20 @@ mod tests {
         assert_eq!(jobs.len(), 1, "asked once");
         assert_eq!(jobs.of(Need::Drawn), 1, "drawn's");
 
-        // Another set asked early, then drawn: its job goes ahead.
+        // Another set asked early, then drawn: its job goes ahead. The
+        // lowest with a tile of its own: some share every tile, and the
+        // map's order differs a run.
+        let own = |set: &u16| {
+            sheet.sets[set]
+                .iter()
+                .any(|t| !sheet.asked[&key.1].contains(t))
+        };
         let early = sheet
             .sets
             .keys()
             .copied()
-            .find(|s| *s != key.1)
+            .filter(|s| *s != key.1 && own(s))
+            .min()
             .expect("another set");
         let tile = *sheet.sets[&early]
             .iter()

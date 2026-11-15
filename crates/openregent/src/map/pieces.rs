@@ -1707,6 +1707,15 @@ pub(crate) mod tests {
             .and_then(Layer::up)
     }
 
+    /// Whether a page job is queued or running.
+    fn paging(app: &App) -> bool {
+        use regent_draw::map::sheet::Need;
+
+        let sprites = app.world().resource::<Sprites>();
+
+        sprites.jobs(Need::Drawn) + sprites.jobs(Need::Early) > 0
+    }
+
     /// Updates of `app` until agent 1's drawing draws `key`, at most
     /// `most`: its sprite pages land.
     fn landed_key(app: &mut App, key: Key, most: u32) {
@@ -1837,6 +1846,13 @@ pub(crate) mod tests {
             app.insert_resource(Snapshot::of(Steps::showing(now.clone())));
             app.world_mut().resource_mut::<Reel>().ms = ms;
             app.update();
+
+            // Until the frame's pages land: a drawing holds its last
+            // while they are pending, and when they land differs a run.
+            while paging(&app) {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                app.update();
+            }
 
             let mut next = HashMap::new();
 
