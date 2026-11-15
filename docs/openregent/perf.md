@@ -230,7 +230,11 @@ Memory:
   sooner than it did reading: 2.4 s against 3.0 s on a Celeron N4020.
 - wgpu's allocator takes blocks of 8 to 64 MB
   (`MemoryHints::MemoryUsage`, `draw::defaults`); its larger default
-  blocks held far more than the live allocations.
+  blocks held far more than the live allocations. `MAJ_PERF_GPU`'s
+  `memory blocks` line says how full each size is. Where the driver has
+  one kind of memory (Intel's, lavapipe), a texture's upload buffer
+  comes from the same blocks and leaves a hole: a late 512-cell game's
+  277 MB holds about 400 MB there, whatever the block size.
 - The ground's patches, inset, meshes and floor, and the sprite sheets'
   index pages, are on the GPU alone (`RenderAssetUsages::RENDER_WORLD`):
   nothing reads them after the upload, and a kept copy is cloned again

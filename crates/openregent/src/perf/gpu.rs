@@ -19,6 +19,7 @@
 //!  pipelines, binds   pipeline and material bind group changes (count)
 //!  memory gpu ...     wgpu's allocator: bytes allocated and reserved;
 //!                     Bevy's images; the largest allocations by label
+//!  memory blocks ...  its blocks by size: count, MB used of MB held
 //!  memory art ...     the art service's textures: upscaled ("sized"), plain
 //! ```
 //!
@@ -726,6 +727,7 @@ fn said(device: &RenderDevice, images: &RenderAssets<GpuImage>) {
             image_bytes as f64 / MB,
         );
         info!(target: TARGET, "memory labels {}", largest.join(", "));
+        info!(target: TARGET, "memory blocks {} (MB)", blocks(&report));
     } else {
         info!(
             target: TARGET,
@@ -733,6 +735,41 @@ fn said(device: &RenderDevice, images: &RenderAssets<GpuImage>) {
             image_bytes as f64 / MB
         );
     }
+}
+
+/// The allocator's blocks by size: how many, and the MB used of the MB
+/// held, e.g. `8MB 20 used 100.0 of 160.0`. `own` is the blocks one
+/// allocation fills: those too large for a shared block.
+#[allow(clippy::cast_precision_loss, reason = "bytes shown in MB")]
+fn blocks(report: &wgpu::AllocatorReport) -> String {
+    // size -> (blocks, bytes used); `None` is the blocks of one allocation.
+    let mut sizes: BTreeMap<Option<u64>, (u32, u64)> = BTreeMap::new();
+
+    for block in &report.blocks {
+        let inside = &report.allocations[block.allocations.clone()];
+        let used: u64 = inside.iter().map(|a| a.size).sum();
+        let own = inside.len() == 1 && used == block.size;
+
+        let (count, bytes) = sizes.entry((!own).then_some(block.size)).or_default();
+        *count += 1;
+        *bytes += used;
+    }
+
+    let said = |(size, (count, used)): (&Option<u64>, &(u32, u64))| {
+        let used = *used as f64 / MB;
+
+        match size {
+            Some(size) => {
+                let size = *size as f64 / MB;
+                let held = size * f64::from(*count);
+
+                format!("{size:.0}MB {count} used {used:.1} of {held:.1}")
+            }
+            None => format!("own {count} {used:.1}"),
+        }
+    };
+
+    sizes.iter().map(said).collect::<Vec<_>>().join(", ")
 }
 
 /// An image's bytes on the GPU, every mip level and layer.
