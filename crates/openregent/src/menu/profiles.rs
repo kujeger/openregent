@@ -112,7 +112,7 @@ impl Picker {
     fn relist(&mut self) {
         let last = self.store.as_ref().and_then(Profiles::last);
 
-        self.listed = self.store.as_ref().map(Profiles::list).unwrap_or_default();
+        self.listed = self.store.as_ref().map_or_default(Profiles::list);
         self.chosen = last
             .and_then(|dir| self.listed.iter().position(|l| l.dir == dir))
             .or_else(|| (!self.listed.is_empty()).then_some(0));

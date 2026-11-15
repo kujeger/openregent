@@ -114,7 +114,7 @@ fn lan(
 ) -> Result<(Setup, u32, Option<net::Peer>), String> {
     let dumps = files::log::dir();
     let last = files::profile::Profiles::default_place().and_then(|p| p.opened_last());
-    let nick = last.map(|p| p.nick().to_owned()).unwrap_or_default();
+    let nick = last.map_or_default(|p| p.nick().to_owned());
 
     match (cli.mode.server, &cli.mode.client) {
         (Some(_), _) if setup.players < 2 => Err("--server: --players 2 to 4".to_owned()),

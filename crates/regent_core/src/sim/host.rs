@@ -175,11 +175,7 @@ impl<'w> Core<'w> {
         for id in self.world.take_made() {
             self.thread_lists.forget(id);
 
-            let values = self
-                .world
-                .agent(id)
-                .map(|a| a.values.clone())
-                .unwrap_or_default();
+            let values = self.world.agent(id).map_or_default(|a| a.values.clone());
 
             for m in values {
                 let o = vm.alloc(m.value);

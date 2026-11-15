@@ -381,11 +381,7 @@ impl Editor {
 
     /// `asked` open, the collections read for it.
     fn ask(&mut self, asked: Asked) {
-        self.listed = self
-            .lists
-            .as_deref()
-            .map(mod_list::lists)
-            .unwrap_or_default();
+        self.listed = self.lists.as_deref().map_or_default(mod_list::lists);
         self.asked = Some(asked);
     }
 
@@ -801,7 +797,7 @@ fn rows(ui: &mut egui::Ui, editor: &Editor, draft: &[Entry]) -> (Option<Edit>, O
                     let mut on = row.enabled;
 
                     ui.horizontal(|ui| {
-                        let number = rank.map(|r| r.to_string()).unwrap_or_default();
+                        let number = rank.map_or_default(|r| r.to_string());
 
                         ui.add_sized(
                             [rank_width, ui.spacing().interact_size.y],
@@ -1331,7 +1327,7 @@ mod tests {
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn deleting_a_mod_list_asks_first() {
         let (_dir, mut editor) = editor("delete");
-        let listed = |e: &Editor| e.lists.as_deref().map(mod_list::lists).unwrap_or_default();
+        let listed = |e: &Editor| e.lists.as_deref().map_or_default(mod_list::lists);
 
         editor.open(&[], Loading::On);
         editor.act(Act::Save);

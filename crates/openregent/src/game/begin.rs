@@ -238,10 +238,7 @@ impl<'a> Plan<'a> {
             quest,
             quest_id: self.quest.map(|q| q.quest.id),
             goals: self.quest.map(|q| q.quest.short.clone()),
-            messages: self
-                .quest
-                .map(|q| q.quest.messages.clone())
-                .unwrap_or_default(),
+            messages: self.quest.map_or_default(|q| q.quest.messages.clone()),
             setup,
             needs: self.needs,
             resumed,
@@ -613,7 +610,7 @@ impl Maker {
                     offered,
                     ..
                 }) => {
-                    let quests = offered.map(|o| vec![*o]).unwrap_or_default();
+                    let quests = offered.map_or_default(|o| vec![*o]);
 
                     self.resumed((&path, &quests), (peer, local), setup.cheats, shelved)
                 }

@@ -156,11 +156,7 @@ impl Hit {
 
         match (set(imag::ATTACHMENT_SET), set(HIT_SET)) {
             (Some(hotspot), _) => {
-                let points = hotspot
-                    .slots
-                    .first()
-                    .map(imag::Slot::points)
-                    .unwrap_or_default();
+                let points = hotspot.slots.first().map_or_default(imag::Slot::points);
                 let (_, base) = points[imag::ATTACHMENT_BASE];
 
                 Hit::Attached {

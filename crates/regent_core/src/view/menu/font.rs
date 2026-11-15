@@ -40,11 +40,7 @@ impl Font {
     /// `image`'s first set.
     #[must_use]
     pub fn of_image(image: &Image<'_>) -> Font {
-        let slots = image
-            .sets
-            .first()
-            .map(|s| s.slots.as_slice())
-            .unwrap_or_default();
+        let slots = image.sets.first().map_or_default(|s| s.slots.as_slice());
 
         Font {
             slots: slots

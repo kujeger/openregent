@@ -537,9 +537,7 @@ fn uploads(
 /// asked early, pipelines waiting, ground patches pending, KiB of images
 /// uploaded.
 fn work(settle: Option<&regent_draw::settle::Settle>, uploads: &mut Uploads) -> [f64; 6] {
-    let pending = settle
-        .map(regent_draw::settle::Settle::pending)
-        .unwrap_or_default();
+    let pending = settle.map_or_default(regent_draw::settle::Settle::pending);
     #[allow(clippy::cast_precision_loss, reason = "counts and bytes of a frame")]
     let work = [
         f64::from(pending.pages),

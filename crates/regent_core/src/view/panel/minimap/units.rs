@@ -90,21 +90,18 @@ impl Look {
                 .iter()
                 .find(|a| a.kind == SetKind::Minimap && a.variant == 0)
         });
-        let frames = set
-            .and_then(|s| s.poses.first())
-            .map(|pose| {
-                pose.stream(0)
-                    .iter()
-                    .zip(pose.nudges.iter().chain(std::iter::repeat(&(0, 0))))
-                    .map(|(frame, nudge)| {
-                        let (archive, index) = frame.tile()?;
-                        let sprite = Sprite::at(catalogue, archive, index)?.ok()?;
+        let frames = set.and_then(|s| s.poses.first()).map_or_default(|pose| {
+            pose.stream(0)
+                .iter()
+                .zip(pose.nudges.iter().chain(std::iter::repeat(&(0, 0))))
+                .map(|(frame, nudge)| {
+                    let (archive, index) = frame.tile()?;
+                    let sprite = Sprite::at(catalogue, archive, index)?.ok()?;
 
-                        Some((sprite, *nudge))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+                    Some((sprite, *nudge))
+                })
+                .collect()
+        });
 
         Look {
             kind: unit.as_ref().and_then(|u| u.kind),

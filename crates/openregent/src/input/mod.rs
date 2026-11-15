@@ -486,14 +486,13 @@ fn order(
         Mode::Build(code) => orders
             .preview
             .filter(|p| p.code == code && p.placement == Placement::Fits)
-            .map(|p| {
+            .map_or_default(|p| {
                 sends::build(BuildOrder {
                     code,
                     at: p.at,
                     owner: local,
                 })
-            })
-            .unwrap_or_default(),
+            }),
         // A unit spell on any piece the pick takes.
         Mode::Spell(spell) => sends::cast((world, program), local, &spell, at, || {
             under().map(|p| p.agent)

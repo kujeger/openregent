@@ -713,10 +713,7 @@ pub(crate) fn missiles(
                     Some(old)
                 }
                 (Some(old), Some(layers)) => {
-                    let kept = flying
-                        .get(old.entity)
-                        .map(|f| f.5.0.clone())
-                        .unwrap_or_default();
+                    let kept = flying.get(old.entity).map_or_default(|f| f.5.0.clone());
                     let strata = lay(
                         &mut commands,
                         (&quad, old.entity),

@@ -267,9 +267,7 @@ impl Lan {
     /// Each mod the lobby names that a seat lacks or holds in another
     /// version, the seats' lines by GUID: none with no lobby.
     pub fn mod_problems(&self) -> BTreeMap<Guid, Vec<String>> {
-        self.room()
-            .map(|room| mod_problems(&room))
-            .unwrap_or_default()
+        self.room().map_or_default(|room| mod_problems(&room))
     }
 
     /// Whether the lobby's MODS was pressed since the last ask.
@@ -283,8 +281,7 @@ impl Lan {
         let enabled = self
             .mods
             .as_ref()
-            .map(|(entries, loading)| mod_list::chosen(entries, *loading))
-            .unwrap_or_default();
+            .map_or_default(|(entries, loading)| mod_list::chosen(entries, *loading));
         let usable = |guid: Guid| {
             self.install.as_ref().is_none_or(|install| {
                 let found = install.mods().find(guid).is_some();
@@ -1924,7 +1921,7 @@ pub(super) fn chat(
     words: &Words,
 ) {
     let control = |id| layout.control(id);
-    let lines = lan.room().map(|r| r.chat.lines).unwrap_or_default();
+    let lines = lan.room().map_or_default(|r| r.chat.lines);
     let text = notes
         .iter()
         .cloned()
@@ -1998,8 +1995,7 @@ fn talk_line(talk: &net::Talk, words: &Words) -> String {
         net::Talk::Said(who, line) => format!("{who}: {line}"),
         net::Talk::Changed => words
             .gmtx(CHANGED_TEXT)
-            .map(|t| t.trim().to_owned())
-            .unwrap_or_default(),
+            .map_or_default(|t| t.trim().to_owned()),
     }
 }
 

@@ -90,8 +90,7 @@ impl World {
         let played = self
             .units
             .tracks_mut(id)
-            .map(|t| t.walker.take_played())
-            .unwrap_or_default();
+            .map_or_default(|t| t.walker.take_played());
         // Nothing played, nothing changes: the rest is looked up only for
         // a play.
         let fixed =
@@ -189,11 +188,7 @@ impl World {
 
     /// Track 1: every order, from a snapshot.
     pub(super) fn run_intents(&mut self, id: u32) {
-        let snapshot = self
-            .units
-            .tracks(id)
-            .map(|t| t.intents.clone())
-            .unwrap_or_default();
+        let snapshot = self.units.tracks(id).map_or_default(|t| t.intents.clone());
 
         for order in snapshot {
             let present = self

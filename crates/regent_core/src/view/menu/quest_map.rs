@@ -1000,8 +1000,7 @@ pub fn requires(quest: FourCc, rules: &[deps::Quest]) -> Requires {
             .iter()
             .find(|r| r.id == quest)
             .and_then(|r| r.requires.as_ref())
-            .map(deps::Expr::ids)
-            .unwrap_or_default();
+            .map_or_default(deps::Expr::ids);
 
         Requires::Listed(ids)
     }

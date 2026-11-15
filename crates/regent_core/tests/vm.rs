@@ -1313,8 +1313,7 @@ fn samples(code: TypeCode) -> Vec<Value> {
 fn arguments(program: &Program, def: u32) -> Vec<Vec<Value>> {
     let params = program.definitions()[def as usize]
         .signature()
-        .map(|s| s.params.clone())
-        .unwrap_or_default();
+        .map_or_default(|s| s.params.clone());
     let widest = params
         .iter()
         .map(|p| samples(p.ty).len())

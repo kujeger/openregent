@@ -107,8 +107,7 @@ pub fn goals(game: ScrollSubject<'_>, quests: &[qdd::Quest], text: &Text<'_>) ->
             let number = text
                 .at(GMTX, MAP_NUMBER)
                 .filter(|_| !random)
-                .map(|f| printf(&f, &[setup.seed().into()]))
-                .unwrap_or_default();
+                .map_or_default(|f| printf(&f, &[setup.seed().into()]));
 
             Some(said + &number)
         }

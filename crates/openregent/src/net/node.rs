@@ -1222,8 +1222,7 @@ impl Node {
                 .welcome
                 .as_ref()
                 .and_then(|(bytes, _)| Packet::decode(bytes).ok())
-                .map(|w| vec![(from, w)])
-                .unwrap_or_default(),
+                .map_or_default(|w| vec![(from, w)]),
             (Packet::Bye(seat), Some(at))
                 if self.remotes[at].live && seat == self.remotes[at].seat =>
             {

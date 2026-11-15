@@ -492,7 +492,7 @@ impl Session {
         match &self.wait {
             Some(Wait::Bound { title, .. } | Wait::Back { title, .. }) => Some(title.clone()),
             Some(Wait::Hosting { .. } | Wait::Joining(_)) => {
-                Some(self.room().map(|r| r.title).unwrap_or_default())
+                Some(self.room().map_or_default(|r| r.title))
             }
             _ => None,
         }

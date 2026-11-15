@@ -1394,8 +1394,7 @@ fn shown(rows: &[Row<'_>], look: &Look) -> Option<usize> {
 fn hint(draft: &Draft, field: &Field) -> String {
     let default = draft
         .default_of(&field.section, &field.key)
-        .map(editor::shown)
-        .unwrap_or_default();
+        .map_or_default(editor::shown);
     let range = match &field.kind {
         Kind::Number(Some(r)) => {
             let shown = |x: f64| editor::shown(&Value::Float(x));

@@ -124,8 +124,7 @@ impl Lists {
         let gmtx = |i: usize| text.gmtx(i).map(|s| s.trim().to_owned());
         let detail = |code: FourCc| {
             text.scenario_detail(code)
-                .map(|d| regent_core::data::text::plain(&d).trim().to_owned())
-                .unwrap_or_default()
+                .map_or_default(|d| regent_core::data::text::plain(&d).trim().to_owned())
         };
         let list = |list: List, players: u32| -> Result<Vec<Entry>, String> {
             let none = (list == List::Monsters)
@@ -160,8 +159,7 @@ impl Lists {
                     .map_or_else(|| code.to_string(), |n| n.trim().to_owned()),
                 detail: text
                     .event_detail(code)
-                    .map(|d| d.trim().to_owned())
-                    .unwrap_or_default(),
+                    .map_or_default(|d| d.trim().to_owned()),
             })
             .collect();
         let victories = Victory::ALL
@@ -820,26 +818,24 @@ impl Lists {
         let victory = custom.victory;
         let lines = self.goals.iter().find(|(v, ..)| *v == victory);
 
-        lines
-            .map(|(_, line, own)| {
-                let goal = |g: u32| {
-                    let mark = if victory.greyed(g, custom.gold) {
-                        UNAVAILABLE_MARK
-                    } else {
-                        ""
-                    };
-
-                    format!("{mark}{}", line.replace("%d", &g.to_string()))
+        lines.map_or_default(|(_, line, own)| {
+            let goal = |g: u32| {
+                let mark = if victory.greyed(g, custom.gold) {
+                    UNAVAILABLE_MARK
+                } else {
+                    ""
                 };
 
-                victory
-                    .goals()
-                    .into_iter()
-                    .map(goal)
-                    .chain(std::iter::once(own.clone()))
-                    .collect()
-            })
-            .unwrap_or_default()
+                format!("{mark}{}", line.replace("%d", &g.to_string()))
+            };
+
+            victory
+                .goals()
+                .into_iter()
+                .map(goal)
+                .chain(std::iter::once(own.clone()))
+                .collect()
+        })
     }
 }
 

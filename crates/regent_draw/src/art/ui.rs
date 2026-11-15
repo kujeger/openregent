@@ -761,7 +761,7 @@ impl Art {
 
     /// The override folder at `dir` scanned again; none without.
     fn rescan_at(&mut self, dir: Option<&Path>) {
-        let found = dir.map(over::Overrides::scan).unwrap_or_default();
+        let found = dir.map_or_default(over::Overrides::scan);
         let identity = found.identity();
 
         if identity != self.entries.overrides {

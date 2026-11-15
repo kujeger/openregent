@@ -37,14 +37,11 @@ impl World {
     /// order.
     #[must_use]
     pub fn slain(&self, player: u32) -> Vec<(FourCc, i32)> {
-        self.players
-            .slain(player)
-            .map(|m| {
-                m.iter()
-                    .map(|(&code, &n)| (FourCc::from_word(code), n))
-                    .collect()
-            })
-            .unwrap_or_default()
+        self.players.slain(player).map_or_default(|m| {
+            m.iter()
+                .map(|(&code, &n)| (FourCc::from_word(code), n))
+                .collect()
+        })
     }
 
     /// `GSUnit` on piece `id` as it is deleted: a monster counts

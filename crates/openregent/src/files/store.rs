@@ -109,9 +109,8 @@ pub(crate) fn fresh(dir: &Path, stem: &str, extension: &str) -> PathBuf {
 
 /// The files in `dir`, by file name; none where it does not read.
 pub(crate) fn files(dir: &Path) -> Vec<PathBuf> {
-    let mut paths: Vec<PathBuf> = std::fs::read_dir(dir)
-        .map(|d| d.filter_map(|e| Some(e.ok()?.path())).collect())
-        .unwrap_or_default();
+    let mut paths: Vec<PathBuf> =
+        std::fs::read_dir(dir).map_or_default(|d| d.filter_map(|e| Some(e.ok()?.path())).collect());
 
     paths.sort();
     paths

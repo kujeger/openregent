@@ -447,7 +447,7 @@ impl Panel {
             found => {
                 return Err(Error::BadMagic {
                     what: "SMNU panel",
-                    found: found.map(|w| w.to_le_bytes().to_vec()).unwrap_or_default(),
+                    found: found.map_or_default(|w| w.to_le_bytes().to_vec()),
                 });
             }
         }

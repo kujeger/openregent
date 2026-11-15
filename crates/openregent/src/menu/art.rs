@@ -1196,8 +1196,7 @@ fn words(text: &Text<'_>, rules: Vec<deps::Quest>, offered: &[Offered]) -> Words
     let titles = listed.chain(named).collect();
     let months = text
         .table(&saves::MONTHS)
-        .map(|t| t.iter().map(std::borrow::Cow::into_owned).collect())
-        .unwrap_or_default();
+        .map_or_default(|t| t.iter().map(std::borrow::Cow::into_owned).collect());
 
     Words {
         rules,

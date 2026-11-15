@@ -73,8 +73,7 @@ pub fn cmd_quest_map(layout: Option<&str>, screen: (i32, i32)) -> Result<bool, S
         );
         let requires: Vec<String> = rule
             .and_then(|r| r.requires.as_ref())
-            .map(|e| e.ids().into_iter().map(name).collect())
-            .unwrap_or_default();
+            .map_or_default(|e| e.ids().into_iter().map(name).collect());
 
         println!(
             "slot {:2} {} {}",

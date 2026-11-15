@@ -105,8 +105,7 @@ impl Io {
     /// The list read again, the row named `name` lit.
     fn fill(&mut self, name: &str) {
         self.listed = crate::files::presets::place()
-            .map(|dir| crate::files::presets::list(&dir, self.players))
-            .unwrap_or_default();
+            .map_or_default(|dir| crate::files::presets::list(&dir, self.players));
 
         let names: Vec<&str> = self.listed.iter().map(|p| p.name.as_str()).collect();
 

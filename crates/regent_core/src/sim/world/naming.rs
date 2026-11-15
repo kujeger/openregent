@@ -72,8 +72,7 @@ pub fn spelled(text: &crate::data::text::Text<'_>, generator: FourCc, packed: u3
     let tables = generators()
         .into_iter()
         .find(|(g, _)| *g == generator)
-        .map(|(_, t)| t.to_vec())
-        .unwrap_or_default();
+        .map_or_default(|(_, t)| t.to_vec());
 
     tables
         .iter()

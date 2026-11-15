@@ -174,8 +174,7 @@ fn made(sources: &Sources, base: &Catalogue<'_>) -> Result<Option<Archive>, Stri
         let sets = sources
             .image_sets
             .as_deref()
-            .map(xml::ImageSets::read)
-            .unwrap_or_default();
+            .map_or_default(xml::ImageSets::read);
         let compiled = xml::Sources::read(&sources.descriptions).compile(base, &sets);
 
         (MADE_NAME, &*compiled.archive().leak())

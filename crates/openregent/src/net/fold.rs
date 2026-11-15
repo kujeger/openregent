@@ -80,8 +80,7 @@ impl Folder {
     pub fn take(&self) -> Vec<Folded> {
         self.done
             .lock()
-            .map(|done| done.try_iter().collect())
-            .unwrap_or_default()
+            .map_or_default(|done| done.try_iter().collect())
     }
 }
 

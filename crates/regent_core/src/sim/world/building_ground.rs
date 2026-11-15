@@ -196,8 +196,7 @@ impl World {
     /// grid between).
     pub(super) fn clear(&mut self, body: &Body, at: (i32, i32), time: Time) {
         let about = |pad: Option<&Pad>| -> Set<(i32, i32)> {
-            pad.map(|p| p.halves().map(|(x, y)| (at.0 + x, at.1 + y)).collect())
-                .unwrap_or_default()
+            pad.map_or_default(|p| p.halves().map(|(x, y)| (at.0 + x, at.1 + y)).collect())
         };
         let passes = [
             (Pass::Under, about(body.mask.as_ref())),

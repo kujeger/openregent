@@ -373,9 +373,8 @@ pub fn scan(folders: &[PathBuf]) -> Library {
     for folder in folders {
         for path in walk(folder, 0) {
             let package = package(folder, &path);
-            let text = std::fs::read(&path)
-                .map(|b| String::from_utf8_lossy(&b).into_owned())
-                .unwrap_or_default();
+            let text =
+                std::fs::read(&path).map_or_default(|b| String::from_utf8_lossy(&b).into_owned());
 
             let is_mod = extension(&path, MANIFEST) || source_manifest(&path);
             let found = if extension(&path, MANIFEST) {

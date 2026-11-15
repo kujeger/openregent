@@ -519,15 +519,13 @@ impl Flows<'_> {
                 } else {
                     crate::files::mod_list::Loading::On
                 };
-                let enabled: Vec<crate::files::mod_list::Entry> = spec
-                    .split_once(':')
-                    .map(|(_, list)| {
+                let enabled: Vec<crate::files::mod_list::Entry> =
+                    spec.split_once(':').map_or_default(|(_, list)| {
                         list.split(',')
                             .filter_map(regent_core::data::guid::Guid::parse)
                             .map(|g| crate::files::mod_list::Entry::of(g, true))
                             .collect()
-                    })
-                    .unwrap_or_default();
+                    });
 
                 self.mods.open(&enabled, loading);
             }
@@ -562,10 +560,7 @@ impl Flows<'_> {
             // settings shown hosting this config on a port the system
             // picks.
             if matches!(page, Page::Create | Page::Lobby | Page::LanSetup) {
-                let nick = self
-                    .profile()
-                    .map(|p| p.nick().to_owned())
-                    .unwrap_or_default();
+                let nick = self.profile().map_or_default(|p| p.nick().to_owned());
 
                 self.lan.name(&nick);
 
@@ -1640,8 +1635,7 @@ fn nick(player: &Player) -> String {
     player
         .profile
         .as_ref()
-        .map(|p| p.nick().to_owned())
-        .unwrap_or_default()
+        .map_or_default(|p| p.nick().to_owned())
 }
 
 /// The profile `page` opens on: the profile page's list; Play Game's

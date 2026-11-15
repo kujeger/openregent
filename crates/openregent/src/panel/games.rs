@@ -189,7 +189,7 @@ pub fn gamble(
             orders
                 .orders
                 .outbox
-                .extend(pressed.map(|p| sends(&b, p)).unwrap_or_default());
+                .extend(pressed.map_or_default(|p| sends(&b, p)));
 
             w.broke()
         }

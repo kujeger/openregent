@@ -204,8 +204,7 @@ impl Saves {
         let mut listed: Vec<Listed> = self
             .place
             .as_ref()
-            .map(|(dir, _)| save::list(dir))
-            .unwrap_or_default()
+            .map_or_default(|(dir, _)| save::list(dir))
             .into_iter()
             .filter(|l| {
                 l.glance
@@ -499,8 +498,7 @@ fn dated(
 fn file_name(path: &Path) -> String {
     let name = path
         .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        .map_or_default(|n| n.to_string_lossy().into_owned());
 
     name.strip_suffix(save::EXTENSION)
         .unwrap_or(&name)

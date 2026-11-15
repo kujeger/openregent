@@ -203,7 +203,7 @@ fn spawn(
         .id();
 
     // The band under the body, in the ring's place.
-    for (ellipse, mut put) in native.map(|n| n.0).unwrap_or_default() {
+    for (ellipse, mut put) in native.map_or_default(|n| n.0) {
         put.translation.z -= LAYER_STEP;
 
         commands.spawn((

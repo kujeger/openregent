@@ -264,13 +264,12 @@ impl Bot {
             .map(|(dx, dy)| (home.0 + dx * PER_HALF * 2, home.1 + dy * PER_HALF * 2))
             .find(|at| placer(*at) == Placement::Fits);
 
-        at.map(|at| {
+        at.map_or_default(|at| {
             orders::build(BuildOrder {
                 code,
                 at,
                 owner: local,
             })
         })
-        .unwrap_or_default()
     }
 }

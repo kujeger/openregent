@@ -578,8 +578,7 @@ fn profile_of(face: &Interface) -> String {
     face.player
         .profile
         .as_ref()
-        .map(|p| p.name.clone())
-        .unwrap_or_default()
+        .map_or_default(|p| p.name.clone())
 }
 
 /// This machine's selection and view, as a save keeps them.

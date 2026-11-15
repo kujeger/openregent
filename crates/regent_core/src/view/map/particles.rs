@@ -398,8 +398,8 @@ impl System {
             }
 
             // Particle spread twice; the turn they give is kept nowhere.
-            for k in 0..2 {
-                let reach = spec.turn_jitter[k] * PI;
+            for jitter in spec.turn_jitter.iter().take(2) {
+                let reach = jitter * PI;
 
                 rng.between(-reach, reach);
             }

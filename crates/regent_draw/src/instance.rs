@@ -255,7 +255,7 @@ pub fn write(
         );
         let words = self::row(
             tag.copied().unwrap_or_default(),
-            framed.map(|f| f.0).unwrap_or_default(),
+            framed.map_or_default(|f| f.0),
             lean.copied().unwrap_or_default(),
         );
 

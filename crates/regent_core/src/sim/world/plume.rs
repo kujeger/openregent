@@ -328,8 +328,7 @@ impl World {
     fn replay_vents(&mut self, holder: u32, owner: u32, vents: &Vents, old: Option<u32>, new: u32) {
         let codes: Vec<FourCc> = old
             .and_then(|o| vents.get(&o))
-            .map(|v| v.iter().map(|v| v.code).collect())
-            .unwrap_or_default();
+            .map_or_default(|v| v.iter().map(|v| v.code).collect());
 
         for i in 0..self.effects.plumes.list.len() {
             if self.effects.plumes.list[i].holder == holder
@@ -472,7 +471,7 @@ impl World {
         let owner = self.piece_owner(maker);
         let body = self.descriptors.body(code);
         let first = body.and_then(|b| b.first);
-        let vents = body.map(|b| b.vents.clone()).unwrap_or_default();
+        let vents = body.map_or_default(|b| b.vents.clone());
 
         if let Some(set) = first {
             self.vent(handle, owner, &vents, None, set);
@@ -551,7 +550,7 @@ impl World {
         let body = self.descriptors.body(code);
 
         (
-            body.map(|b| b.vents.clone()).unwrap_or_default(),
+            body.map_or_default(|b| b.vents.clone()),
             body.and_then(|b| b.first),
         )
     }
@@ -562,7 +561,7 @@ impl World {
     pub(super) fn impact_vents(&mut self, f: &super::missile::Flight, at: [Fixed; 3]) {
         let (handle, code) = (f.handle, f.code());
         let body = self.descriptors.body(code);
-        let vents = body.map(|b| b.vents.clone()).unwrap_or_default();
+        let vents = body.map_or_default(|b| b.vents.clone());
         let first = body.and_then(|b| b.first);
         let end = body
             .and_then(|b| b.poses.as_ref()?.get(&IMPACT_SET).map(|p| p.init_ms(0)))

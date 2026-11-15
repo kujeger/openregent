@@ -254,8 +254,8 @@ impl Picture {
             Colour::Direct { words, packing } => Some(narrow(colour::split(words[i], *packing))),
         };
 
-        for i in 0..sprite.covered.len() {
-            let pixel = sprite.covered[i].then(|| ink(i)).flatten();
+        for (i, covered) in sprite.covered.iter().enumerate() {
+            let pixel = covered.then(|| ink(i)).flatten();
             let (x, y) = (i32::try_from(i % width), i32::try_from(i / width));
 
             if let (Some(w), Ok(x), Ok(y)) = (pixel, x, y) {

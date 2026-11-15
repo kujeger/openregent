@@ -196,8 +196,7 @@ fn scored(
     } else {
         let title = text
             .at(GMTX, FREESTYLE_NAME)
-            .map(|t| plain(&t).trim().to_owned())
-            .unwrap_or_default();
+            .map_or_default(|t| plain(&t).trim().to_owned());
 
         (GameKind::Freestyle, title)
     };
@@ -681,8 +680,7 @@ impl Said {
         let title = quest.map_or_else(
             || {
                 text.at(GMTX, FREESTYLE_NAME)
-                    .map(|t| plain(&t).trim().to_owned())
-                    .unwrap_or_default()
+                    .map_or_default(|t| plain(&t).trim().to_owned())
             },
             |(_, title)| title.clone(),
         );

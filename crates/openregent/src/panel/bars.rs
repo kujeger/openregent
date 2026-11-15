@@ -612,7 +612,7 @@ pub fn rage(
     orders: &mut orders::Panel,
 ) {
     let text = &game.corpus.text;
-    let name = text.gmtx(RAGE_NAME).map(String::from).unwrap_or_default();
+    let name = text.gmtx(RAGE_NAME).map_or_default(String::from);
     let pic = Pic::of(RAGE_ICON.0, RAGE_ICON.1);
     let response = canvas.press(cell, ("rage", temple));
     let (_, hover, press) = sheet::look(&response, Tick::Clear);

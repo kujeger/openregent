@@ -300,7 +300,7 @@ fn body(letter: u8, set: &Animation) -> Body {
             .filter_map(|(_, tiles)| tiles.first().copied())
             .collect(),
         groups,
-        grid: slot.map(|s| s.frames.clone()).unwrap_or_default(),
+        grid: slot.map_or_default(|s| s.frames.clone()),
     }
 }
 

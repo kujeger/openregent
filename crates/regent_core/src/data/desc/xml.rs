@@ -147,9 +147,7 @@ impl ImageSets {
     /// The table in the file at `path`; none where it will not read.
     #[must_use]
     pub fn read(path: &Path) -> ImageSets {
-        let text = std::fs::read(path)
-            .map(|b| String::from_utf8_lossy(&b).into_owned())
-            .unwrap_or_default();
+        let text = std::fs::read(path).map_or_default(|b| String::from_utf8_lossy(&b).into_owned());
 
         crate::data::xml::parse(&text)
             .map_or_else(|_| ImageSets::default(), |r| ImageSets::parse(&r))
@@ -356,8 +354,7 @@ impl Names {
                 let name = super::Part::parse(record.data)
                     .ok()
                     .and_then(|p| Some(super::Head::parse(p.find(b"HEAD")?.body).ok()?.name))
-                    .map(|n| String::from_utf8_lossy(n).into_owned())
-                    .unwrap_or_default();
+                    .map_or_default(|n| String::from_utf8_lossy(n).into_owned());
 
                 names.insert(record.id.word(), name);
             }
@@ -1208,9 +1205,7 @@ fn character(game: Section<'_, '_>, names: &Names) -> Vec<u8> {
     // One entry each when the helper found a value, its index the list's
     // count: 0.
     let gear = |name: &'static str, table: Table<'_>| -> Vec<(u32, u32)> {
-        game.matched(name, table)
-            .map(|v| vec![(0, v)])
-            .unwrap_or_default()
+        game.matched(name, table).map_or_default(|v| vec![(0, v)])
     };
 
     b.list(&gear("AllowedWeapon", &WEAPONS))

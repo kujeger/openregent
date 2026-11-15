@@ -83,7 +83,7 @@ impl Sim {
             steps: self.peer.steps(),
             frame,
             game: self.snapshot()?,
-            play: self.session().map(|s| s.text()).unwrap_or_default(),
+            play: self.session().map_or_default(|s| s.text()),
         };
 
         payload.encode()
@@ -160,7 +160,7 @@ impl Sim {
             steps: self.peer.steps(),
             frame: self.frames(),
             game,
-            play: self.session().map(|s| s.text()).unwrap_or_default(),
+            play: self.session().map_or_default(|s| s.text()),
         };
 
         self.resync(self.peer.epoch() + 1, &payload.encode()?)

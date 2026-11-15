@@ -621,7 +621,7 @@ impl Sheet {
 
             self.pages.push(Page {
                 indices: images.add(indices),
-                feet: feet.map(|f| images.add(f)).unwrap_or_default(),
+                feet: feet.map_or_default(|f| images.add(f)),
             });
 
             for (tile, rect) in members {

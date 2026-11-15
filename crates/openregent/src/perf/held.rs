@@ -69,8 +69,7 @@ fn listed(sprites: &Sprites, corpus: &Corpus, maps: Option<&Maps>) -> String {
     // As `map::things` keys them: the unit's drawn set, the saved slot.
     let things = maps
         .and_then(Maps::current)
-        .map(|l| l.source.objects[SCATTER].as_slice())
-        .unwrap_or_default();
+        .map_or_default(|l| l.source.objects[SCATTER].as_slice());
 
     let drawn: BTreeSet<(String, u16, u16)> = things
         .iter()

@@ -208,19 +208,17 @@ impl Sprite {
         let shared = found
             .and_then(crate::data::imag::Set::playback)
             .map_or(0, |p| p.value);
-        let slots = found
-            .map(|s| {
-                s.slots
-                    .iter()
-                    .map(|slot| {
-                        let own = slot.playback().map_or(0, |p| p.value);
-                        let ms = if own == 0 { shared } else { own };
+        let slots = found.map_or_default(|s| {
+            s.slots
+                .iter()
+                .map(|slot| {
+                    let own = slot.playback().map_or(0, |p| p.value);
+                    let ms = if own == 0 { shared } else { own };
 
-                        (slot.frames, if slot.frames > 1 { ms } else { 0 })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+                    (slot.frames, if slot.frames > 1 { ms } else { 0 })
+                })
+                .collect()
+        });
 
         Sprite { set, slots }
     }

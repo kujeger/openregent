@@ -195,8 +195,7 @@ pub fn quests(
         .find(b"DATA", QUEST_ORDER)
         .and_then(|at| catalogue.record(b"DATA", at))
         .and_then(|r| deps::quests(&String::from_utf8_lossy(r.data)).ok())
-        .map(|rules| rules.iter().map(|r| r.id).collect())
-        .unwrap_or_default();
+        .map_or_default(|rules| rules.iter().map(|r| r.id).collect());
 
     let installed = quest::offered(hd, &order)
         .into_iter()

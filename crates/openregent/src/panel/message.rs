@@ -40,9 +40,8 @@ impl Message {
     /// Message flag `handle`, while it stands.
     pub fn of(corpus: &Corpus, world: &World, handle: u32) -> Option<Message> {
         let message = world.messages().into_iter().find(|m| m.handle == handle)?;
-        let text = message::text(&corpus.text, message.text)
-            .map(|t| t.trim().to_owned())
-            .unwrap_or_default();
+        let text =
+            message::text(&corpus.text, message.text).map_or_default(|t| t.trim().to_owned());
 
         Some(Message {
             handle,

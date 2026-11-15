@@ -110,7 +110,7 @@ impl World {
         // The owner's dead list moves before the kind is asked.
         // **Inferred**: an owner the world is unsure of moves none.
         let index = i32::try_from(self.limits.graves.len()).unwrap_or(i32::MAX);
-        let dead = owner.map(|o| self.players.bury(o)).unwrap_or_default();
+        let dead = owner.map_or_default(|o| self.players.bury(o));
 
         self.limits.graves.push(dead);
 

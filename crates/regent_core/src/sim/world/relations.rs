@@ -110,9 +110,7 @@ impl World {
             Found::Piece(p) if p.handle != 0 => Some(p.handle),
             Found::Piece(_) | Found::Unsure => None,
         };
-        let homes: Vec<u32> = handle
-            .map(|h| self.relations.home(h).to_vec())
-            .unwrap_or_default();
+        let homes: Vec<u32> = handle.map_or_default(|h| self.relations.home(h).to_vec());
         let sorts: Option<Vec<bool>> = homes.iter().map(|m| self.is_flag(*m)).collect();
         let guild = sorts.map(|s| homes.iter().zip(s).find(|(_, flag)| !flag).map(|(m, _)| *m));
 

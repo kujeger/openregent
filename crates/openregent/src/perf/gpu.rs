@@ -420,8 +420,7 @@ fn dumped(
     art: Option<&regent_draw::art::Art>,
 ) {
     let mut names: HashMap<TextureId, String> = art
-        .map(regent_draw::art::Art::names)
-        .unwrap_or_default()
+        .map_or_default(regent_draw::art::Art::names)
         .into_iter()
         .collect();
 

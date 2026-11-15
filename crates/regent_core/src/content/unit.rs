@@ -105,8 +105,7 @@ impl<'a> Unit<'a> {
             .transpose()?;
         let animations = found
             .zip(image.as_ref())
-            .map(|(found, image)| imagery::animations(catalogue, found, image))
-            .unwrap_or_default();
+            .map_or_default(|(found, image)| imagery::animations(catalogue, found, image));
 
         // Tail: callback, attachments, sounds, checked by `Unit::parse`.
         let tail = desc.tail();

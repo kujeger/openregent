@@ -289,7 +289,7 @@ impl Players {
 
     /// `player`'s statistics.
     pub(super) fn ledger(&self, player: u32) -> Ledger {
-        self.record(player).map(|p| p.ledger).unwrap_or_default()
+        self.record(player).map_or_default(|p| p.ledger)
     }
 
     /// `player`'s statistics, to add to.

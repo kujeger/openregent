@@ -535,8 +535,7 @@ impl Armoury {
             .map_or(0, |(_, value)| *value);
 
         self.attack(name)
-            .map(|(members, shot)| tower_stats(members, &shot, sight))
-            .unwrap_or_default()
+            .map_or_default(|(members, shot)| tower_stats(members, &shot, sight))
     }
 
     /// Add a `.bcd`'s section 3 instances.

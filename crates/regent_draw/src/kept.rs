@@ -141,7 +141,7 @@ impl Held {
 
         for (at, job) in jobs.iter().enumerate() {
             let hash = whole(job, versions);
-            let old = was.get_mut(at).map(std::mem::take).unwrap_or_default();
+            let old = was.get_mut(at).map_or_default(std::mem::take);
 
             called |= matches!(job.primitive, Primitive::Callback(_));
 
@@ -432,15 +432,12 @@ fn textures(
             RenderTarget::Image(image) => Some(image.handle.id()),
             _ => None,
         });
-    let ids: Vec<TextureId> = user
-        .as_ref()
-        .map(|user| {
-            changed
-                .chain(drawn)
-                .filter_map(|id| user.image_id(id))
-                .collect()
-        })
-        .unwrap_or_default();
+    let ids: Vec<TextureId> = user.as_ref().map_or_default(|user| {
+        changed
+            .chain(drawn)
+            .filter_map(|id| user.image_id(id))
+            .collect()
+    });
 
     for id in ids {
         *versions.ids.entry(id).or_default() += 1;

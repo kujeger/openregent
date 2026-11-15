@@ -97,7 +97,7 @@ pub(crate) fn ask(
                 let upgrade = desc
                     .as_ref()
                     .and_then(regent_core::data::desc::Building::upgrade_to);
-                let made = desc.map(|b| b.produces()).unwrap_or_default();
+                let made = desc.map_or_default(|b| b.produces());
                 let lair = seen.world().lair_units(shown.handle);
                 let spawns = spawns.get(&shown.code).map_or(&[][..], Vec::as_slice);
 

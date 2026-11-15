@@ -326,11 +326,7 @@ impl Install {
             .as_ref()
             .map(|d| d.join(HERE_MODS))
             .filter(|d| d.is_dir());
-        let configured = places
-            .config
-            .as_deref()
-            .map(config::mods_at)
-            .unwrap_or_default();
+        let configured = places.config.as_deref().map_or_default(config::mods_at);
         let workshop = process_path(WORKSHOP).or_else(|| {
             steam()
                 .map(|d| d.join(STEAM_WORKSHOP))
@@ -449,9 +445,8 @@ impl Install {
             warn!("mod skipped: {skipped}");
         }
 
-        let builds = compiled::folder()
-            .map(|root| compiled::resolve(&mut library, &root))
-            .unwrap_or_default();
+        let builds =
+            compiled::folder().map_or_default(|root| compiled::resolve(&mut library, &root));
 
         Scanned { library, builds }
     }

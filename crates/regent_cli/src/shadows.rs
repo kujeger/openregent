@@ -110,15 +110,11 @@ fn kind_name(kind: SetKind) -> String {
 
 /// Every stream's first frame of the layer's first pose.
 fn tiles(layer: &Animation) -> Vec<(usize, usize)> {
-    layer
-        .poses
-        .first()
-        .map(|pose| {
-            (0..pose.streams)
-                .filter_map(|s| pose.stream(s).first().and_then(FrameSource::tile))
-                .collect()
-        })
-        .unwrap_or_default()
+    layer.poses.first().map_or_default(|pose| {
+        (0..pose.streams)
+            .filter_map(|s| pose.stream(s).first().and_then(FrameSource::tile))
+            .collect()
+    })
 }
 
 /// The raw index at `i`, if indexed.

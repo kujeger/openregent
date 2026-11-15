@@ -1058,8 +1058,7 @@ impl<'p> Vm<'p> {
     /// A handle's text, empty when it holds nothing, as the trace prints it.
     fn handle_text(&self, host: &mut dyn Host, h: Option<Handle>) -> String {
         h.and_then(|h| self.get(h))
-            .map(|o| self.object_text(host, o))
-            .unwrap_or_default()
+            .map_or_default(|o| self.object_text(host, o))
     }
 
     // -----------------------------------------------------------------------

@@ -387,8 +387,7 @@ fn body(
         spells: character
             .as_ref()
             .map(desc::Character::allowed)
-            .map(|a| a.spells.iter().map(|(_, id)| *id).collect())
-            .unwrap_or_default(),
+            .map_or_default(|a| a.spells.iter().map(|(_, id)| *id).collect()),
         heals: match (&character, &building) {
             (Some(c), _) => c.has(desc::CharacterFlag::Heals),
             (None, Some(b)) => b.has(desc::BuildingFlag::Heals),

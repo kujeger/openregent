@@ -353,8 +353,7 @@ fn brief(game: &Game<'_>, id: u32) -> Row {
         .now
         .iter()
         .find(|s| s.agent == id)
-        .map(|s| listed(game.corpus, game.world, s))
-        .unwrap_or_default();
+        .map_or_default(|s| listed(game.corpus, game.world, s));
 
     Row {
         icon: None,
@@ -371,9 +370,7 @@ fn detailed(game: &Game<'_>, id: u32, which: Roster) -> Row {
     let (world, text) = (game.world, &game.corpus.text);
     let shown = game.now.iter().find(|s| s.agent == id);
     let chosen = shown.map(|s| Chosen::of(game.corpus, (world, game.local), s));
-    let name = shown
-        .map(|s| listed(game.corpus, world, s))
-        .unwrap_or_default();
+    let name = shown.map_or_default(|s| listed(game.corpus, world, s));
     let (now, most) = chosen
         .as_ref()
         .and_then(|c| c.health)

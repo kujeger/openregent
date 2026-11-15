@@ -185,8 +185,7 @@ fn controls(
                 );
                 let text = saves
                     .lit_save()
-                    .map(|l| save::dialog::description(l, strings, marking))
-                    .unwrap_or_default();
+                    .map_or_default(|l| save::dialog::description(l, strings, marking));
 
                 ground(canvas, c);
                 canvas.note(c, &text);
@@ -195,8 +194,7 @@ fn controls(
                 let text = saves
                     .here
                     .as_ref()
-                    .map(|h| save::dialog::current(h, strings))
-                    .unwrap_or_default();
+                    .map_or_default(|h| save::dialog::current(h, strings));
 
                 ground(canvas, c);
                 canvas.note(c, &text);

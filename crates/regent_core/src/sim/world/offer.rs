@@ -416,8 +416,7 @@ impl Menu {
         let text = catalogue
             .find(b"DATA", BDEP)
             .and_then(|at| catalogue.record(b"DATA", at))
-            .map(|r| String::from_utf8_lossy(r.data).into_owned())
-            .unwrap_or_default();
+            .map_or_default(|r| String::from_utf8_lossy(r.data).into_owned());
         let rules = deps::buildings(&text)
             .unwrap_or_default()
             .into_iter()
@@ -437,7 +436,7 @@ impl Menu {
     /// where there are some (bdep tokens of: the rule's tokens).
     #[must_use]
     pub fn needs(&self, code: FourCc) -> Vec<FourCc> {
-        self.rules.get(&code).map(Expr::ids).unwrap_or_default()
+        self.rules.get(&code).map_or_default(Expr::ids)
     }
 
     /// `code`'s `BDEP` rule, if it has one.
@@ -915,8 +914,7 @@ impl World {
     pub fn recruits(&self, menu: &Menu, id: u32) -> Vec<Button<FourCc>> {
         self.pieces
             .get(id)
-            .map(|piece| self.guild_buttons(menu, id, piece))
-            .unwrap_or_default()
+            .map_or_default(|piece| self.guild_buttons(menu, id, piece))
     }
 
     /// [`World::recruits`] of guild `id`, `piece`.
@@ -981,8 +979,7 @@ impl World {
     pub fn researches(&self, program: &Program, id: u32) -> Vec<Button<Item>> {
         self.pieces
             .get(id)
-            .map(|piece| self.research_buttons(program, piece))
-            .unwrap_or_default()
+            .map_or_default(|piece| self.research_buttons(program, piece))
     }
 
     /// [`World::researches`] of `piece`.

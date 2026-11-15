@@ -387,8 +387,7 @@ fn pages() -> impl clap::builder::TypedValueParser<Value = panel::Page> {
         PAGES
             .iter()
             .find(|(n, _)| *n == name)
-            .map(|(_, page)| *page)
-            .unwrap_or_default()
+            .map_or_default(|(_, page)| *page)
     })
 }
 

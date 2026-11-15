@@ -152,8 +152,7 @@ pub fn text(catalogue: &Catalogue<'_>, text: &Text<'_>, said: &Said) -> Option<S
         chat::Line::Recruited(code) => {
             let title = Unit::find(catalogue, *code)
                 .and_then(Result::ok)
-                .map(|u| u.desc.head.title().into_owned())
-                .unwrap_or_default();
+                .map_or_default(|u| u.desc.head.title().into_owned());
 
             gmtx(RECRUITED).map(|f| printf(&f, &[(&title).into()]))
         }
@@ -173,8 +172,7 @@ pub fn text(catalogue: &Catalogue<'_>, text: &Text<'_>, said: &Said) -> Option<S
         chat::Line::Script { text: n, unit } => {
             let name = unit
                 .as_ref()
-                .map(|w| script_name(catalogue, text, w))
-                .unwrap_or_default();
+                .map_or_default(|w| script_name(catalogue, text, w));
 
             text.activity(*n).map(|f| printf(&f, &[(&name).into()]))
         }

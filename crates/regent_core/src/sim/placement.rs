@@ -428,7 +428,7 @@ pub fn exits(
         .sets
         .iter()
         .find(|s| s.id == EXIT_SET)
-        .map(|s| {
+        .map_or_default(|s| {
             s.slots
                 .iter()
                 .map(|slot| {
@@ -437,8 +437,7 @@ pub fn exits(
                     unproject(i32::from(x), i32::from(y))
                 })
                 .collect()
-        })
-        .unwrap_or_default();
+        });
 
     Ok(Some(points))
 }

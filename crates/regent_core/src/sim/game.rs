@@ -1367,17 +1367,13 @@ impl<'w> Game<'w> {
     /// **Measured**.
     #[must_use]
     pub fn threads(&self, id: u32) -> Vec<(String, ObjId)> {
-        let functions: Vec<String> = self
-            .world()
-            .agent(id)
-            .map(|a| {
-                a.values
-                    .iter()
-                    .filter(|m| m.ty == Kind::Function.code())
-                    .map(|m| m.name.to_ascii_lowercase())
-                    .collect()
-            })
-            .unwrap_or_default();
+        let functions: Vec<String> = self.world().agent(id).map_or_default(|a| {
+            a.values
+                .iter()
+                .filter(|m| m.ty == Kind::Function.code())
+                .map(|m| m.name.to_ascii_lowercase())
+                .collect()
+        });
 
         self.attributes_by(id, |folded| functions.iter().any(|f| f == folded))
     }

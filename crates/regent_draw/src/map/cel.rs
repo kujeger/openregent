@@ -502,7 +502,7 @@ pub fn keep_parts(
         for cel in cels.iter_mut().flatten() {
             let Some(band) = &cel.band else { continue };
             let band = store.bands.get(band);
-            let ramps = band.map(|band| band.ramps).unwrap_or_default();
+            let ramps = band.map_or_default(|band| band.ramps);
 
             cel.aloft = if overlay {
                 band.map(|band| Aloft {

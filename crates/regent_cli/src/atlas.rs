@@ -524,8 +524,7 @@ impl<'a> Art<'a> {
     fn shape(&self, (code, set, slot): Key, still: Option<u16>) -> Shape {
         self.units
             .get(&code)
-            .map(|unit| shape(self.catalogue, unit, (set, slot), still))
-            .unwrap_or_default()
+            .map_or_default(|unit| shape(self.catalogue, unit, (set, slot), still))
     }
 
     /// Tile `tile`, decoded once.

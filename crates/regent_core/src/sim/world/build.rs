@@ -336,8 +336,7 @@ impl World {
         let name = self
             .descriptors
             .body(code)
-            .map(|b| b.name.clone())
-            .unwrap_or_default();
+            .map_or_default(|b| b.name.clone());
         let agent = Agent::made(program, &name)?;
         let fixed = (
             crate::sim::units::from_pos32(PREVIEW_AT.0),

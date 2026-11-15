@@ -104,9 +104,7 @@ impl World {
             Found::Piece(p) => Some(p.handle),
             Found::Unsure => None,
         };
-        let homes: Vec<u32> = handle
-            .map(|h| self.relations.home(h).to_vec())
-            .unwrap_or_default();
+        let homes: Vec<u32> = handle.map_or_default(|h| self.relations.home(h).to_vec());
         // The walk stops at the first member not a flag: one past it is
         // never asked, known or not.
         let guild = homes

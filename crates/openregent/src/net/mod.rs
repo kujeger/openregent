@@ -235,8 +235,7 @@ impl Notice {
             Notice::Stopped(why) => {
                 let lead = text
                     .gmtx(CANNOT_CONTINUE_TEXT)
-                    .map(|t| t.trim().to_owned())
-                    .unwrap_or_default();
+                    .map_or_default(|t| t.trim().to_owned());
 
                 format!("{lead} {why}").trim().to_owned()
             }
@@ -671,7 +670,7 @@ impl Peer {
     /// The worker's folds done: each digest for the next bundles, each
     /// snapshot held.
     fn collect(&mut self) {
-        let done = self.folder.as_ref().map(Folder::take).unwrap_or_default();
+        let done = self.folder.as_ref().map_or_default(Folder::take);
 
         for folded in done {
             self.node.folded(folded.frame, folded.deep);
