@@ -273,7 +273,7 @@ pub fn redraw_inset(
     inset.composed = Some(region);
     inset.from = from;
 
-    let Some(image) = texture::sheet(&sheet) else {
+    let Some(image) = texture::uploaded(sheet) else {
         return;
     };
     let mesh = relief(&terrain, region, projection, RELIEF);
@@ -428,9 +428,11 @@ pub(super) fn relief(
         }
     }
 
+    // On the GPU alone: its culling bounds are read before it is added
+    // (`grounded`), and nothing reads its vertices after.
     let mut mesh = Mesh::new(
         PrimitiveTopology::TriangleList,
-        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+        RenderAssetUsages::RENDER_WORLD,
     );
 
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);

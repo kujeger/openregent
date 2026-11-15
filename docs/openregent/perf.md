@@ -231,6 +231,12 @@ Memory:
 - wgpu's allocator takes blocks of 8 to 64 MB
   (`MemoryHints::MemoryUsage`, `draw::defaults`); its larger default
   blocks held far more than the live allocations.
+- The ground's patches, inset, meshes and floor, and the sprite sheets'
+  index pages, are on the GPU alone (`RenderAssetUsages::RENDER_WORLD`):
+  nothing reads them after the upload, and a kept copy is cloned again
+  at each extraction. A late 512-cell game holds 143 MB less. With
+  `MAJ_PERF` the index pages stay on the CPU too, for `perf::hide`'s
+  coverage (`sheet::keep`).
 - The xBRZ main menu holds its 8 running strips' 231 frames at window
   size; leaving the page keeps one frame a strip (`art::ui`'s `trim`).
 - egui's camera keeps a main texture of its own, two window-sized

@@ -33,7 +33,7 @@
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::ImageSampler;
@@ -80,6 +80,16 @@ static RUNNING: AtomicUsize = AtomicUsize::new(0);
 
 /// Page jobs allowed at once now ([`widen`]).
 static WIDTH: AtomicUsize = AtomicUsize::new(JOBS);
+
+/// Whether a page's indices stay on the CPU too ([`keep`]).
+static KEPT: AtomicBool = AtomicBool::new(false);
+
+/// Keep the pages' indices on the CPU from here on: a perf run counts
+/// their pixels (openregent's `perf::hide`). Otherwise they are dropped
+/// once uploaded, as nothing else reads them.
+pub fn keep() {
+    KEPT.store(true, Ordering::Relaxed);
+}
 
 /// How many page jobs may run at once.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -355,7 +365,7 @@ fn casts(frame: &Frame, palette: &Palette) -> bool {
 fn decode(catalogue: &Catalogue<'_>, tile: Tile) -> Option<Decoded> {
     let frame = Frame::at(catalogue, tile.0, tile.1)?.ok()?;
     let (image, palette) = texture::indices(&frame)?;
-    let indices = image.data.clone()?;
+    let indices = image.data?;
     let width = u32::from(frame.width);
     let shadowed = casts(&frame, palette);
     let feet = shadowed
@@ -499,11 +509,16 @@ fn page(decoded: &[Decoded], (members, packed): &(Vec<usize>, Packed)) -> (Image
         (TextureFormat::R16Uint, bytes)
     };
 
-    // The indices stay on the CPU for `perf::hide`'s coverage; feet not.
-    let kept = RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD;
+    // The indices on the GPU alone, unless a perf run counts them
+    // (`keep`); the feet always.
+    let usage = if KEPT.load(Ordering::Relaxed) {
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD
+    } else {
+        RenderAssetUsages::RENDER_WORLD
+    };
 
     (
-        image((w, h), indices, TextureFormat::R8Uint, kept),
+        image((w, h), indices, TextureFormat::R8Uint, usage),
         casting.then(|| image((w, h), bytes, format, RenderAssetUsages::RENDER_WORLD)),
     )
 }
