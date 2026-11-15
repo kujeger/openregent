@@ -221,9 +221,31 @@ groups; name it (`quiet.sh igpu`).
 
 Memory:
 
+- Archives of 1 MB or more are mapped, not read (`cam::MAP_FROM`): the
+  kernel's file cache holds them, only the pages touched, and can drop
+  them. Read, HD's `TILE` archives held 225 MB from the main menu on; a
+  late 512-cell game touches 87 MB of them. Such a file truncated or
+  rewritten in place while the game runs ends it; on Windows it cannot
+  be replaced meanwhile. With nothing cached the first frame comes
+  sooner than it did reading: 2.4 s against 3.0 s on a Celeron N4020.
 - wgpu's allocator takes blocks of 8 to 64 MB
   (`MemoryHints::MemoryUsage`, `draw::defaults`); its larger default
-  blocks held far more than the live allocations.
+  blocks held far more than the live allocations. `MAJ_PERF_GPU`'s
+  `memory blocks` line says how full each size is. Where the driver has
+  one kind of memory (Intel's, lavapipe), a texture's upload buffer
+  comes from the same blocks and leaves a hole: a late 512-cell game's
+  277 MB holds about 400 MB there, whatever the block size.
+- The ground's patches, inset, meshes and floor, and the sprite sheets'
+  index pages, are on the GPU alone (`RenderAssetUsages::RENDER_WORLD`):
+  nothing reads them after the upload, and a kept copy is cloned again
+  at each extraction. A late 512-cell game holds 143 MB less. With
+  `MAJ_PERF` the index pages stay on the CPU too, for `perf::hide`'s
+  coverage (`sheet::keep`).
+- glibc's malloc is limited to two arenas (`main`'s `arenas`): a late
+  512-cell game holds 85 MB less, 65 MB on a Celeron N4020. A trim
+  threshold of 128 KB and an mmap threshold of 64 KB beside it save
+  80 MB more at 0.1 to 0.17 ms a main-thread frame on a fast machine,
+  and 15 MB on the Celeron; not set.
 - The xBRZ main menu holds its 8 running strips' 231 frames at window
   size; leaving the page keeps one frame a strip (`art::ui`'s `trim`).
 - egui's camera keeps a main texture of its own, two window-sized

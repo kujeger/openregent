@@ -383,7 +383,7 @@ pub(super) fn keep(
     let (images, meshes, colours, mut sheets) = stores;
 
     for made in made {
-        if let Some(mut image) = texture::sheet(&made.sheet) {
+        if let Some(mut image) = texture::uploaded(made.sheet) {
             let mut entity = commands.spawn((
                 Drawn,
                 GroundSheet,

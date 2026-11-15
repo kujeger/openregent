@@ -111,6 +111,9 @@ pub fn install(app: &mut App) {
         })
         .collect();
 
+    // The coverage counts the sheet pages' pixels.
+    regent_draw::map::sheet::keep();
+
     app.insert_resource(Hidden(classes))
         .add_systems(
             PostUpdate,

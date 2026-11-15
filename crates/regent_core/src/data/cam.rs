@@ -36,6 +36,11 @@
 //!  Image   [header, directory, tables][DUNT]             [DUNT]
 //!  bytes() of a WAVE or PICT record: seek, read its own range
 //! ```
+//!
+//! A file of [`MAP_FROM`] bytes or more is mapped, not read: the kernel's
+//! file cache holds its bytes, only the pages touched, and can drop them.
+//! The cost: such a file truncated or rewritten in place while it is
+//! mapped ends the process or shows changed bytes ([`mapped`]).
 
 use std::borrow::Cow;
 use std::fs::File;
@@ -97,6 +102,11 @@ impl ChunkFlag {
 /// else. No load reads them; a video or a sound reads one as it plays.
 /// Every other tag is parsed at load, or drawn from memory (`TILE`).
 pub const DEFERRED: [&[u8; 4]; 2] = [b"PICT", b"WAVE"];
+
+/// The file size from which an [`Image`] maps its file. A smaller one is
+/// read: it saves little, and a map costs whole pages. A choice, not a
+/// measured threshold; HD's five `TILE` archives are 2 MB to 92 MB.
+pub const MAP_FROM: usize = 1 << 20;
 
 /// Which payloads an [`Image`] leaves on disk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -347,12 +357,58 @@ impl Origin {
     }
 }
 
+/// An [`Image`]'s bytes.
+enum Bytes {
+    /// Read: the file, the gaps cut out.
+    Held(Vec<u8>),
+    /// Mapped: the whole file, the gaps' pages untouched.
+    Mapped(memmap2::Mmap),
+}
+
+impl std::ops::Deref for Bytes {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        match self {
+            Bytes::Held(bytes) => bytes,
+            Bytes::Mapped(map) => map,
+        }
+    }
+}
+
+/// `file` mapped to read, and the kernel asked to read ahead all of its
+/// `size` bytes but the `gaps`: what a read would have read. `None` where
+/// the map fails: the caller reads instead.
+fn mapped(file: &File, size: usize, gaps: &[Range<usize>]) -> Option<memmap2::Mmap> {
+    // SAFETY: the map is read only, and every read of it is bounds
+    // checked (`slice`, `u32_at`). It is sound only while nothing
+    // truncates the file or writes it in place: an install's archives
+    // are not written while a game runs. A file replaced by rename
+    // leaves the map on the old one.
+    let map = unsafe { memmap2::Mmap::map(file) }.ok()?;
+
+    #[cfg(unix)]
+    {
+        let mut at = 0;
+
+        for gap in gaps.iter().cloned().chain(std::iter::once(size..size)) {
+            // A hint: a failure only leaves the reads to the first touch.
+            let _ = map.advise_range(memmap2::Advice::WillNeed, at, gap.start - at);
+            at = gap.end;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = (size, gaps);
+
+    Some(map)
+}
+
 /// An archive file read but its [`DEFERRED`] payloads: their records
-/// read them from the file when asked ([`Record::bytes`]).
+/// read them from the file when asked ([`Record::bytes`]). A file of
+/// [`MAP_FROM`] bytes or more is mapped instead.
 pub struct Image {
     origin: Origin,
-    /// The file, the gaps cut out.
-    bytes: Vec<u8>,
+    bytes: Bytes,
     /// The deferred payloads left out, as file ranges: in order, apart.
     gaps: Vec<Range<usize>>,
     defer: Defer,
@@ -386,19 +442,29 @@ impl Image {
         let gaps = tables(&mut file, size)
             .map_err(unread)?
             .map_or_else(Vec::new, |head| gaps(&head, size, defer));
-        let mut bytes = Vec::new();
-        let mut at = 0;
+        let map = (size >= MAP_FROM)
+            .then(|| mapped(&file, size, &gaps))
+            .flatten();
 
-        // What lies before, between and after the gaps.
-        for gap in gaps.iter().cloned().chain(std::iter::once(size..size)) {
-            let start = bytes.len();
+        let bytes = if let Some(map) = map {
+            Bytes::Mapped(map)
+        } else {
+            let mut bytes = Vec::new();
+            let mut at = 0;
 
-            bytes.resize(start + gap.start - at, 0);
-            file.seek(SeekFrom::Start(at as u64))
-                .and_then(|_| file.read_exact(&mut bytes[start..]))
-                .map_err(unread)?;
-            at = gap.end;
-        }
+            // What lies before, between and after the gaps.
+            for gap in gaps.iter().cloned().chain(std::iter::once(size..size)) {
+                let start = bytes.len();
+
+                bytes.resize(start + gap.start - at, 0);
+                file.seek(SeekFrom::Start(at as u64))
+                    .and_then(|_| file.read_exact(&mut bytes[start..]))
+                    .map_err(unread)?;
+                at = gap.end;
+            }
+
+            Bytes::Held(bytes)
+        };
 
         Ok(Image {
             origin: Origin {
@@ -426,22 +492,34 @@ impl Image {
         self.origin.len == 0
     }
 
-    /// Bytes held in memory: the file but its deferred payloads.
-    pub const fn held(&self) -> usize {
-        self.bytes.len()
+    /// Bytes answered from memory: the file but its deferred payloads.
+    pub fn held(&self) -> usize {
+        let left: usize = self.gaps.iter().map(ExactSizeIterator::len).sum();
+
+        usize::try_from(self.origin.len).unwrap_or(usize::MAX) - left
     }
 
-    /// Where file offset `offset` is in the bytes held: the gaps before
-    /// it cut out.
-    fn at(&self, offset: usize) -> usize {
-        let cut: usize = self
-            .gaps
-            .iter()
-            .take_while(|g| g.start < offset)
-            .map(|g| g.end.min(offset) - g.start)
-            .sum();
+    /// Whether the file is mapped, not read ([`MAP_FROM`]).
+    pub const fn is_mapped(&self) -> bool {
+        matches!(self.bytes, Bytes::Mapped(_))
+    }
 
-        offset - cut
+    /// Where file offset `offset` is in the bytes: in a file read, the
+    /// gaps before it cut out.
+    fn at(&self, offset: usize) -> usize {
+        match self.bytes {
+            Bytes::Mapped(_) => offset,
+            Bytes::Held(_) => {
+                let cut: usize = self
+                    .gaps
+                    .iter()
+                    .take_while(|g| g.start < offset)
+                    .map(|g| g.end.min(offset) - g.start)
+                    .sum();
+
+                offset - cut
+            }
+        }
     }
 
     /// A deferred payload must lie in the file; it holds no bytes until
@@ -721,6 +799,34 @@ mod tests {
             record(b"WAVE", 0).bytes(),
             Err(Error::Unread { .. })
         ));
+    }
+
+    /// A file of [`MAP_FROM`] bytes is mapped, and reads as one read: what
+    /// is kept from memory, at its file offset; what is deferred from disk.
+    #[test]
+    fn a_large_file_is_mapped_and_reads_the_same() {
+        static PAD: [u8; MAP_FROM] = [7; MAP_FROM];
+        let bytes = archive(&[
+            (b"WAVE", &[(b"SND1", b"sound bytes")]),
+            (b"TILE", &[(b"0000", &PAD)]),
+            (b"DACT", &[(b"ACT1", b"action")]),
+        ]);
+        let path = on_disk("mapped.cam", &bytes);
+        let image = Image::read(&path).expect("read");
+        let archive = image.archive().expect("an archive");
+        let record = |tag: &[u8; 4], at: usize| archive.chunk_by_tag(tag).unwrap().records[at];
+
+        assert!(image.is_mapped());
+        assert!(
+            !Image::read(&on_disk("small.cam", &mixed()))
+                .unwrap()
+                .is_mapped()
+        );
+        assert_eq!(image.held(), bytes.len() - b"sound bytes".len());
+        assert_eq!(record(b"TILE", 0).data, &PAD[..]);
+        assert_eq!(record(b"DACT", 0).data, b"action", "past a gap");
+        assert_eq!(record(b"WAVE", 0).data, b"", "left on disk");
+        assert_eq!(*record(b"WAVE", 0).bytes().unwrap(), *b"sound bytes");
     }
 
     #[test]

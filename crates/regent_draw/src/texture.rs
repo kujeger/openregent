@@ -134,6 +134,21 @@ pub fn sheet(sheet: &Sheet) -> Option<Image> {
     )
 }
 
+/// A composed sheet as a texture on the GPU alone: its pixels moved in,
+/// and dropped once uploaded. For a sheet nothing reads again (the
+/// ground's); a recompose makes a new one.
+///
+/// `None` for an empty sheet, which the GPU refuses.
+pub fn uploaded(sheet: Sheet) -> Option<Image> {
+    let width = u32::try_from(sheet.width).ok()?;
+    let height = u32::try_from(sheet.height).ok()?;
+    let mut image = plain(width, height, sheet.rgba, TextureFormat::Rgba8UnormSrgb)?;
+
+    image.asset_usage = RenderAssetUsages::RENDER_WORLD;
+
+    Some(image)
+}
+
 /// One image, nearest sampled, in both worlds.
 ///
 /// `None` for a zero-sized canvas. Colours use an sRGB format: palette

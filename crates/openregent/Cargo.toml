@@ -64,3 +64,7 @@ trace = ["bevy/trace_chrome", "dep:tracing-chrome"]
 
 [lints]
 workspace = true
+
+# glibc's `mallopt`, for the arena limit (`main`).
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+libc = "0.2"

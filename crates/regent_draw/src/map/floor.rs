@@ -67,7 +67,7 @@ pub(super) fn lay(
     };
     let sheet = (ground.tileset.as_ref()).map(|tileset| art(terrain, tileset, ground, region));
 
-    if let Some(mut image) = sheet.as_ref().and_then(texture::sheet) {
+    if let Some(mut image) = sheet.and_then(texture::uploaded) {
         image.sampler = ImageSampler::linear();
 
         let mesh = relief(terrain, region, maps.projection(), RELIEF);
