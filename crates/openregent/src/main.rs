@@ -55,6 +55,7 @@ use headless::{headless, lan_headless};
 use setup::Setup;
 
 fn main() -> ExitCode {
+    arenas();
     perf::init();
 
     let matches = Cli::command().get_matches();
@@ -88,6 +89,24 @@ fn main() -> ExitCode {
     files::log::finish();
     code
 }
+
+/// glibc's malloc arenas, at most this many. By default each thread may
+/// take its own, up to 8 a core, and each keeps what its thread freed: a
+/// late 512-cell game held 85 MB less with two, at the same frame time.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+const ARENAS: libc::c_int = 2;
+
+/// Limit glibc's malloc to [`ARENAS`] arenas, before any thread starts.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn arenas() {
+    // SAFETY: `mallopt` only sets a tunable; no other thread runs yet.
+    // A refusal (0) leaves the default.
+    let _ = unsafe { libc::mallopt(libc::M_ARENA_MAX, ARENAS) };
+}
+
+/// Another allocator has no arenas to limit.
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+const fn arenas() {}
 
 fn run(cli: &Cli, opening: Opening) -> Result<(), String> {
     let install = Install::find()?;

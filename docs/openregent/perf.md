@@ -237,6 +237,11 @@ Memory:
   at each extraction. A late 512-cell game holds 143 MB less. With
   `MAJ_PERF` the index pages stay on the CPU too, for `perf::hide`'s
   coverage (`sheet::keep`).
+- glibc's malloc is limited to two arenas (`main`'s `arenas`): a late
+  512-cell game holds 85 MB less, 65 MB on a Celeron N4020. A trim
+  threshold of 128 KB and an mmap threshold of 64 KB beside it save
+  80 MB more at 0.1 to 0.17 ms a main-thread frame on a fast machine,
+  and 15 MB on the Celeron; not set.
 - The xBRZ main menu holds its 8 running strips' 231 frames at window
   size; leaving the page keeps one frame a strip (`art::ui`'s `trim`).
 - egui's camera keeps a main texture of its own, two window-sized

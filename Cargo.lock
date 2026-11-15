@@ -5456,6 +5456,7 @@ dependencies = [
  "if-addrs",
  "iroh",
  "jiff",
+ "libc",
  "png",
  "regent_core",
  "regent_corpus",
