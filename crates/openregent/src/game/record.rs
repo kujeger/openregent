@@ -851,6 +851,7 @@ mod tests {
         replay_test!(urban_renewal);
         replay_test!(the_siege);
         replay_test!(day_of_reckoning);
+        replay_test!(darkness_falls);
     }
 
     /// Frames after a recording's last line within which its quest is
