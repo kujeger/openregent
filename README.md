@@ -10,6 +10,15 @@ OpenRegent, when loading the Majesty Gold HD data, plays almost exactly like it.
 
 I've played through every quest without really noticing anything different.
 
+## New Stuff
+
+OpenRegent isn't just good old Majesty, it's also got some new stuff:
+- Full zoom -- smoothly zoom in and out
+- Supports all resolutions -- from tall to wide
+- UI that stays readable even at 4K
+- Book of Lore -- track kills, see stats!
+- QoL additions, such as HP bars only on damage units (optional)
+
 ## Supported datafiles
 The only "supported" datafiles are from the 1.5.2.28 version (latest GOG, or the Steam beta branch). Older versions probably work, but YMMV.
 
