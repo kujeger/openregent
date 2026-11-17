@@ -49,6 +49,7 @@ use regent_core::view::menu::{
 };
 
 use super::art::{self, Art, COVER, Pack, Pic, Quest, ROOM, SPLASH, Store, Wrap};
+use super::cut::{self, Flip, MESSAGE_BAND, Strip};
 use super::fit::{self, Fit, Lens};
 use super::font::{self, spans};
 use super::page::{Button, Page, Press};
@@ -733,6 +734,42 @@ impl<'a> Canvas<'a> {
         self.clip = kept;
     }
 
+    /// `pic` cut to `strips` of its rows (`cut::rows`), its top left at
+    /// layout point `at`: each strip the whole picture placed so the
+    /// strip's rows land, cut to them; a mirrored one drawn upside down.
+    pub(super) fn strips(&mut self, source: Pack, pic: Pic, at: Pos2, strips: &[Strip]) {
+        let want = self.ink.want(source, pic);
+
+        if let Some(size) = self.size(source, pic) {
+            for s in strips {
+                let rows = Rect::from_min_size(pos2(at.x, at.y + s.at), vec2(size.x, s.rows()));
+                let top = match s.flip {
+                    Flip::Plain => s.at - s.from,
+                    Flip::Mirrored => s.at - (size.y - s.to),
+                };
+                let place = Rect::from_min_size(pos2(at.x, at.y + top), size);
+                let clip = self.clip.map_or(rows, |c| c.intersect(rows));
+
+                if let Some(shown) = self.shown(want, place) {
+                    let uv = match s.flip {
+                        Flip::Plain => shown.uv,
+                        Flip::Mirrored => Rect::from_min_max(
+                            pos2(shown.uv.min.x, shown.uv.max.y),
+                            pos2(shown.uv.max.x, shown.uv.min.y),
+                        ),
+                    };
+
+                    self.ui.painter().with_clip_rect(self.fit.rect(clip)).image(
+                        shown.id,
+                        shown.rect,
+                        uv,
+                        Color32::WHITE,
+                    );
+                }
+            }
+        }
+    }
+
     /// `pic` repeated over layout rectangle `rect` from its top left.
     pub(super) fn tiled(&mut self, source: Pack, pic: Pic, rect: Rect) {
         let ctx = self.ui.ctx().clone();
@@ -913,7 +950,7 @@ impl<'a> Canvas<'a> {
     }
 
     /// `parts` on one line centred in layout rectangle `rect`, in `font`.
-    fn centred_in(&mut self, font: font::Font, rect: Rect, parts: &[(Color32, String)]) {
+    pub(super) fn centred_in(&mut self, font: font::Font, rect: Rect, parts: &[(Color32, String)]) {
         let line: String = parts.iter().map(|(_, s)| s.as_str()).collect();
         let wide = font.width(self.ui.ctx(), self.fit.scale, &line);
         let cap = font.cap(self.fit.scale);
@@ -2099,6 +2136,120 @@ pub(super) fn message(
     let keyed = hot(layout, (&buttons, control), &keys(ctx)).map(Press::Button);
 
     clicked.or(keyed)
+}
+
+/// How much shorter than `AP11` a short box is at most, layout pixels:
+/// its well cut to hold a line or two. openregent's own.
+const SHORT_CUT: f32 = 110.0;
+
+/// Between a short box's well and its lines, layout pixels, up and down.
+const SHORT_PAD: f32 = 10.0;
+
+/// `AP11` (`layout`) cut short by its well's rows (`cut::rows`),
+/// centred on the window at `canvas`'s scale over what is drawn under
+/// it: `title`, `text` evened out (`font::balanced`) and wrapped in full,
+/// the box as tall as it needs, and the buttons `ask` shows moved with
+/// its bottom. The button pressed, by a click or its hot key.
+/// openregent's own: the original's box keeps one size.
+///
+/// ```text
+///        ╭──◆──╮
+///  ┌─[ Delete Profile ]─┐   title, 8005
+///  │ Delete Kåre and its │   text 5000, its well cut to its lines
+///  │      saves?         │
+///  │  [ YES ]  [ NO ]    │   5501, 5502; or OK 5503 alone
+///  └─────────◆──────────┘
+/// ```
+pub(super) fn short(
+    canvas: &mut Canvas<'_>,
+    layout: &Layout,
+    (title, text): (&str, &str),
+    ask: Ask,
+) -> Option<i32> {
+    let window = canvas.ui.max_rect();
+    let kept = canvas.fit;
+    let panel = size(layout);
+    let text_box = layout.control(message::TEXT)?;
+    let (well, font) = (fit::rect(text_box.rect?), canvas.ink.font(text_box.font?)?);
+    let ctx = canvas.ui.ctx().clone();
+    let room = well.width() - 2.0 * WRAP_MARGIN;
+    let mut lines = |w: f32| {
+        font.wrapped(&ctx, kept.scale, (text, Color32::WHITE), w)
+            .len()
+    };
+    let width = font::balanced(room, &mut lines);
+
+    #[allow(clippy::cast_precision_loss, reason = "a few lines")]
+    let need = lines(width) as f32 * font.pitch + 2.0 * SHORT_PAD;
+    let grow = (need - well.height()).max(-SHORT_CUT).round();
+    let tall = panel.y + grow;
+
+    // Its own ids: AP11's YES, NO and OK are the page's own elsewhere.
+    let child = canvas.ui.new_child(egui::UiBuilder::new().id_salt("short"));
+    let under = std::mem::replace(&mut canvas.ui, child);
+
+    canvas.fit = Fit::centred(window, kept.scale, vec2(panel.x, tall));
+    canvas.block(window);
+
+    if let Some((record, set)) = layout.panel.art {
+        let strips = cut::rows(panel.y, MESSAGE_BAND, tall);
+
+        canvas.strips(Pack::Base, Pic::of(record, set), pos2(0.0, 0.0), &strips);
+    }
+
+    if let Some(c) = layout.control(message::TITLE) {
+        canvas.label(c, title, pick(c, State::Normal));
+    }
+
+    // The lines' box: as wide as they are evened out to, a pixel spare
+    // for rounding, the well's height with the change.
+    let lines_box = super::setup::whole(Rect::from_center_size(
+        pos2(
+            well.center().x,
+            well.top() + f32::midpoint(well.height(), grow),
+        ),
+        vec2(width + 2.0 * WRAP_MARGIN + 1.0, well.height() + grow),
+    ));
+
+    canvas.note(
+        &ShownControl {
+            rect: Some(lines_box),
+            ..text_box.clone()
+        },
+        text,
+    );
+
+    let shown: Vec<ShownControl> = message::shown(ask)
+        .iter()
+        .filter_map(|&id| layout.control(id))
+        .map(|c| lowered(c, grow))
+        .collect();
+    let clicked = shown.iter().fold(None, |hit, c| {
+        let now = canvas.button(Pack::Base, c, Able::Enabled);
+
+        hit.or(now.then_some(c.id).flatten())
+    });
+    let offered: Vec<(&ShownControl, hotkey::Able)> =
+        shown.iter().map(|c| (c, hotkey::Able::Enabled)).collect();
+    let keyed = keys(&ctx)
+        .into_iter()
+        .find_map(|key| hotkey::pick(offered.iter().copied(), key))
+        .and_then(|c| c.id);
+
+    canvas.ui = under;
+    canvas.fit = kept;
+    clicked.or(keyed)
+}
+
+/// Control `c` moved `by` layout pixels down.
+pub(super) fn lowered(c: &ShownControl, by: f32) -> ShownControl {
+    #[allow(clippy::cast_possible_truncation, reason = "a box's pixels")]
+    let rect = c.rect.map(|r| smnu::Rect {
+        y: r.y + by as i32,
+        ..r
+    });
+
+    ShownControl { rect, ..c.clone() }
 }
 
 /// Exit's question, `AP04`, centred over the main menu: its own title

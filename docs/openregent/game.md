@@ -168,7 +168,7 @@ original draws its menus at their own size and its game at HD's.
   `AP35`, session `AP55`
   (`a_dialog_is_centred_at_the_scale_of_the_page_behind`). The quest map
   spreads its frame instead.
-- egui's own pages (settings, profiles, saves, extras) take egui's
+- egui's own pages (settings, saves, extras) take egui's
   default text and spacing times the scale (`menu::fit::styled`).
 
 **Main menu.** `AP29`, base or expansion by `[ui] main_menu` (default
@@ -270,13 +270,29 @@ asks once (`Picker::start`; `a_first_start_asks_once_and_makes_nothing_itself`):
 the name prompt opens offering that name; if cancelled, the first game
 makes it silently.
 
-The main menu's Profile button (placeholder egui, top right, naming the
-profile; the original has none and asks a name, `AP35`, at Play Game)
-opens the profile page (`menu::profiles`;
+The main menu's PROFILE button (the row under it, `menu::row`; the
+original has none and asks a name, `AP35`, at Play Game) opens the
+profile page (`menu::profiles`;
 `the_profile_page_opens_from_the_main_menu_and_goes_back_to_it`): pick one
 (the last used chosen), name a new one, or delete one and its saves
-(asked first). The chosen one becomes the last used. Continue or Cancel
-goes back. The list is egui (the original has none). A new name is asked
+(asked first). The chosen one becomes the last used. CONTINUE or CANCEL
+goes back. The page is openregent's own, drawn in the original's art,
+centred over the main menu at its scale:
+
+- frame: HD's multiplayer session panel `INx3` 1000, its black field
+  (rows 124 to 166) cut out; its list plate grows a row (rows 200 to 222
+  repeated) a profile past three, to six and New profile
+  (`the_frame_grows_with_the_list_to_seven_rows`); more profiles scroll,
+  `INDs`' bar on `AP27`'s track (a guess), New profile pinned below them;
+- rows: `AP42`'s tick box `INDk` 1003 (slot 1 picked), the name in
+  `fnt4`, the picked row lit as the load list's; a click picks;
+- the picked row's delete button: `INDk` 1005 labelled DEL (a guess);
+- CONTINUE and CANCEL: `AP35`'s buttons, `DEM2` 1005;
+- Delete's question and why a press did nothing: `AP11` cut short
+  (`paint::short`; its well's rows cut, as the in-game boxes', its text
+  evened out and wrapped in full), YES and NO, or OK.
+
+Heading, labels and titles are placeholders. A new name is asked
 in `AP35`'s art (`paint::prompt`), centred over the main menu at its
 scale: heading, an egui text edit in field 5002 at `fnt2`'s size,
 centred, at most 21 characters, the name selected as it opens (**Game**:
@@ -627,6 +643,7 @@ writing nothing. The last profile's progress shows.
 |---|---|
 | `main[:ID]` | main menu, control `ID` hovered |
 | `profiles`, `mods[:GUIDS]`, `loads`, `settings` | those pages |
+| `profiles:delete`, `profiles:error` | the profile page, Delete's question or a sample note over it |
 | `map[-top\|-bottom][:KEY\|:ID]` | the quest map |
 | `extras[:KEY]`, `erase`, `hint` | the extras list, Erase Victories, the hint |
 | `background:KEY`, `summary:KEY` | a quest's briefing pages |

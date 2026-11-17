@@ -332,6 +332,33 @@ pub fn wrap(text: &str, width: f32, measure: &dyn Fn(&str) -> f32) -> Vec<String
         .collect()
 }
 
+/// The narrowest width, at most `width`, that a text takes as many
+/// lines at as at `width`, by `lines`, its line count at a width: its
+/// lines evened out, no word left alone on the last. To a pixel.
+///
+/// "Waiting for Ann: dropped in 55 s." at 193 px is two lines, "55 s."
+/// alone on the second; at the width found, "Waiting for Ann:" and
+/// "dropped in 55 s.".
+#[must_use]
+pub fn balanced(width: f32, lines: &mut dyn FnMut(f32) -> usize) -> f32 {
+    let count = lines(width);
+    let (mut low, mut high) = (0.0_f32, width);
+
+    // The count grows as the width shrinks: halve to the last width
+    // that keeps it.
+    while high - low > 1.0 {
+        let mid = f32::midpoint(low, high);
+
+        if lines(mid) <= count {
+            high = mid;
+        } else {
+            low = mid;
+        }
+    }
+
+    high.ceil().min(width)
+}
+
 /// The game's bare CR and CR LF breaks as LF.
 fn line_breaks(text: &str) -> Cow<'_, str> {
     if text.contains('\r') {
@@ -497,6 +524,33 @@ mod tests {
     #[allow(clippy::cast_precision_loss, reason = "short test lines")]
     fn chars(s: &str) -> f32 {
         s.chars().count() as f32
+    }
+
+    /// A last line of one word comes back with company.
+    #[test]
+    fn a_balanced_width_leaves_no_word_alone() {
+        let text = "Waiting for Ann: dropped in 55 s.";
+        let lines = |w: f32| wrap(text, w, &chars).len();
+        let width = balanced(30.0, &mut lines.clone());
+
+        assert_eq!(
+            wrap(text, 30.0, &chars).last().map(String::as_str),
+            Some("s.")
+        );
+        assert_eq!(
+            wrap(text, width, &chars),
+            ["Waiting for Ann:", "dropped in 55 s."]
+        );
+    }
+
+    #[test]
+    fn a_line_that_fits_stays_one_line() {
+        let lines = |w: f32| wrap("Drop Player", w, &chars).len();
+
+        let width = balanced(40.0, &mut lines.clone());
+
+        assert_eq!(lines(width), 1);
+        assert!(width <= 12.0, "{width}");
     }
 
     /// `run` given a context with egui's fonts loaded.

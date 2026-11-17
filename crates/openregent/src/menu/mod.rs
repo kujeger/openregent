@@ -81,6 +81,7 @@
 
 pub mod art;
 mod cinema;
+pub mod cut;
 mod drape;
 mod extras;
 pub mod faces;
@@ -483,6 +484,13 @@ impl Flows<'_> {
 
             if page == Page::Profiles {
                 self.picker.open(self.art.book.words.gmtx(NAME_TEXT));
+            }
+
+            // `profiles:delete`, `profiles:error`: a question or note shown.
+            if let Some(("profiles", shown)) = spec.split_once(':') {
+                self.picker
+                    .held(shown)
+                    .map_err(|why| format!("--menu {spec}: {why}"))?;
             }
 
             if page == Page::Scores {
@@ -983,6 +991,12 @@ fn opening(spec: &str, keys: &[FourCc]) -> Result<(Page, paint::View), String> {
         return Ok((Page::Main, paint::View::default()));
     }
 
+    // The profile page's key is what shows over it, taken by
+    // `Flows::open`.
+    if name == "profiles" {
+        return Ok((Page::Profiles, paint::View::default()));
+    }
+
     // The mods page's key is its enabled GUIDs, taken by `Flows::open`.
     if name == "mods" {
         return Ok((Page::Mods, paint::View::default()));
@@ -1027,7 +1041,6 @@ fn opening(spec: &str, keys: &[FourCc]) -> Result<(Page, paint::View), String> {
         "map-bottom" => map(Some(f32::NEG_INFINITY)),
         "extras" => Ok((Page::Extras, paint::View::pinned(None, quest, None))),
         "settings" => Ok((Page::Settings, paint::View::default())),
-        "profiles" => Ok((Page::Profiles, paint::View::default())),
         "loads" => Ok((Page::Loads, paint::View::default())),
         "erase" => Ok((Page::Erase, paint::View::default())),
         "quit" => Ok((Page::Quit, paint::View::default())),
