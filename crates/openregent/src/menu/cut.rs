@@ -17,6 +17,14 @@
 /// openregent's own: the original's box keeps one size.
 pub const MESSAGE_BAND: (f32, f32) = (100.0, 270.0);
 
+/// The message box at its shortest, rows: the title's plate and the
+/// bottom ornament with a little well between.
+pub const MESSAGE_LEAST: f32 = 160.0;
+
+/// The last row of `AP11`'s well, where no bottom button is: 5 rows
+/// above its frame's lower bevel. **Inferred** from `INDk` 1000.
+pub const MESSAGE_WELL_END: f32 = 285.0;
+
 /// Whether a piece shows its rows as they are, or upside down.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flip {
@@ -92,6 +100,19 @@ pub fn rows(whole: f32, (top, bottom): (f32, f32), tall: f32) -> Vec<Strip> {
         .collect()
 }
 
+/// A span `whole` long cut to `target`, at most `whole`, its last `edge`
+/// kept: the start's piece and the end's, each `(from, to, source)` in
+/// the target, `source` where in the picture its first pixel is.
+///
+/// `ends(26.0, 34.0, 6.0)`: `(0, 20, 0)` and `(20, 26, 28)`.
+#[must_use]
+pub fn ends(target: f32, whole: f32, edge: f32) -> [(f32, f32, f32); 2] {
+    let target = target.min(whole);
+    let split = (target - edge).max(0.0);
+
+    [(0.0, split, 0.0), (split, target, whole - (target - split))]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,5 +185,22 @@ mod tests {
 
         assert!(covers(&strips, WHOLE));
         assert!(strips.iter().all(|s| s.flip == Flip::Plain));
+    }
+
+    #[test]
+    fn a_cut_field_keeps_its_far_edge() {
+        assert_eq!(
+            ends(26.0, 34.0, 6.0),
+            [(0.0, 20.0, 0.0), (20.0, 26.0, 28.0)]
+        );
+        assert_eq!(
+            ends(34.0, 34.0, 6.0),
+            [(0.0, 28.0, 0.0), (28.0, 34.0, 28.0)]
+        );
+    }
+
+    #[test]
+    fn a_field_is_never_wider_than_its_picture() {
+        assert_eq!(ends(500.0, 432.0, 6.0)[1], (426.0, 432.0, 426.0));
     }
 }

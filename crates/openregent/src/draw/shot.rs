@@ -202,16 +202,34 @@ pub enum Dialog {
     Load,
     /// `AP49`'s SAVE GAME on a name taken: its question.
     Overwrite,
+    /// The chat line open, [`CHAT_TYPED`] in it.
+    Chat,
+    /// The stopped game's box, for [`STOPPED_WHY`].
+    Stopped,
+    /// The `--select`ed unit's name box edited, [`RENAME_TYPED`] in it.
+    Rename,
 }
 
+/// What `--dialog chat` has typed.
+const CHAT_TYPED: &str = "Hold the gate, I am sending the guards";
+
+/// Why `--dialog stopped`'s game stopped: a long reason, to wrap.
+const STOPPED_WHY: &str = "the game's thread has ended: thread 'game' panicked at src/sim/economy.rs:412:17: attempt to add with overflow (left: 4294967295, right: 3)";
+
+/// What `--dialog rename` has typed.
+const RENAME_TYPED: &str = "Sir Willem the Brave";
+
 impl Dialog {
-    /// The menu open, as `options` holds it.
-    const fn open(self) -> crate::ui::options::Dialog {
+    /// The menu open, as `options` holds it; none for what is no menu.
+    const fn open(self) -> Option<crate::ui::options::Dialog> {
         match self {
-            Dialog::Options => crate::ui::options::Dialog::Options,
-            Dialog::Goals => crate::ui::options::Dialog::Goals,
-            Dialog::Settings => crate::ui::options::Dialog::Settings,
-            Dialog::Save | Dialog::Load | Dialog::Overwrite => crate::ui::options::Dialog::Saves,
+            Dialog::Options => Some(crate::ui::options::Dialog::Options),
+            Dialog::Goals => Some(crate::ui::options::Dialog::Goals),
+            Dialog::Settings => Some(crate::ui::options::Dialog::Settings),
+            Dialog::Save | Dialog::Load | Dialog::Overwrite => {
+                Some(crate::ui::options::Dialog::Saves)
+            }
+            Dialog::Chat | Dialog::Stopped | Dialog::Rename => None,
         }
     }
 }
@@ -459,6 +477,10 @@ fn choose(
                     selected.0 = Some(agent);
                     panels.state.page_of = shot.page.map_or(panels.state.page_of, |_| Some(agent));
                     panels.state.page = shot.page.unwrap_or(panels.state.page);
+
+                    if shot.dialog == Some(Dialog::Rename) {
+                        panels.state.naming = Some((agent, RENAME_TYPED.to_owned()));
+                    }
                 }
                 // Nothing to show: no picture rather than the wrong one.
                 Err(e) => {
@@ -647,15 +669,32 @@ fn open(
         Res<regent_draw::data::Corpus>,
         Watch,
     ),
+    (mut chat, mut thread): (
+        ResMut<crate::ui::chat::Chat>,
+        ResMut<crate::game::thread::SimThread>,
+    ),
 ) {
     if let Some(dialog) = shot.dialog {
-        panels.state.options.show(dialog.open(), &mut paused.0);
+        if let Some(menu) = dialog.open() {
+            panels.state.options.show(menu, &mut paused.0);
+        }
+
+        match dialog {
+            Dialog::Chat => chat.typed(CHAT_TYPED),
+            Dialog::Stopped => thread.stopped = Some(STOPPED_WHY.to_owned()),
+            _ => {}
+        }
 
         let game = || crate::ui::saved_game(&session, &corpus.text, (seen.now, seen.players));
         let saving = match dialog {
             Dialog::Save | Dialog::Overwrite => Some(crate::save::dialog::Dialog::Save),
             Dialog::Load => Some(crate::save::dialog::Dialog::Load),
-            Dialog::Options | Dialog::Goals | Dialog::Settings => None,
+            Dialog::Options
+            | Dialog::Goals
+            | Dialog::Settings
+            | Dialog::Chat
+            | Dialog::Stopped
+            | Dialog::Rename => None,
         };
 
         if dialog == Dialog::Settings {

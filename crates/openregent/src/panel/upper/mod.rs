@@ -466,8 +466,15 @@ fn name_box(
 
     match (rect, rule, panels.state.naming.as_mut()) {
         (Some(r), Some(_), Some((_, typed))) => {
-            canvas.fill(r, EDITING);
-            canvas.edit(r, (typed, world::naming::RENAME_MAX), "name box");
+            // The field on the scroll's text row, clear of its curled ends.
+            let field = r.shrink2(egui::vec2(NAME_FIELD_INSET, 0.0));
+
+            canvas.well(field);
+            canvas.edit(
+                field,
+                (typed, world::naming::RENAME_MAX, Align::Centre),
+                "name box",
+            );
 
             let (enter, escape) = canvas.ui.ctx().input(|i| {
                 (
@@ -504,9 +511,12 @@ fn name_box(
     }
 }
 
-/// Behind a name being edited. **Inferred** stand-in: the original edits
-/// in the box's own picture.
-const EDITING: Color32 = Color32::from_rgb(24, 20, 16);
+/// How far in from the name box's sides the field drawn under a name
+/// being edited stands, pixels: `AP20`'s 8005 is 182 wide, its scroll's
+/// light parchment about 15 to 188 of the panel on every row
+/// (a capture of a warrior's stats window), so 166 sits on it. openregent's own: the
+/// original's edit look is not read.
+const NAME_FIELD_INSET: f32 = 8.0;
 
 /// Whether `chosen`'s panel draws control `id` itself, or not at all.
 fn skipped(chosen: &Chosen, id: i32) -> bool {

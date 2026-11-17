@@ -869,7 +869,9 @@ pipelined, as played:
   and is joined, so its recorder is closed before the next game opens
   `play.input` (`a_game_left_mid_play_joins_its_thread_and_closes_its_recording`).
   A thread that panics stops the game: the drawing keeps its last frame,
-  `SimThread::stopped` says why (`a_panic_on_the_sim_thread_stops_the_game`).
+  `SimThread::stopped` says why (`a_panic_on_the_sim_thread_stops_the_game`),
+  in a box in `AP11`'s art grown to hold it in full, with Main Menu
+  (`ui::stopped`; its words placeholders).
 - **Panel queries.** The panels' interface runs (`Game::aside`: the
   crypt's prices, a palace's henchmen, the extortion, the bounties) and
   the preview's `CanIBuildThisBuilding` are asked through

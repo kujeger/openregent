@@ -12,6 +12,7 @@ use regent_core::sim::world::interface::Stride;
 
 use super::ink::{Ink, Pic, Tone, Wrap};
 use super::stripes::Stripes;
+use crate::menu::cut::{self, Flip, Strip};
 use crate::menu::fit::Fit;
 use crate::menu::font;
 use regent_draw::art::{Answer, Art, ArtSource, Picture, Place, Shown, Snap, Want};
@@ -22,11 +23,25 @@ pub const WHITE: Color32 = Color32::WHITE;
 /// A whole texture's coordinates.
 const WHOLE: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 
+/// A whole texture's coordinates upside down.
+const MIRRORED: Rect = Rect::from_min_max(pos2(0.0, 1.0), pos2(1.0, 0.0));
+
+/// The text field's picture: `AP35`'s name field, black with a blue
+/// edge, baked into its frame `INDn` 1000 (**Game**: the lobby's chat
+/// field, `MX19` 5004, looks the same).
+const WELL_PIC: Pic = Pic::of(FourCc(*b"INDn"), 1000);
+
+/// Where the field lies in [`WELL_PIC`], pixels.
+const WELL: Rect = Rect::from_min_max(pos2(49.0, 266.0), pos2(481.0, 300.0));
+
+/// The field's edge, pixels: kept whole as the field is cut smaller.
+const WELL_EDGE: f32 = 6.0;
+
 /// An edit box's text height, of the box's.
 const EDIT_TEXT: f32 = 0.55;
 
 /// A text box's inner margin, pixels. **Inferred**: the help box's lines
-/// start 4 px inside (`ui_full.png`).
+/// start 4 px inside (a capture of the game screen).
 const PAD: f32 = 4.0;
 
 /// How a line sits in its box.
@@ -117,6 +132,51 @@ impl Canvas<'_> {
         }
 
         shown.is_some()
+    }
+
+    /// `pic` cut to `strips` of its rows (`menu::cut::rows`), its top
+    /// left at panel point `at`: each strip the whole picture placed so
+    /// the strip's rows land, cut to them; a mirrored one drawn upside
+    /// down.
+    pub fn strips(&mut self, pic: Pic, at: Pos2, strips: &[Strip]) {
+        let want = self.want(pic);
+
+        if let Some(size) = self.art_size(want) {
+            for s in strips {
+                let rows = Rect::from_min_size(pos2(at.x, at.y + s.at), vec2(size.x, s.rows()));
+                let (top, uv) = match s.flip {
+                    Flip::Plain => (s.at - s.from, WHOLE),
+                    Flip::Mirrored => (s.at - (size.y - s.to), MIRRORED),
+                };
+                let place = Rect::from_min_size(pos2(at.x, at.y + top), size);
+
+                if let Some(shown) = self.shown(want, place) {
+                    self.painter().with_clip_rect(self.fit.rect(rows)).image(
+                        shown.id,
+                        shown.rect,
+                        uv,
+                        Color32::WHITE,
+                    );
+                }
+            }
+        }
+    }
+
+    /// The text field's picture over panel rectangle `rect`, at most
+    /// its own size: its far edges kept, its middle cut
+    /// (`menu::cut::ends`), so its corners and blue edge show whole.
+    pub fn well(&mut self, rect: Rect) {
+        let across = cut::ends(rect.width(), WELL.width(), WELL_EDGE);
+        let down = cut::ends(rect.height(), WELL.height(), WELL_EDGE);
+
+        for (x0, x1, sx) in across {
+            for &(y0, y1, sy) in &down {
+                let piece = Rect::from_min_max(rect.min + vec2(x0, y0), rect.min + vec2(x1, y1));
+                let corner = piece.min - WELL.min.to_vec2() - vec2(sx, sy);
+
+                self.clipped(WELL_PIC, Tone::Plain, corner, piece);
+            }
+        }
     }
 
     /// `pic` stretched over panel rectangle `rect`: as shapes where it
@@ -338,21 +398,30 @@ impl Canvas<'_> {
     }
 
     /// A one-line text box over panel rectangle `rect`, told apart by
-    /// `key`, editing `text` up to `limit` characters; it holds the
-    /// keyboard while shown.
+    /// `key`, editing `text` up to `limit` characters, set by `align`
+    /// inside the field's edges; white, on no frame of its own (the
+    /// field's picture is [`Canvas::well`]). It holds the keyboard while
+    /// shown.
     pub fn edit(
         &mut self,
         rect: Rect,
-        (text, limit): (&mut String, usize),
+        (text, limit, align): (&mut String, usize, Align),
         key: impl std::hash::Hash + std::fmt::Debug,
     ) -> Response {
-        let screen = self.fit.rect(rect);
+        let screen = self.fit.rect(rect.shrink2(vec2(WELL_EDGE, 0.0)));
         let id = self.ui.id().with((self.salt, key));
-        let font = egui::FontId::proportional(screen.height() * EDIT_TEXT);
+        let size = crate::ui::typeface::like_egui(screen.height() * EDIT_TEXT);
+        let font = egui::FontId::proportional(size);
+        let align = match align {
+            Align::Left => egui::Align::LEFT,
+            Align::Centre => egui::Align::Center,
+        };
         let edit = egui::TextEdit::singleline(text)
             .id(id)
             .font(font.clone())
-            .horizontal_align(egui::Align::Center)
+            .text_color(WHITE)
+            .frame(egui::Frame::NONE)
+            .horizontal_align(align)
             .char_limit(limit);
 
         // A row taller than the box set about its centre, cut to the box.

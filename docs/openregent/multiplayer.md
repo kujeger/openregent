@@ -262,13 +262,18 @@ Tests: `two_peers_over_a_lossy_network_play_alike`,
   is waited on: its bundles stop, so every peer holds. The title scroll
   reads `GMTX` 345 "(Waiting for Other Players)", as HD's does while a
   network game waits (**Binary**; `scroll::WAITING`, **Inferred**
-  reading). A box below the top bar names whom (`held`, placeholder
-  look). The host's box asks in HD's words, `GMTX` 289 (whether to drop a
-  player not heard from), with the time left and a Drop Player press
-  (288, HD's dialog, **Binary**): the seat is dropped at once
-  (`Peer::drop_player`, `the_hosts_drop_takes_a_waited_on_guest_out_at_once`).
-  A guest's box says "Waiting for Ann: dropped in 55 s." (placeholder),
-  for its host's silence or a seat the host reports in its game packets.
+  reading). A box below the top bar names whom (`held`): `AP11`'s art,
+  grown with what it says (`notice`, openregent's own; HD shows a box a
+  player). The host's, titled "Drop Player?" (288), asks once in HD's
+  words, `GMTX` 289 (whether to drop a player not heard from; past one
+  player its `%s` is "these players", openregent's own), then a row a
+  player: the name, "drops in 55 s" (placeholder) and a Drop Player
+  press in YES's art (288, HD's dialog, **Binary**): the seat is dropped
+  at once (`Peer::drop_player`,
+  `the_hosts_drop_takes_a_waited_on_guest_out_at_once`). A guest's box,
+  titled "Waiting for Other Players" (345), says "Waiting for Ann:
+  dropped in 55 s." (placeholder) a seat, for its host's silence or a
+  seat the host reports in its game packets.
   Back within the window, play goes on where it held; nothing is told
   (`a_guest_silent_3_s_comes_back_and_play_resumes_in_lockstep`).
 - **Drops.** A peer silent 60 s (`node::DROP_AFTER`: HD's
