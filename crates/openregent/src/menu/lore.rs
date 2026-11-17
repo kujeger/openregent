@@ -16,7 +16,8 @@
 //! ```
 //!
 //! The frame is `INDh` 1000 cut by rows: the game row (460..503) out, the
-//! list's rows 250..293 in again. Between list and details a copy of
+//! same count in again around the side borders' ornaments, which stay
+//! at the page's middle (`FRAME_STRIPS`). Between list and details a copy of
 //! the frame's own scroll track; a details pane that does not scroll
 //! covers its track with the frame's left border, mirrored, so it shows
 //! no bar.
@@ -50,12 +51,31 @@ const TITLE: &str = "Book of Lore";
 /// left to right.
 const TABS: std::ops::RangeInclusive<i32> = 6000..=6004;
 
-/// The frame `INDh` 1000 (600 rows) cut by rows: the game row's
-/// 460..503 out, the list's 250..293 in again (`cut::Strip`).
-const FRAME_STRIPS: [Strip; 4] = [
-    plain(0.0, 293.0, 0.0),
-    plain(250.0, 293.0, 293.0),
-    plain(293.0, 460.0, 336.0),
+/// The frame `INDh` 1000 (600 rows) cut by rows (`cut::Strip`): the
+/// game row's 460..503 out, and as many rows in again around the side
+/// borders' ornaments, so the ornaments stay whole and at the page's
+/// middle. 5 rows repeat above them; below them the plain rows 330..347
+/// repeat, each other copy mirrored to meet its neighbour.
+///
+/// ```text
+///  source rows     drawn at
+///    0..255          0..255
+///  250..255        255..260   5 rows again
+///  255..347        260..352   the ornament, 5 lower
+///  330..347 x2     352..386   mirrored, then plain
+///  345..347 x2     386..390   mirrored, then plain
+///  347..460        390..503   43 lower: the list grown
+///  503..600        503..600
+/// ```
+const FRAME_STRIPS: [Strip; 9] = [
+    plain(0.0, 255.0, 0.0),
+    plain(250.0, 255.0, 255.0),
+    plain(255.0, 347.0, 260.0),
+    mirrored(330.0, 347.0, 352.0),
+    plain(330.0, 347.0, 369.0),
+    mirrored(345.0, 347.0, 386.0),
+    plain(345.0, 347.0, 388.0),
+    plain(347.0, 460.0, 390.0),
     plain(503.0, 600.0, 503.0),
 ];
 
@@ -69,6 +89,16 @@ const fn plain(from: f32, to: f32, at: f32) -> Strip {
         to,
         at,
         flip: Flip::Plain,
+    }
+}
+
+/// Rows `from..to` of a picture upside down, from row `at`.
+const fn mirrored(from: f32, to: f32, at: f32) -> Strip {
+    Strip {
+        from,
+        to,
+        at,
+        flip: Flip::Mirrored,
     }
 }
 
@@ -1055,6 +1085,16 @@ fn text(
 mod tests {
     use super::*;
 
+    /// Which of [`FRAME_STRIPS`] holds the frame's rows below its list.
+    const BELOW_LIST: usize = 7;
+
+    /// The row of `INDh` 1000 its side borders' ornaments are centred on:
+    /// their gem's. **Inferred** from the picture.
+    const ORNAMENT_ROW: f32 = 295.0;
+
+    /// The page's middle row.
+    const MID_ROW: f32 = 300.0;
+
     /// The cut frame is the page's 600 rows, each drawn once, and the
     /// rows below the list move down by [`GROWN`].
     #[test]
@@ -1065,7 +1105,21 @@ mod tests {
             .try_fold(0.0, |at, s| (s.at == at).then_some(at + s.rows()));
 
         assert_eq!(end, Some(600.0));
-        assert_eq!(FRAME_STRIPS[2].at - FRAME_STRIPS[2].from, GROWN);
+        let below = FRAME_STRIPS[BELOW_LIST];
+
+        assert_eq!(below.at - below.from, GROWN);
+    }
+
+    /// The side borders' ornaments stand at the page's middle.
+    #[test]
+    #[allow(clippy::float_cmp, reason = "whole rows")]
+    fn the_side_ornaments_are_centred() {
+        let at = FRAME_STRIPS
+            .iter()
+            .find(|s| s.flip == Flip::Plain && (s.from..s.to).contains(&ORNAMENT_ROW))
+            .map(|s| s.at + (ORNAMENT_ROW - s.from));
+
+        assert_eq!(at, Some(MID_ROW));
     }
 
     /// At its end the text stops on a line's top; a text that fits
