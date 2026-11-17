@@ -536,6 +536,16 @@ impl Flows<'_> {
                     });
 
                 self.mods.open(&enabled, loading);
+
+                // `load`, `save`, `overwrite`, `delete` among them: that
+                // dialog or question shown.
+                let shown = spec
+                    .split([':', ','])
+                    .find(|k| matches!(*k, "load" | "save" | "overwrite" | "delete"));
+
+                if let Some(shown) = shown {
+                    self.mods.held(shown);
+                }
             }
 
             // `lobby:N` and `lan-setup:N[:ID]` host N players.
@@ -958,8 +968,10 @@ fn held(spec: &str, keys: &[FourCc]) -> Option<Result<Shows, String>> {
 
 /// The page `spec` names, and how the map stands on it: `main[:ID]`
 /// (control `ID` hovered), `map[-top|-bottom][:KEY]` (the map scrolled to
-/// an end, the quest or, a number, the control hovered), `extras`, `settings`, `mods[:GUIDS]` (those
-/// enabled, by commas), `hint` (the first),
+/// an end, the quest or, a number, the control hovered), `extras`, `settings`, `profiles[:delete|error]` (Delete's question or a
+/// note over the list), `mods[:GUIDS]` (those
+/// enabled, by commas; `off` among them loading off, `load`, `save`,
+/// `overwrite` or `delete` that dialog shown), `hint` (the first),
 /// `background:KEY`, `summary:KEY`, `lore:CODE` (the Book of Lore on that entry), `tree[:NAME]` (the Build Tree Editor, on the tree NAME), `load-options`, `save-options`, `setup[:ID]` (combo box `ID`'s list
 /// open), `scores`, `credits`, `cinematic` (every film listed), `ending` (`MV07`), `multiplayer`, `create`, `lobby[:N]`,
 /// `lan-setup[:N[:ID]]` (the last two hosting the config for N players, 2
@@ -1072,7 +1084,7 @@ fn opening(spec: &str, keys: &[FourCc]) -> Result<(Page, paint::View), String> {
             Ok((Page::Setup, view))
         }
         _ => Err(format!(
-            "--menu {spec}: want main[:ID], map, map-top, map-bottom, extras[:KEY], settings, lore:CODE, profiles, mods[:GUIDS], loads, erase, hint, background:KEY, summary:KEY, freestyle, setup[:ID], tree[:NAME], load-options, save-options, scores, credits, intro, cinematic, ending, protocol, multiplayer, create, lobby[:N], lan-setup[:N[:ID]] or loading[:KEY], any page then @FRAME to hold its video"
+            "--menu {spec}: want main[:ID], map, map-top, map-bottom, extras[:KEY], settings, lore:CODE, profiles[:delete|error], mods[:GUIDS][,off][,load|save|overwrite|delete], loads, erase, hint, background:KEY, summary:KEY, freestyle, setup[:ID], tree[:NAME], load-options, save-options, scores, credits, intro, cinematic, ending, protocol, multiplayer, create, lobby[:N], lan-setup[:N[:ID]] or loading[:KEY], any page then @FRAME to hold its video"
         )),
     }
 }
@@ -1246,7 +1258,7 @@ fn show(
                 })
                 .flatten();
             let modded = (f.menu.page == Page::Mods)
-                .then(|| mods::page(ctx, &mut *f.mods))
+                .then(|| mods::page(ctx, (&mut *f.art, &mut shared), &mut *f.mods))
                 .flatten();
             let loads = (f.menu.page == Page::Loads)
                 .then(|| loads(ctx, &mut f, &mut shared))
@@ -1268,7 +1280,7 @@ fn show(
             let lan_mods = f.menu.page == Page::Lobby && f.mods.over_lobby();
 
             if lan_mods {
-                lobby_mods(ctx, &mut f);
+                lobby_mods(ctx, &mut f, &mut shared);
             }
 
             let escape = (keys.just_pressed(KeyCode::Escape)
@@ -1739,10 +1751,10 @@ fn lan_loads(ctx: &bevy_egui::egui::Context, f: &mut Flows, shared: &mut regent_
 /// The mods page over the host's lobby, its rows marked where a player
 /// lacks the mod, as the lobby stands now: Done gives the lobby its
 /// list, which every guest then sees.
-fn lobby_mods(ctx: &bevy_egui::egui::Context, f: &mut Flows) {
+fn lobby_mods(ctx: &bevy_egui::egui::Context, f: &mut Flows, shared: &mut regent_draw::art::Art) {
     f.mods.set_problems(f.lan.mod_problems());
 
-    if mods::page(ctx, f.mods).is_some()
+    if mods::page(ctx, (&mut *f.art, shared), f.mods).is_some()
         && let Some(list) = f.mods.take_chosen()
     {
         f.lan.set_mods(list, &f.freestyle.custom);

@@ -326,40 +326,58 @@ page.
 
 ### Mods
 
-The main menu's Mods button (placeholder egui, top left; HD's control
-9000) opens the mods page (`menu::mods`, in place of HD's `APdc`;
-`the_mods_page_opens_from_the_main_menu_and_goes_back_to_it`).
+The main menu row's CHANGE MODS (HD's control 9000) opens the mods page
+(`menu::mods`, in place of HD's `APdc`;
+`the_mods_page_opens_from_the_main_menu_and_goes_back_to_it`), drawn in
+`APdc`'s art as one list, not its two: 800 × 712 at the menus' scale,
+centred over the main menu (the layout openregent's own):
 
-- A row per mod found, in load order: its number while enabled
-  (`only_enabled_mods_are_numbered`), an enabled box, its name and
-  `<Short>` cut to one line, "Never loads" for a base no dataset fits,
-  "Built in" for a mod the binary carries
-  ([mods.md](../formats/mods.md#built-in-mods)), Up and Down.
-- A clicked row shows details below: `<Long>` (else the whole `<Short>`),
-  the games its base fits in words (`a_base_is_said_as_the_games_it_fits`),
-  its item folder's quests, what it lists ("1 GPL, 13 XML descriptions"),
-  GUID and item folder ("Built in, unpacked to …").
-- A footer counts the folders searched
+- ground `INx1` 1008 tiled; frame `INx2` 1000 to 1009, the bars repeated
+  (narrower than the title bar, its two ends held); pog `DX00` 1000, title
+  in `fn11`;
+- the list in `APdc`'s list box (well `INx1` 1030, edges 1021 to 1029,
+  heading plate 1023, `INDs`' bar), eleven rows of 22 shown, the rest
+  scrolled. A row per mod found, in load order: its number while enabled
+  (`only_enabled_mods_are_numbered`), `MX18`'s tick box `IX90` 1003, its
+  name and `<Short>` cut to one line, a note at the right ("Never loads"
+  for a base no dataset fits, "Built in" for a mod the binary carries
+  ([mods.md](../formats/mods.md#built-in-mods)), "Refused" with why on
+  hover, a lobby player's problem in red), and `APdc`'s arrows `INDj`
+  1000 and 1001; a click picks a row, lit as the load list's;
+- the picked row's details in `APdc`'s DESCRIPTION box (edges `INx1` 1031
+  to 1039), scrolled by the wheel and its bar: `<Long>` (else the whole
+  `<Short>`), the games its base fits in words
+  (`a_base_is_said_as_the_games_it_fits`), its item folder's quests, what
+  it lists ("1 GPL, 13 XML descriptions"), GUID and item folder ("Built
+  in, unpacked to …"; its path on hover);
+- a footer counts the folders searched
   ([mods.md](../formats/mods.md#where-mods-are-found)), GUIDs skipped as
   found twice, and entries no folder holds (red if one is enabled); each
-  list shows on hover.
-- The page is the window less a margin, at most 900 × 720 HD pixels
-  scaled; the list scrolls.
-- Load mods, a box above the list, turns mod loading off: the list and
-  LOAD greyed and kept.
+  list shows on hover. LOAD LIST…, SAVE LIST… and RESCAN on `DEM2` 1006;
+  DONE and CANCEL on `DEM2` 1001 over `INx2` 1011, on the frame's bottom.
+- LOAD MODS, a box above the list, turns mod loading off: the list
+  greyed under a veil (a guess), and kept; LOAD LIST… disabled.
 - DONE writes `mods.toml`'s `[[mod]]` entries and `mods_enabled` if
   changed (`mod_list`, `store::replace`;
   `the_mod_list_has_its_own_file`): each found mod's `id`, `name`,
   `description`, `enabled`, in order, then entries no folder holds, as
   written. CANCEL or Escape drops the edit.
-- LOAD… picks a collection (`mod-lists/<name>.toml`) into the page, not
-  applied; its Delete asks first. SAVE… names one; a taken name asks
-  first. `[mods] enabled` is not read and is kept as an unknown key.
+- LOAD LIST… opens Load Mod List, 600 × 460 in the page's art: the saved
+  collections (`mod-lists/<name>.toml`) with a count of each one's
+  enabled mods, the picked one's mods named under them; LOAD puts it in
+  the page, not applied (so does a double click), DELETE asks first.
+  SAVE LIST… opens Save Mod List: a name typed, or a saved one's taken by
+  a click, the page's mods named under it; a taken name asks first. The
+  questions are `AP11` cut short (`paint::short`). `[mods] enabled` is
+  not read and is kept as an unknown key.
+
+Words and the layout are placeholders: HD's `APdc` has neither.
 
 A game started after loads the enabled mods (none with loading off); the
 menus' data is not reloaded. Mods are found once a run. `--menu
 mods:GUID,…` opens the page with those enabled; `off` among them turns
-loading off.
+loading off, `load`, `save`, `overwrite` or `delete` shows that dialog or
+question on the first saved list.
 
 A game's corpus takes its quest's and mods' XML
 (`regent_draw::data::Sources`): descriptions merged into one archive
@@ -644,6 +662,7 @@ writing nothing. The last profile's progress shows.
 | `main[:ID]` | main menu, control `ID` hovered |
 | `profiles`, `mods[:GUIDS]`, `loads`, `settings` | those pages |
 | `profiles:delete`, `profiles:error` | the profile page, Delete's question or a sample note over it |
+| `mods:[GUIDS,]off`, `mods:[GUIDS,]load\|save\|overwrite\|delete` | the mods page, loading off, or a dialog or question over it |
 | `map[-top\|-bottom][:KEY\|:ID]` | the quest map |
 | `extras[:KEY]`, `erase`, `hint` | the extras list, Erase Victories, the hint |
 | `background:KEY`, `summary:KEY` | a quest's briefing pages |
