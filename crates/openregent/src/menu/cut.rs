@@ -32,6 +32,13 @@ pub enum Flip {
     Mirrored,
 }
 
+/// Whether a piece shows its columns as they are, or mirrored across.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Across {
+    Plain,
+    Mirrored,
+}
+
 /// One run of a picture's rows: source rows `from..to`, drawn from row
 /// `at` of the target.
 #[derive(Clone, Copy, Debug, PartialEq)]

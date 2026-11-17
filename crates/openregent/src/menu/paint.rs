@@ -49,7 +49,7 @@ use regent_core::view::menu::{
 };
 
 use super::art::{self, Art, COVER, Pack, Pic, Quest, ROOM, SPLASH, Store, Wrap};
-use super::cut::{self, Flip, MESSAGE_BAND, Strip};
+use super::cut::{self, Across, Flip, MESSAGE_BAND, Strip};
 use super::fit::{self, Fit, Lens};
 use super::font::{self, spans};
 use super::page::{Button, Page, Press};
@@ -768,6 +768,52 @@ impl<'a> Canvas<'a> {
                 }
             }
         }
+    }
+
+    /// Rectangle `from` of `pic`'s pixels, its top left at layout point
+    /// `at`, its columns as `across` says: the whole picture placed so
+    /// the rectangle lands there, cut to it.
+    pub(super) fn piece(
+        &mut self,
+        source: Pack,
+        pic: Pic,
+        (from, at): (Rect, Pos2),
+        across: Across,
+    ) {
+        let want = self.ink.want(source, pic);
+
+        if let Some(size) = self.size(source, pic) {
+            let left = match across {
+                Across::Plain => at.x - from.min.x,
+                Across::Mirrored => at.x - (size.x - from.max.x),
+            };
+            let place = Rect::from_min_size(pos2(left, at.y - from.min.y), size);
+            let cut = Rect::from_min_size(at, from.size());
+            let clip = self.clip.map_or(cut, |c| c.intersect(cut));
+
+            if let Some(shown) = self.shown(want, place) {
+                let uv = match across {
+                    Across::Plain => shown.uv,
+                    Across::Mirrored => Rect::from_min_max(
+                        pos2(shown.uv.max.x, shown.uv.min.y),
+                        pos2(shown.uv.min.x, shown.uv.max.y),
+                    ),
+                };
+
+                self.ui.painter().with_clip_rect(self.fit.rect(clip)).image(
+                    shown.id,
+                    shown.rect,
+                    uv,
+                    Color32::WHITE,
+                );
+            }
+        }
+    }
+
+    /// The art service the pictures are drawn through: for pictures of
+    /// another catalogue than the menus' (the Book of Lore's portraits).
+    pub(super) const fn shared(&mut self) -> &mut service::Art {
+        self.art
     }
 
     /// `pic` repeated over layout rectangle `rect` from its top left.

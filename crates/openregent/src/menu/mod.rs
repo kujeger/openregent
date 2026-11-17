@@ -13,7 +13,7 @@
 //!   ├─Adjust Settings──> Settings (`editor`) ──Save, Cancel──> Main
 //!   ├─Profile──> Profiles ──Continue, Cancel──> Main
 //!   ├─Change Mods──> Mods ──Done, Cancel──> Main
-//!   ├─Book of Lore──> the lore window (`ui::lore`) over Main, opened or closed
+//!   ├─Book of Lore──> the Book of Lore page (`lore`) over Main, opened or closed
 //!   ├─High Scores──> Scores (`scores`) ──Main Menu──> Main, the table kept
 //!   ├─Credits──> Credits(0) ──a key or press──> Credits(1) ──> Main
 //!   ├─Load Game──> Loads (`save::dialog`) ──Load──> game
@@ -90,6 +90,7 @@ pub mod fit;
 pub mod font;
 pub mod freestyle;
 mod lan;
+pub(crate) mod lore;
 mod mods;
 mod page;
 pub(crate) mod paint;
@@ -1153,7 +1154,10 @@ fn rescanned(f: &mut Flows, install: &crate::files::env::Install) {
 fn show(
     mut contexts: EguiContexts,
     (mut menus, mut shared): (Menus, ResMut<regent_draw::art::Art>),
-    keys: Res<ButtonInput<KeyCode>>,
+    (keys, book): (
+        Res<ButtonInput<KeyCode>>,
+        Option<Res<crate::ui::lore::Book>>,
+    ),
     mut settings: ResMut<Settings>,
     mut editor: ResMut<crate::ui::editor::Editor>,
     (mut player, mut narration, mut clicks): (
@@ -1283,7 +1287,10 @@ fn show(
                 lobby_mods(ctx, &mut f, &mut shared);
             }
 
+            // The Book of Lore over the main menu takes its presses.
+            let reading = f.menu.is_main() && book.is_some_and(|b| b.is_open());
             let escape = (keys.just_pressed(KeyCode::Escape)
+                && !reading
                 && !naming
                 && !listing
                 && !lan_loading
@@ -1381,6 +1388,7 @@ fn show(
                 .or(picked)
                 .or(loads)
                 .or(escape)
+                .filter(|_| !reading)
                 .and_then(|press| f.menu.page.after(press))
             {
                 Some(Step::To(page)) => {

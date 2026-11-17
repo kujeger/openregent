@@ -808,6 +808,7 @@ impl Store {
         // The pages drawn in pictures no panel names.
         wanted.extend(super::profiles::pictures());
         wanted.extend(super::mods::pictures());
+        wanted.extend(super::lore::pictures());
 
         if let Some(c) = &book.cloud {
             wanted.push((Pack::Expansion, c.mark));

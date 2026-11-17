@@ -1078,7 +1078,7 @@ const OURS: [&str; 2] = ["openregent::", "regent_draw::"];
 
 /// The resources of [`OURS`] that outlast a game, though one changes
 /// them: the app's, the menus' and the shelf.
-fn outlasting() -> [std::any::TypeId; 15] {
+fn outlasting() -> [std::any::TypeId; 16] {
     use std::any::TypeId;
 
     [
@@ -1090,6 +1090,7 @@ fn outlasting() -> [std::any::TypeId; 15] {
         TypeId::of::<crate::files::profile::Player>(),
         TypeId::of::<crate::files::scores::Scoring>(),
         TypeId::of::<crate::files::lore::Catalogue>(),
+        TypeId::of::<crate::ui::lore::Book>(),
         TypeId::of::<crate::ui::editor::Editor>(),
         TypeId::of::<Shelf>(),
         TypeId::of::<regent_draw::art::Art>(),
