@@ -68,7 +68,7 @@ const FREESTYLE_LABEL: i32 = 5900;
 const SETUP_ACCEPT: i32 = panels::setup::ACCEPT;
 
 /// The painted quests' lit pictures. Slot 0 of each set holds a wooden
-/// compass the map never shows (**Game**: `menu_map_top.png`); the
+/// compass the map never shows (**Game**: a capture of the quest map's top); the
 /// buildings at rest are painted into the map.
 const PAINTED: FourCc = FourCc(*b"IX33");
 
@@ -76,7 +76,7 @@ const PAINTED: FourCc = FourCc(*b"IX33");
 const FRAME: RangeInclusive<i32> = 8500..=8513;
 
 /// A text box's inner margin, layout pixels. **Game**: the summary's
-/// lines start 5 px inside their box (`menu_barren_waste_start_summary.png`).
+/// lines start 5 px inside their box (a capture of The Barren Waste's briefing summary).
 const PAD: f32 = 5.0;
 
 /// How far inside a text box's sides its lines wrap, layout pixels.
@@ -86,7 +86,7 @@ const PAD: f32 = 5.0;
 const WRAP_MARGIN: f32 = 2.0;
 
 /// A heading box's end caps, layout pixels: its text stays between.
-/// **Inferred** from `ui_save_game.png`: the caps of CURRENT GAME
+/// **Inferred** from a capture of the Save Game dialog: the caps of CURRENT GAME
 /// DESCRIPTION's box about 15 px wide.
 const HEADING_MARGIN: f32 = 16.0;
 
@@ -882,7 +882,7 @@ impl<'a> Canvas<'a> {
 
     /// [`Canvas::label`], its font shrunk where the text is wider than
     /// the control less [`HEADING_MARGIN`] a side: the original's narrow
-    /// capitals fit (`ui_save_game.png`'s CURRENT GAME DESCRIPTION).
+    /// capitals fit (a capture of the Save Game dialog's CURRENT GAME DESCRIPTION).
     pub(super) fn fitted(&mut self, c: &ShownControl, text: &str, colour: Color32) {
         let font = c.font.and_then(|r| self.ink.font(r));
 
@@ -1008,7 +1008,7 @@ impl<'a> Canvas<'a> {
             };
 
             // A label too wide for one line, with no hot key letter, wraps
-            // (**Game**: `ui_freestyle_setup.png`'s BUILDING EDIT MENU).
+            // (**Game**: a capture of the Freestyle setup dialog's BUILDING EDIT MENU).
             if parts.len() == 1 && !self.fits(c.font, set, text) {
                 self.lines((c.font, set), text, (colour, Overflow::Spill));
             } else {
@@ -1217,7 +1217,7 @@ impl<'a> Canvas<'a> {
 
     /// `text` in control `c`, wrapped, each line and the whole centred in
     /// it, in its font and colour. **Game**: the hint's lines and their
-    /// block centred (`ui-quest-map-message.png`).
+    /// block centred (a capture of the quest map's message).
     pub(super) fn note(&mut self, c: &ShownControl, text: &str) {
         if let Some(r) = c.rect {
             let colour = pick(c, State::Normal);
@@ -1227,9 +1227,9 @@ impl<'a> Canvas<'a> {
     }
 
     /// As [`Canvas::note`], but lines past the box held from its top and
-    /// cut at its bottom. **Inferred** from `ui_downloaded_quests.png`,
+    /// cut at its bottom. **Inferred** from a capture of the downloaded quests list,
     /// whose five lines start at the box's top, the last cut, where
-    /// `ui_load_game.png`'s four are centred.
+    /// a capture of the Load Game dialog's four are centred.
     pub(super) fn held_note(&mut self, c: &ShownControl, text: &str) {
         if let Some(r) = c.rect {
             let colour = pick(c, State::Normal);
@@ -2233,7 +2233,7 @@ pub(super) fn hot(
         .and_then(|c| buttons.iter().copied().find(|&b| c.id == Some(id(b))))
 }
 
-/// The name field's selection. **Game**: `ui-profile-name.png`.
+/// The name field's selection. **Game**: a capture of the name prompt.
 pub(super) const SELECTION: Color32 = Color32::from_rgb(0x00, 0x44, 0x70);
 
 /// Where a typed line sits in its box: against its edges, or
@@ -2251,7 +2251,7 @@ const TYPED_INSET: f32 = 3.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Caret {
     /// All of it selected, as the prompt opens (**Game**:
-    /// `ui-profile-name.png`).
+    /// a capture of the name prompt).
     SelectAll,
     Keep,
 }

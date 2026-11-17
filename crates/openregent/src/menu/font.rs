@@ -28,7 +28,7 @@ use super::fit::Fit;
 use crate::ui::typeface::{self, Metrics};
 
 /// `fn11`'s line pitch in a text box, pixels. **Game**: the Barren Waste
-/// briefing's background lines stand 47 apart (`menu_barren_waste_start.png`);
+/// briefing's background lines stand 47 apart (a capture of The Barren Waste's briefing);
 /// its slot 0 gives no line height, as `fnt4`'s does.
 const LARGE_PITCH: i32 = 47;
 
@@ -47,8 +47,8 @@ const STEPS_PER_POINT: f32 = 2.0;
 const COLOUR_SET: u32 = 0x8000_0000;
 
 /// A hot key letter's colour where its control sets none (`SMNU` key
-/// 49). **Game**: `ui_full.png`'s STATISTICS, BUILDINGS, ROSTER and
-/// REWARDS, whose panel sets none, draw theirs `#4830e0`; `menu_main.png`'s
+/// 49). **Game**: a capture of the game screen's STATISTICS, BUILDINGS, ROSTER and
+/// REWARDS, whose panel sets none, draw theirs `#4830e0`; a capture of the main menu's
 /// `0x0000ff` draws `#0000e0`, the glyph's top at 0xe0 of 0xff, so this
 /// at full. **Inferred**: the engine's default.
 pub const HOT_KEY: Color32 = rgb(0x0052_37ff);
@@ -392,7 +392,7 @@ pub fn ellipsised(
 /// `text` with its hot key's letter (`menu::hotkey_letter`: the first
 /// letter or digit that types `key`, case ignored) in `hot`, the rest in
 /// `colour`. A key no letter types (Escape, Enter, `?`) marks none, as
-/// the original's EXIT GAME shows (`menu_main.png`).
+/// the original's EXIT GAME shows (a capture of the main menu).
 #[must_use]
 pub fn hot(
     text: &str,

@@ -783,7 +783,7 @@ fn press(orders: &mut orders::Panel, sent: Result<Vec<Input>, chat::Line>) {
     }
 }
 
-/// The seekers' count's box: `ui_attack_flag.png`'s grey (**Inferred**
+/// The seekers' count's box: the grey in a capture of an attack flag's window (**Inferred**
 /// stand-in for its `INTI` 1016).
 const COUNT_BOX: Color32 = Color32::from_rgb(72, 72, 64);
 
@@ -1001,7 +1001,7 @@ mod tests {
 
     /// The frame (`INBg` 1000 on a building, `INDe` 1002 on a hero) is
     /// listed after the portrait and drawn over it, its rounded corners
-    /// on the picture (`ui_warriors_guild.png`).
+    /// on the picture (a capture of the Warriors Guild's window).
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn the_frame_lies_over_the_portrait() {

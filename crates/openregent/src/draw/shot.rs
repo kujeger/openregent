@@ -55,7 +55,7 @@ use regent_core::sim::world::cheat::{Cheat, CheatCode};
 use regent_core::sim::world::{defeat::End, flag::MESSAGE_FLAG};
 use regent_core::view::menu::end::{Curtain, Page as EndPage, Stage};
 
-/// The captures' size: HD at 1920 × 1200 (`local/shots/`).
+/// The captures' size: HD at 1920 × 1200.
 pub const SIZE: &str = "1920x1200";
 
 /// Drawn frames after the opening view before the capture: time for the
@@ -248,8 +248,8 @@ pub enum Hold {
     Running,
 }
 
-/// `--end`: the end's stage a capture shows (`local/shots/ui_victory*.png`,
-/// `ui_defeat*.png`).
+/// `--end`: the end's stage a capture shows (those of the victory screens
+/// and the defeat screens).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum Ending {
     /// The "Game Over" box.
