@@ -21,7 +21,7 @@ use super::fit;
 use super::page::Press;
 use super::paint::{Able, Canvas};
 
-/// BOOK OF LORE pressed: `ui::lore::show` opens or closes its window;
+/// BOOK OF LORE pressed: `ui::lore::show` opens or closes its page;
 /// and the entry `--menu lore:CODE` opens it on.
 #[derive(bevy::prelude::Resource, Default)]
 pub struct Lore(pub bool, pub Option<FourCc>);

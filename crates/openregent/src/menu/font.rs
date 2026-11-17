@@ -28,7 +28,7 @@ use super::fit::Fit;
 use crate::ui::typeface::{self, Metrics};
 
 /// `fn11`'s line pitch in a text box, pixels. **Game**: the Barren Waste
-/// briefing's background lines stand 47 apart (`menu_barren_waste_start.png`);
+/// briefing's background lines stand 47 apart (a capture of The Barren Waste's briefing);
 /// its slot 0 gives no line height, as `fnt4`'s does.
 const LARGE_PITCH: i32 = 47;
 
@@ -47,8 +47,8 @@ const STEPS_PER_POINT: f32 = 2.0;
 const COLOUR_SET: u32 = 0x8000_0000;
 
 /// A hot key letter's colour where its control sets none (`SMNU` key
-/// 49). **Game**: `ui_full.png`'s STATISTICS, BUILDINGS, ROSTER and
-/// REWARDS, whose panel sets none, draw theirs `#4830e0`; `menu_main.png`'s
+/// 49). **Game**: a capture of the game screen's STATISTICS, BUILDINGS, ROSTER and
+/// REWARDS, whose panel sets none, draw theirs `#4830e0`; a capture of the main menu's
 /// `0x0000ff` draws `#0000e0`, the glyph's top at 0xe0 of 0xff, so this
 /// at full. **Inferred**: the engine's default.
 pub const HOT_KEY: Color32 = rgb(0x0052_37ff);
@@ -332,6 +332,33 @@ pub fn wrap(text: &str, width: f32, measure: &dyn Fn(&str) -> f32) -> Vec<String
         .collect()
 }
 
+/// The narrowest width, at most `width`, that a text takes as many
+/// lines at as at `width`, by `lines`, its line count at a width: its
+/// lines evened out, no word left alone on the last. To a pixel.
+///
+/// "Waiting for Ann: dropped in 55 s." at 193 px is two lines, "55 s."
+/// alone on the second; at the width found, "Waiting for Ann:" and
+/// "dropped in 55 s.".
+#[must_use]
+pub fn balanced(width: f32, lines: &mut dyn FnMut(f32) -> usize) -> f32 {
+    let count = lines(width);
+    let (mut low, mut high) = (0.0_f32, width);
+
+    // The count grows as the width shrinks: halve to the last width
+    // that keeps it.
+    while high - low > 1.0 {
+        let mid = f32::midpoint(low, high);
+
+        if lines(mid) <= count {
+            high = mid;
+        } else {
+            low = mid;
+        }
+    }
+
+    high.ceil().min(width)
+}
+
 /// The game's bare CR and CR LF breaks as LF.
 fn line_breaks(text: &str) -> Cow<'_, str> {
     if text.contains('\r') {
@@ -392,7 +419,7 @@ pub fn ellipsised(
 /// `text` with its hot key's letter (`menu::hotkey_letter`: the first
 /// letter or digit that types `key`, case ignored) in `hot`, the rest in
 /// `colour`. A key no letter types (Escape, Enter, `?`) marks none, as
-/// the original's EXIT GAME shows (`menu_main.png`).
+/// the original's EXIT GAME shows (a capture of the main menu).
 #[must_use]
 pub fn hot(
     text: &str,
@@ -497,6 +524,33 @@ mod tests {
     #[allow(clippy::cast_precision_loss, reason = "short test lines")]
     fn chars(s: &str) -> f32 {
         s.chars().count() as f32
+    }
+
+    /// A last line of one word comes back with company.
+    #[test]
+    fn a_balanced_width_leaves_no_word_alone() {
+        let text = "Waiting for Ann: dropped in 55 s.";
+        let lines = |w: f32| wrap(text, w, &chars).len();
+        let width = balanced(30.0, &mut lines.clone());
+
+        assert_eq!(
+            wrap(text, 30.0, &chars).last().map(String::as_str),
+            Some("s.")
+        );
+        assert_eq!(
+            wrap(text, width, &chars),
+            ["Waiting for Ann:", "dropped in 55 s."]
+        );
+    }
+
+    #[test]
+    fn a_line_that_fits_stays_one_line() {
+        let lines = |w: f32| wrap("Drop Player", w, &chars).len();
+
+        let width = balanced(40.0, &mut lines.clone());
+
+        assert_eq!(lines(width), 1);
+        assert!(width <= 12.0, "{width}");
     }
 
     /// `run` given a context with egui's fonts loaded.

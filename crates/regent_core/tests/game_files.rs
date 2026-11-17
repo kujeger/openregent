@@ -1008,7 +1008,7 @@ fn marks(frame: &Sprite, blit: Blit) -> (usize, usize) {
 /// and a world set: `maindata` 518 and 3404 (a `Crumble` frame doubling as a
 /// picture of the ruin), and `interfacedata` 0.
 ///
-/// The world blit would draw 1,348 interface tiles differently.
+/// The world blit would draw 1,382 interface tiles differently.
 #[test]
 fn the_two_blits_barely_share_a_tile() {
     let library = common::library_of(&archives(&common::hd()));
@@ -1060,7 +1060,7 @@ fn the_two_blits_barely_share_a_tile() {
         .filter(|frame| marks(frame, Blit::World) != marks(frame, Blit::Interface))
         .count();
 
-    assert_eq!(moved, 1_394, "interface tiles the world reading changes");
+    assert_eq!(moved, 1_382, "interface tiles the world reading changes");
 }
 
 /// `HelpID` is a four-character key into `HPTX`; every non-zero one resolves.

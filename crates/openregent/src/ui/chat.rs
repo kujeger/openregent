@@ -1,6 +1,7 @@
 //! The chat area: a chat line, and the box game messages and sent lines
 //! type into (`view::panel::chat`: four rows, 10 ms a character, a row up each
-//! 3 s idle). The look is a placeholder; the timing is the engine's.
+//! 3 s idle). The timing is the engine's; the line is `AP35`'s text field
+//! cut to size ([`field`]), openregent's own look.
 //!
 //! ```text
 //!  Enter ──> the line opens; the game sees no key while it is open
@@ -50,16 +51,18 @@ use crate::game::seen::{Ask, News, Outbox, Watch};
 use crate::map::select::{Reading, Selected};
 use crate::menu::fit::Fit;
 use crate::panel::Panels;
-use crate::panel::canvas::Canvas;
+use crate::panel::canvas::{Align, Canvas};
 use crate::panel::ink::{Pic, Tone};
 use crate::ui::typeface;
 use crate::ui::{Covered, Paused};
 
-/// Where the line sits: up from the window's bottom centre.
-const LINE_AT: egui::Vec2 = egui::vec2(0.0, -48.0);
+/// The line's field, HD pixels: the text field's picture
+/// (`Canvas::well`) cut to this. openregent's own size.
+const LINE: egui::Vec2 = egui::vec2(360.0, 26.0);
 
-/// The line's width, points.
-const LINE_WIDTH: f32 = 320.0;
+/// Between the line's field and what it stands on, HD pixels: the map's
+/// bottom, or the open spell bar. A guess.
+const LINE_LIFT: f32 = 4.0;
 
 /// The box's font size, HD pixels: `fnt4`'s 15 px row, in egui's font
 /// (`typeface::like_egui` in another).
@@ -177,6 +180,12 @@ pub struct Chat {
 }
 
 impl Chat {
+    /// The line open, `line` typed in it: `--dialog chat`.
+    pub fn typed(&mut self, line: &str) {
+        self.state = State::Open;
+        line.clone_into(&mut self.line);
+    }
+
     /// The wall's time run, `delta` more unless `paused`: a pause holds
     /// the box's lines and typing where they are.
     fn wall(&mut self, delta: std::time::Duration, paused: &Paused) -> std::time::Duration {
@@ -264,12 +273,15 @@ pub fn line(
 
     if chat.state != State::Closed {
         let opening = chat.state == State::Opening;
-        let edit = egui::Area::new(egui::Id::new("chat"))
-            .anchor(egui::Align2::CENTER_BOTTOM, LINE_AT)
-            .show(&ctx, |ui| {
-                ui.add(egui::TextEdit::singleline(&mut chat.line).desired_width(LINE_WIDTH))
-            })
-            .inner;
+        let size = egui::vec2(window.width(), window.height());
+        let area = view.rect.map_or_else(
+            || crate::ui::layout::Frame::of(size).map,
+            |r| {
+                egui::Rect::from_min_max(egui::pos2(r.min.x, r.min.y), egui::pos2(r.max.x, r.max.y))
+            },
+        );
+        let scale = crate::ui::layout::scale(size);
+        let edit = field(&ctx, (area, scale), (&corpus, &mut faces), &mut chat.line);
         let (enter, escape) = ctx.input(|i| {
             (
                 i.key_pressed(egui::Key::Enter),
@@ -659,17 +671,69 @@ struct Placed {
     shadow: f32,
 }
 
+/// The top of the lowest thing `covered` over the bottom of a map
+/// `top` to `bottom` (the open spell bar), else the map's bottom.
+fn floor((top, bottom): (f32, f32), covered: &[Rect]) -> f32 {
+    covered
+        .iter()
+        .filter(|r| r.max.y >= bottom && r.min.y > top)
+        .map(|r| r.min.y)
+        .fold(bottom, f32::min)
+}
+
+/// The chat line over the map `area`, `scale` points an HD pixel: the
+/// text field's picture, [`LINE`], centred over the map's bottom and
+/// [`LINE_LIFT`] above what covers it, and `line` typed in it, left
+/// aligned.
+///
+/// ```text
+///  ┌──────────────────────────────────┐
+///  │ Hold the gate, I am sending the| │   AP35's field, its middle cut
+///  └──────────────────────────────────┘
+///  ▓▓▓▓▓▓▓▓▓▓▓ spell bar ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+/// ```
+fn field(
+    ctx: &egui::Context,
+    (area, scale): (egui::Rect, f32),
+    (corpus, faces): (&Corpus, &mut Faces),
+    line: &mut String,
+) -> egui::Response {
+    let floor = floor((area.min.y, area.max.y), &faces.covered.0);
+    let size = LINE * scale;
+    let at = egui::pos2(
+        area.center().x - size.x / 2.0,
+        floor - LINE_LIFT * scale - size.y,
+    );
+    let layer = egui::LayerId::new(egui::Order::Foreground, "chat line".into());
+    let mut ui = egui::Ui::new(
+        ctx.clone(),
+        "chat line".into(),
+        egui::UiBuilder::new()
+            .layer_id(layer)
+            .max_rect(ctx.viewport_rect()),
+    );
+    let mut canvas = Canvas {
+        ui: &mut ui,
+        ink: &mut faces.panels.ink,
+        art: &mut faces.art,
+        source: corpus.source(),
+        catalogue: &corpus.catalogue,
+        fit: Fit { scale, origin: at },
+        salt: "chat",
+    };
+    let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, LINE);
+
+    canvas.well(rect);
+    canvas.edit(rect, (line, usize::MAX, Align::Left), "line")
+}
+
 /// Where the box goes over the map `area`, `scale` points an HD pixel:
 /// the engine's insets, scaled; its bottom as far above the lowest
 /// thing `covered` over the map's bottom (the open spell bar) as the
 /// engine's is above the view's.
 #[allow(clippy::cast_precision_loss, reason = "small offsets")]
 fn placed(area: Rect, covered: &[Rect], scale: f32, links: Links) -> Placed {
-    let floor = covered
-        .iter()
-        .filter(|r| r.max.y >= area.max.y && r.min.y > area.min.y)
-        .map(|r| r.min.y)
-        .fold(area.max.y, f32::min);
+    let floor = floor((area.min.y, area.max.y), covered);
     let row = ROW_PITCH * scale;
     let (pitch, face) = match links {
         Links::Off => (row, 0.0),

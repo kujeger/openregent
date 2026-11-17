@@ -13,7 +13,7 @@
 //!   ├─Adjust Settings──> Settings (`editor`) ──Save, Cancel──> Main
 //!   ├─Profile──> Profiles ──Continue, Cancel──> Main
 //!   ├─Change Mods──> Mods ──Done, Cancel──> Main
-//!   ├─Book of Lore──> the lore window (`ui::lore`) over Main, opened or closed
+//!   ├─Book of Lore──> the Book of Lore page (`lore`) over Main, opened or closed
 //!   ├─High Scores──> Scores (`scores`) ──Main Menu──> Main, the table kept
 //!   ├─Credits──> Credits(0) ──a key or press──> Credits(1) ──> Main
 //!   ├─Load Game──> Loads (`save::dialog`) ──Load──> game
@@ -81,6 +81,7 @@
 
 pub mod art;
 mod cinema;
+pub mod cut;
 mod drape;
 mod extras;
 pub mod faces;
@@ -89,6 +90,7 @@ pub mod fit;
 pub mod font;
 pub mod freestyle;
 mod lan;
+pub(crate) mod lore;
 mod mods;
 mod page;
 pub(crate) mod paint;
@@ -485,6 +487,13 @@ impl Flows<'_> {
                 self.picker.open(self.art.book.words.gmtx(NAME_TEXT));
             }
 
+            // `profiles:delete`, `profiles:error`: a question or note shown.
+            if let Some(("profiles", shown)) = spec.split_once(':') {
+                self.picker
+                    .held(shown)
+                    .map_err(|why| format!("--menu {spec}: {why}"))?;
+            }
+
             if page == Page::Scores {
                 self.scores.read();
             }
@@ -528,6 +537,16 @@ impl Flows<'_> {
                     });
 
                 self.mods.open(&enabled, loading);
+
+                // `load`, `save`, `overwrite`, `delete` among them: that
+                // dialog or question shown.
+                let shown = spec
+                    .split([':', ','])
+                    .find(|k| matches!(*k, "load" | "save" | "overwrite" | "delete"));
+
+                if let Some(shown) = shown {
+                    self.mods.held(shown);
+                }
             }
 
             // `lobby:N` and `lan-setup:N[:ID]` host N players.
@@ -950,8 +969,10 @@ fn held(spec: &str, keys: &[FourCc]) -> Option<Result<Shows, String>> {
 
 /// The page `spec` names, and how the map stands on it: `main[:ID]`
 /// (control `ID` hovered), `map[-top|-bottom][:KEY]` (the map scrolled to
-/// an end, the quest or, a number, the control hovered), `extras`, `settings`, `mods[:GUIDS]` (those
-/// enabled, by commas), `hint` (the first),
+/// an end, the quest or, a number, the control hovered), `extras`, `settings`, `profiles[:delete|error]` (Delete's question or a
+/// note over the list), `mods[:GUIDS]` (those
+/// enabled, by commas; `off` among them loading off, `load`, `save`,
+/// `overwrite` or `delete` that dialog shown), `hint` (the first),
 /// `background:KEY`, `summary:KEY`, `lore:CODE` (the Book of Lore on that entry), `tree[:NAME]` (the Build Tree Editor, on the tree NAME), `load-options`, `save-options`, `setup[:ID]` (combo box `ID`'s list
 /// open), `scores`, `credits`, `cinematic` (every film listed), `ending` (`MV07`), `multiplayer`, `create`, `lobby[:N]`,
 /// `lan-setup[:N[:ID]]` (the last two hosting the config for N players, 2
@@ -981,6 +1002,12 @@ fn opening(spec: &str, keys: &[FourCc]) -> Result<(Page, paint::View), String> {
     // The lore's key is an entry, taken by `Flows::open`.
     if name == "lore" {
         return Ok((Page::Main, paint::View::default()));
+    }
+
+    // The profile page's key is what shows over it, taken by
+    // `Flows::open`.
+    if name == "profiles" {
+        return Ok((Page::Profiles, paint::View::default()));
     }
 
     // The mods page's key is its enabled GUIDs, taken by `Flows::open`.
@@ -1027,7 +1054,6 @@ fn opening(spec: &str, keys: &[FourCc]) -> Result<(Page, paint::View), String> {
         "map-bottom" => map(Some(f32::NEG_INFINITY)),
         "extras" => Ok((Page::Extras, paint::View::pinned(None, quest, None))),
         "settings" => Ok((Page::Settings, paint::View::default())),
-        "profiles" => Ok((Page::Profiles, paint::View::default())),
         "loads" => Ok((Page::Loads, paint::View::default())),
         "erase" => Ok((Page::Erase, paint::View::default())),
         "quit" => Ok((Page::Quit, paint::View::default())),
@@ -1059,7 +1085,7 @@ fn opening(spec: &str, keys: &[FourCc]) -> Result<(Page, paint::View), String> {
             Ok((Page::Setup, view))
         }
         _ => Err(format!(
-            "--menu {spec}: want main[:ID], map, map-top, map-bottom, extras[:KEY], settings, lore:CODE, profiles, mods[:GUIDS], loads, erase, hint, background:KEY, summary:KEY, freestyle, setup[:ID], tree[:NAME], load-options, save-options, scores, credits, intro, cinematic, ending, protocol, multiplayer, create, lobby[:N], lan-setup[:N[:ID]] or loading[:KEY], any page then @FRAME to hold its video"
+            "--menu {spec}: want main[:ID], map, map-top, map-bottom, extras[:KEY], settings, lore:CODE, profiles[:delete|error], mods[:GUIDS][,off][,load|save|overwrite|delete], loads, erase, hint, background:KEY, summary:KEY, freestyle, setup[:ID], tree[:NAME], load-options, save-options, scores, credits, intro, cinematic, ending, protocol, multiplayer, create, lobby[:N], lan-setup[:N[:ID]] or loading[:KEY], any page then @FRAME to hold its video"
         )),
     }
 }
@@ -1128,7 +1154,10 @@ fn rescanned(f: &mut Flows, install: &crate::files::env::Install) {
 fn show(
     mut contexts: EguiContexts,
     (mut menus, mut shared): (Menus, ResMut<regent_draw::art::Art>),
-    keys: Res<ButtonInput<KeyCode>>,
+    (keys, book): (
+        Res<ButtonInput<KeyCode>>,
+        Option<Res<crate::ui::lore::Book>>,
+    ),
     mut settings: ResMut<Settings>,
     mut editor: ResMut<crate::ui::editor::Editor>,
     (mut player, mut narration, mut clicks): (
@@ -1233,7 +1262,7 @@ fn show(
                 })
                 .flatten();
             let modded = (f.menu.page == Page::Mods)
-                .then(|| mods::page(ctx, &mut *f.mods))
+                .then(|| mods::page(ctx, (&mut *f.art, &mut shared), &mut *f.mods))
                 .flatten();
             let loads = (f.menu.page == Page::Loads)
                 .then(|| loads(ctx, &mut f, &mut shared))
@@ -1255,10 +1284,13 @@ fn show(
             let lan_mods = f.menu.page == Page::Lobby && f.mods.over_lobby();
 
             if lan_mods {
-                lobby_mods(ctx, &mut f);
+                lobby_mods(ctx, &mut f, &mut shared);
             }
 
+            // The Book of Lore over the main menu takes its presses.
+            let reading = f.menu.is_main() && book.is_some_and(|b| b.is_open());
             let escape = (keys.just_pressed(KeyCode::Escape)
+                && !reading
                 && !naming
                 && !listing
                 && !lan_loading
@@ -1356,6 +1388,7 @@ fn show(
                 .or(picked)
                 .or(loads)
                 .or(escape)
+                .filter(|_| !reading)
                 .and_then(|press| f.menu.page.after(press))
             {
                 Some(Step::To(page)) => {
@@ -1726,10 +1759,10 @@ fn lan_loads(ctx: &bevy_egui::egui::Context, f: &mut Flows, shared: &mut regent_
 /// The mods page over the host's lobby, its rows marked where a player
 /// lacks the mod, as the lobby stands now: Done gives the lobby its
 /// list, which every guest then sees.
-fn lobby_mods(ctx: &bevy_egui::egui::Context, f: &mut Flows) {
+fn lobby_mods(ctx: &bevy_egui::egui::Context, f: &mut Flows, shared: &mut regent_draw::art::Art) {
     f.mods.set_problems(f.lan.mod_problems());
 
-    if mods::page(ctx, f.mods).is_some()
+    if mods::page(ctx, (&mut *f.art, shared), f.mods).is_some()
         && let Some(list) = f.mods.take_chosen()
     {
         f.lan.set_mods(list, &f.freestyle.custom);

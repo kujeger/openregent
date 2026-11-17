@@ -49,6 +49,7 @@ use regent_core::view::menu::{
 };
 
 use super::art::{self, Art, COVER, Pack, Pic, Quest, ROOM, SPLASH, Store, Wrap};
+use super::cut::{self, Across, Flip, MESSAGE_BAND, Strip};
 use super::fit::{self, Fit, Lens};
 use super::font::{self, spans};
 use super::page::{Button, Page, Press};
@@ -68,7 +69,7 @@ const FREESTYLE_LABEL: i32 = 5900;
 const SETUP_ACCEPT: i32 = panels::setup::ACCEPT;
 
 /// The painted quests' lit pictures. Slot 0 of each set holds a wooden
-/// compass the map never shows (**Game**: `menu_map_top.png`); the
+/// compass the map never shows (**Game**: a capture of the quest map's top); the
 /// buildings at rest are painted into the map.
 const PAINTED: FourCc = FourCc(*b"IX33");
 
@@ -76,7 +77,7 @@ const PAINTED: FourCc = FourCc(*b"IX33");
 const FRAME: RangeInclusive<i32> = 8500..=8513;
 
 /// A text box's inner margin, layout pixels. **Game**: the summary's
-/// lines start 5 px inside their box (`menu_barren_waste_start_summary.png`).
+/// lines start 5 px inside their box (a capture of The Barren Waste's briefing summary).
 const PAD: f32 = 5.0;
 
 /// How far inside a text box's sides its lines wrap, layout pixels.
@@ -86,7 +87,7 @@ const PAD: f32 = 5.0;
 const WRAP_MARGIN: f32 = 2.0;
 
 /// A heading box's end caps, layout pixels: its text stays between.
-/// **Inferred** from `ui_save_game.png`: the caps of CURRENT GAME
+/// **Inferred** from a capture of the Save Game dialog: the caps of CURRENT GAME
 /// DESCRIPTION's box about 15 px wide.
 const HEADING_MARGIN: f32 = 16.0;
 
@@ -733,6 +734,88 @@ impl<'a> Canvas<'a> {
         self.clip = kept;
     }
 
+    /// `pic` cut to `strips` of its rows (`cut::rows`), its top left at
+    /// layout point `at`: each strip the whole picture placed so the
+    /// strip's rows land, cut to them; a mirrored one drawn upside down.
+    pub(super) fn strips(&mut self, source: Pack, pic: Pic, at: Pos2, strips: &[Strip]) {
+        let want = self.ink.want(source, pic);
+
+        if let Some(size) = self.size(source, pic) {
+            for s in strips {
+                let rows = Rect::from_min_size(pos2(at.x, at.y + s.at), vec2(size.x, s.rows()));
+                let top = match s.flip {
+                    Flip::Plain => s.at - s.from,
+                    Flip::Mirrored => s.at - (size.y - s.to),
+                };
+                let place = Rect::from_min_size(pos2(at.x, at.y + top), size);
+                let clip = self.clip.map_or(rows, |c| c.intersect(rows));
+
+                if let Some(shown) = self.shown(want, place) {
+                    let uv = match s.flip {
+                        Flip::Plain => shown.uv,
+                        Flip::Mirrored => Rect::from_min_max(
+                            pos2(shown.uv.min.x, shown.uv.max.y),
+                            pos2(shown.uv.max.x, shown.uv.min.y),
+                        ),
+                    };
+
+                    self.ui.painter().with_clip_rect(self.fit.rect(clip)).image(
+                        shown.id,
+                        shown.rect,
+                        uv,
+                        Color32::WHITE,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Rectangle `from` of `pic`'s pixels, its top left at layout point
+    /// `at`, its columns as `across` says: the whole picture placed so
+    /// the rectangle lands there, cut to it.
+    pub(super) fn piece(
+        &mut self,
+        source: Pack,
+        pic: Pic,
+        (from, at): (Rect, Pos2),
+        across: Across,
+    ) {
+        let want = self.ink.want(source, pic);
+
+        if let Some(size) = self.size(source, pic) {
+            let left = match across {
+                Across::Plain => at.x - from.min.x,
+                Across::Mirrored => at.x - (size.x - from.max.x),
+            };
+            let place = Rect::from_min_size(pos2(left, at.y - from.min.y), size);
+            let cut = Rect::from_min_size(at, from.size());
+            let clip = self.clip.map_or(cut, |c| c.intersect(cut));
+
+            if let Some(shown) = self.shown(want, place) {
+                let uv = match across {
+                    Across::Plain => shown.uv,
+                    Across::Mirrored => Rect::from_min_max(
+                        pos2(shown.uv.max.x, shown.uv.min.y),
+                        pos2(shown.uv.min.x, shown.uv.max.y),
+                    ),
+                };
+
+                self.ui.painter().with_clip_rect(self.fit.rect(clip)).image(
+                    shown.id,
+                    shown.rect,
+                    uv,
+                    Color32::WHITE,
+                );
+            }
+        }
+    }
+
+    /// The art service the pictures are drawn through: for pictures of
+    /// another catalogue than the menus' (the Book of Lore's portraits).
+    pub(super) const fn shared(&mut self) -> &mut service::Art {
+        self.art
+    }
+
     /// `pic` repeated over layout rectangle `rect` from its top left.
     pub(super) fn tiled(&mut self, source: Pack, pic: Pic, rect: Rect) {
         let ctx = self.ui.ctx().clone();
@@ -882,7 +965,7 @@ impl<'a> Canvas<'a> {
 
     /// [`Canvas::label`], its font shrunk where the text is wider than
     /// the control less [`HEADING_MARGIN`] a side: the original's narrow
-    /// capitals fit (`ui_save_game.png`'s CURRENT GAME DESCRIPTION).
+    /// capitals fit (a capture of the Save Game dialog's CURRENT GAME DESCRIPTION).
     pub(super) fn fitted(&mut self, c: &ShownControl, text: &str, colour: Color32) {
         let font = c.font.and_then(|r| self.ink.font(r));
 
@@ -913,7 +996,7 @@ impl<'a> Canvas<'a> {
     }
 
     /// `parts` on one line centred in layout rectangle `rect`, in `font`.
-    fn centred_in(&mut self, font: font::Font, rect: Rect, parts: &[(Color32, String)]) {
+    pub(super) fn centred_in(&mut self, font: font::Font, rect: Rect, parts: &[(Color32, String)]) {
         let line: String = parts.iter().map(|(_, s)| s.as_str()).collect();
         let wide = font.width(self.ui.ctx(), self.fit.scale, &line);
         let cap = font.cap(self.fit.scale);
@@ -1008,7 +1091,7 @@ impl<'a> Canvas<'a> {
             };
 
             // A label too wide for one line, with no hot key letter, wraps
-            // (**Game**: `ui_freestyle_setup.png`'s BUILDING EDIT MENU).
+            // (**Game**: a capture of the Freestyle setup dialog's BUILDING EDIT MENU).
             if parts.len() == 1 && !self.fits(c.font, set, text) {
                 self.lines((c.font, set), text, (colour, Overflow::Spill));
             } else {
@@ -1217,7 +1300,7 @@ impl<'a> Canvas<'a> {
 
     /// `text` in control `c`, wrapped, each line and the whole centred in
     /// it, in its font and colour. **Game**: the hint's lines and their
-    /// block centred (`ui-quest-map-message.png`).
+    /// block centred (a capture of the quest map's message).
     pub(super) fn note(&mut self, c: &ShownControl, text: &str) {
         if let Some(r) = c.rect {
             let colour = pick(c, State::Normal);
@@ -1227,9 +1310,9 @@ impl<'a> Canvas<'a> {
     }
 
     /// As [`Canvas::note`], but lines past the box held from its top and
-    /// cut at its bottom. **Inferred** from `ui_downloaded_quests.png`,
+    /// cut at its bottom. **Inferred** from a capture of the downloaded quests list,
     /// whose five lines start at the box's top, the last cut, where
-    /// `ui_load_game.png`'s four are centred.
+    /// a capture of the Load Game dialog's four are centred.
     pub(super) fn held_note(&mut self, c: &ShownControl, text: &str) {
         if let Some(r) = c.rect {
             let colour = pick(c, State::Normal);
@@ -2101,6 +2184,120 @@ pub(super) fn message(
     clicked.or(keyed)
 }
 
+/// How much shorter than `AP11` a short box is at most, layout pixels:
+/// its well cut to hold a line or two. openregent's own.
+const SHORT_CUT: f32 = 110.0;
+
+/// Between a short box's well and its lines, layout pixels, up and down.
+const SHORT_PAD: f32 = 10.0;
+
+/// `AP11` (`layout`) cut short by its well's rows (`cut::rows`),
+/// centred on the window at `canvas`'s scale over what is drawn under
+/// it: `title`, `text` evened out (`font::balanced`) and wrapped in full,
+/// the box as tall as it needs, and the buttons `ask` shows moved with
+/// its bottom. The button pressed, by a click or its hot key.
+/// openregent's own: the original's box keeps one size.
+///
+/// ```text
+///        ╭──◆──╮
+///  ┌─[ Delete Profile ]─┐   title, 8005
+///  │ Delete Kåre and its │   text 5000, its well cut to its lines
+///  │      saves?         │
+///  │  [ YES ]  [ NO ]    │   5501, 5502; or OK 5503 alone
+///  └─────────◆──────────┘
+/// ```
+pub(super) fn short(
+    canvas: &mut Canvas<'_>,
+    layout: &Layout,
+    (title, text): (&str, &str),
+    ask: Ask,
+) -> Option<i32> {
+    let window = canvas.ui.max_rect();
+    let kept = canvas.fit;
+    let panel = size(layout);
+    let text_box = layout.control(message::TEXT)?;
+    let (well, font) = (fit::rect(text_box.rect?), canvas.ink.font(text_box.font?)?);
+    let ctx = canvas.ui.ctx().clone();
+    let room = well.width() - 2.0 * WRAP_MARGIN;
+    let mut lines = |w: f32| {
+        font.wrapped(&ctx, kept.scale, (text, Color32::WHITE), w)
+            .len()
+    };
+    let width = font::balanced(room, &mut lines);
+
+    #[allow(clippy::cast_precision_loss, reason = "a few lines")]
+    let need = lines(width) as f32 * font.pitch + 2.0 * SHORT_PAD;
+    let grow = (need - well.height()).max(-SHORT_CUT).round();
+    let tall = panel.y + grow;
+
+    // Its own ids: AP11's YES, NO and OK are the page's own elsewhere.
+    let child = canvas.ui.new_child(egui::UiBuilder::new().id_salt("short"));
+    let under = std::mem::replace(&mut canvas.ui, child);
+
+    canvas.fit = Fit::centred(window, kept.scale, vec2(panel.x, tall));
+    canvas.block(window);
+
+    if let Some((record, set)) = layout.panel.art {
+        let strips = cut::rows(panel.y, MESSAGE_BAND, tall);
+
+        canvas.strips(Pack::Base, Pic::of(record, set), pos2(0.0, 0.0), &strips);
+    }
+
+    if let Some(c) = layout.control(message::TITLE) {
+        canvas.label(c, title, pick(c, State::Normal));
+    }
+
+    // The lines' box: as wide as they are evened out to, a pixel spare
+    // for rounding, the well's height with the change.
+    let lines_box = super::setup::whole(Rect::from_center_size(
+        pos2(
+            well.center().x,
+            well.top() + f32::midpoint(well.height(), grow),
+        ),
+        vec2(width + 2.0 * WRAP_MARGIN + 1.0, well.height() + grow),
+    ));
+
+    canvas.note(
+        &ShownControl {
+            rect: Some(lines_box),
+            ..text_box.clone()
+        },
+        text,
+    );
+
+    let shown: Vec<ShownControl> = message::shown(ask)
+        .iter()
+        .filter_map(|&id| layout.control(id))
+        .map(|c| lowered(c, grow))
+        .collect();
+    let clicked = shown.iter().fold(None, |hit, c| {
+        let now = canvas.button(Pack::Base, c, Able::Enabled);
+
+        hit.or(now.then_some(c.id).flatten())
+    });
+    let offered: Vec<(&ShownControl, hotkey::Able)> =
+        shown.iter().map(|c| (c, hotkey::Able::Enabled)).collect();
+    let keyed = keys(&ctx)
+        .into_iter()
+        .find_map(|key| hotkey::pick(offered.iter().copied(), key))
+        .and_then(|c| c.id);
+
+    canvas.ui = under;
+    canvas.fit = kept;
+    clicked.or(keyed)
+}
+
+/// Control `c` moved `by` layout pixels down.
+pub(super) fn lowered(c: &ShownControl, by: f32) -> ShownControl {
+    #[allow(clippy::cast_possible_truncation, reason = "a box's pixels")]
+    let rect = c.rect.map(|r| smnu::Rect {
+        y: r.y + by as i32,
+        ..r
+    });
+
+    ShownControl { rect, ..c.clone() }
+}
+
 /// Exit's question, `AP04`, centred over the main menu: its own title
 /// and text, YES or NO by click or key.
 fn quit(ctx: &egui::Context, (art, shared): (&mut Art, &mut service::Art)) -> Option<Press> {
@@ -2233,7 +2430,7 @@ pub(super) fn hot(
         .and_then(|c| buttons.iter().copied().find(|&b| c.id == Some(id(b))))
 }
 
-/// The name field's selection. **Game**: `ui-profile-name.png`.
+/// The name field's selection. **Game**: a capture of the name prompt.
 pub(super) const SELECTION: Color32 = Color32::from_rgb(0x00, 0x44, 0x70);
 
 /// Where a typed line sits in its box: against its edges, or
@@ -2251,7 +2448,7 @@ const TYPED_INSET: f32 = 3.0;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Caret {
     /// All of it selected, as the prompt opens (**Game**:
-    /// `ui-profile-name.png`).
+    /// a capture of the name prompt).
     SelectAll,
     Keep,
 }

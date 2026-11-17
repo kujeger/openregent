@@ -10,6 +10,7 @@ use regent_core::content::quest;
 use regent_core::data::desc::{self, CharacterFlag, UnitKind, User};
 use regent_core::data::fourcc::FourCc;
 use regent_core::data::{cam, payload, smnu};
+use regent_core::sim::world::build::TAXED;
 use regent_core::view::menu::quest_map::Progress;
 
 use super::profile::LoreMark;
@@ -679,9 +680,7 @@ fn entry(code: FourCc, unit: &desc::Unit<'_>) -> Option<Entry> {
         });
     } else if category == Category::Lairs {
         // Lairs have no player economy.
-        stats.retain(|(label, _)| {
-            !matches!(*label, "Cost" | "Guild members" | "Income type" | "Income")
-        });
+        stats.retain(|(label, _)| !matches!(*label, "Cost" | "Guild members" | "Income"));
     }
 
     Some(Entry {
@@ -750,6 +749,49 @@ fn character_stats(code: FourCc, c: desc::Character<'_>) -> Vec<(&'static str, i
     stats
 }
 
+/// What a building's income is: a tax the crown sets, or none to show.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Income {
+    Taxed,
+    Untaxed,
+}
+
+impl Income {
+    /// A building's of its `BuildingDesc` income type (`build::TAXED`).
+    fn of(income_type: Option<u32>) -> Income {
+        if income_type == Some(TAXED) {
+            Income::Taxed
+        } else {
+            Income::Untaxed
+        }
+    }
+}
+
+/// The line under a seen entry's title: what the profile holds of it.
+///
+/// ```text
+///  seen, no kills, not owned   Seen
+///  kills                       Slain: 7          (Destroyed: N, a building)
+///  owned                       Destroyed: 0 · Owned
+/// ```
+pub(crate) fn counter(kind: UnitKind, mark: LoreMark) -> String {
+    let verb = if kind == UnitKind::Building {
+        "Destroyed"
+    } else {
+        "Slain"
+    };
+
+    match (mark.owned, mark.kills) {
+        (false, 0) => SEEN.to_owned(),
+        (false, kills) => format!("{verb}: {kills}"),
+        (true, kills) => format!("{verb}: {kills}{OWNED}"),
+    }
+}
+
+/// [`counter`]'s words.
+const SEEN: &str = "Seen";
+const OWNED: &str = " · Owned";
+
 fn building_stats(b: desc::Building<'_>) -> Vec<(&'static str, i64)> {
     let fields = [
         ("Health", b.max_hp()),
@@ -757,14 +799,14 @@ fn building_stats(b: desc::Building<'_>) -> Vec<(&'static str, i64)> {
         ("Sight", b.sight_range()),
         ("Guild members", b.max_guild_members()),
         ("Gold", b.gold()),
-        ("Income type", b.income_type()),
     ];
     let mut stats: Vec<_> = fields
         .into_iter()
         .filter_map(|(label, value)| value.map(|value| (label, i64::from(value))))
         .collect();
 
-    if let Some(income) = b.income_amount() {
+    // Income only where it is a tax: the rest have none to show.
+    if let (Some(income), Income::Taxed) = (b.income_amount(), Income::of(b.income_type())) {
         stats.push(("Income", i64::from(income)));
     }
 
@@ -775,6 +817,38 @@ fn building_stats(b: desc::Building<'_>) -> Vec<(&'static str, i64)> {
 mod tests {
     use super::*;
     use regent_core::data::rgs;
+
+    #[test]
+    fn income_shows_only_for_a_taxed_building() {
+        assert_eq!(Income::of(Some(TAXED)), Income::Taxed);
+        assert_eq!(Income::of(Some(1)), Income::Untaxed);
+        assert_eq!(Income::of(None), Income::Untaxed);
+    }
+
+    /// Seen alone says so; else the kills, and owned.
+    #[test]
+    fn the_counter_says_seen_kills_and_owned() {
+        let marked = |kills, owned| LoreMark {
+            seen: true,
+            kills,
+            owned,
+        };
+
+        assert_eq!(counter(UnitKind::Character, marked(0, false)), "Seen");
+        assert_eq!(counter(UnitKind::Character, marked(7, false)), "Slain: 7");
+        assert_eq!(
+            counter(UnitKind::Character, marked(2, true)),
+            "Slain: 2 · Owned"
+        );
+        assert_eq!(
+            counter(UnitKind::Building, marked(0, true)),
+            "Destroyed: 0 · Owned"
+        );
+        assert_eq!(
+            counter(UnitKind::Building, marked(12, false)),
+            "Destroyed: 12"
+        );
+    }
 
     #[test]
     fn lair_spawns_unlock_after_ten_kills_or_ownership() {
@@ -1178,7 +1252,7 @@ mod tests {
     fn lair_lore_omits_economy() {
         let hd = crate::files::env::path(crate::files::env::HD).expect("MAJESTY_HD");
         let catalogue = Catalogue::read(&hd).expect("shipped data");
-        let labels = ["Cost", "Guild members", "Income type", "Income"];
+        let labels = ["Cost", "Guild members", "Income"];
         let has = |entry: &Entry, label| entry.stats.iter().any(|(name, _)| *name == label);
 
         for entry in catalogue
@@ -1195,7 +1269,7 @@ mod tests {
 
         let market = &catalogue.0[&FourCc(*b"ABH1")];
         assert!(
-            ["Cost", "Income type", "Income"]
+            ["Cost", "Income"]
                 .into_iter()
                 .all(|label| has(market, label))
         );

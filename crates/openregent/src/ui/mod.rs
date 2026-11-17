@@ -25,6 +25,7 @@ pub(crate) mod held;
 pub(crate) mod layout;
 pub(crate) mod lore;
 pub(crate) mod minimap;
+mod notice;
 pub(crate) mod options;
 pub(crate) mod players;
 pub(crate) mod scroll;

@@ -43,6 +43,7 @@ Aids for panels:
 | `--page` | Opens a page under the selection |
 | `--zoom <z>` | Draws at that zoom, smooth zoom on |
 | `--dialog options\|goals\|settings` | Opens `AP36`, `AP88` or the settings editor over the game |
+| `--dialog chat\|stopped\|rename` | Opens the chat line with a line typed, the stopped game's box with a long reason, or (with `--select`) the unit's name box with a name typed |
 | `--settings-tab settings\|enhancements` | Opens the settings editor on that tab (with `--dialog` or `--menu settings`) |
 | `--end` | Holds a stage of the end screens |
 
@@ -275,7 +276,7 @@ refuses it.
 | Marketplace MARKET DAY | 8200, key M, once researched, `Input::MarketDay`; while running bar 8201 and text 8826 (`World::market_day`) |
 | Temple to Krolm RAGE OF KROLM | 8009, key K, price in 4484 on the `INTI` 1016 box, red when short; enabled with a hero; short: `GMTX` 36; `Input::Rage`, `Input::Resource`; while running 8201 and 8826 (`World::rage`) |
 | Hall of Champions bounty | Page `MX01`: the slain types, the first lit; 2050 S and 2051 L say `Game::bounties`; `Input::Bounty`; while one runs `MX00` shows 4500 and `GMTX` 412 (`World::bounty_running`; `place_bounty_opens_the_bounty_page`) |
-| Own unit's name box | 8005: a press edits it in an egui box over its rectangle; Enter sends `Input::Rename`, Escape drops it; game keys and chat idle meanwhile. A hero below `#HeroNameEditingLevel` says `GMTX` 192 (`World::naming`; `a_low_heros_name_box_says_the_level`) |
+| Own unit's name box | 8005: a press edits it over its rectangle, in the text field's picture (`AP35`'s, as the chat line) narrowed 8 px a side to the scroll's parchment (openregent's own); Enter sends `Input::Rename`, Escape drops it; game keys and chat idle meanwhile. A hero below `#HeroNameEditingLevel` says `GMTX` 192 (`World::naming`; `a_low_heros_name_box_says_the_level`) |
 | Embassy open or close | Its timer's share |
 | Mausoleum RESURRECT | R, for the hero lit on LIST OF DEAD (`MX05`), priced by `Game::crypt` in 8006, red when short; the press selects the hero (`resurrect_sends_the_lit_hero_and_its_price`) |
 | Flag raise and removal | Raise `AlterAttributeDelta`, at any reward; removal `Input::Unflag`, asked first while it holds a reward (`orders::remove`); a double click on it too |
@@ -740,8 +741,10 @@ Mini view 1 (`tracking`;
   - `AP36` spaces "QUIT      MAJESTY" and "RESUME    PLAY"; openregent draws
     them on one line with one space (`options::spaced`;
     `a_spaced_label_is_one_line`).
-- Chat (`chat`, placeholder): Enter opens a line, Enter sends, Escape
-  cancels; while open the game sees no key. A cheat phrase sends
+- Chat (`chat`): Enter opens a line, Enter sends, Escape
+  cancels; while open the game sees no key. The line is `AP35`'s text
+  field (`INDn` 1000), its middle cut to 360 × 26 HD pixels, centred over
+  the map's bottom above the open spell bar (openregent's own look). A cheat phrase sends
   `Input::Cheat` and shows its reply ([cheats.md](../original/cheats.md));
   in a base quest an empty line is `PLANET FARGO`, as in the engine.
   - Sent lines and the world's game messages to the crown type into a

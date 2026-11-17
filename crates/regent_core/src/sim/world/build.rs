@@ -38,7 +38,7 @@ pub const FIRST_HP: i32 = 1;
 
 /// `BuildingDesc` income type that sets a tax rate (compared with 2 in
 /// `BuildingRec`).
-const TAXED: u32 = 2;
+pub const TAXED: u32 = 2;
 
 /// `IsTaxed`'s default, default tax route: the byte at
 /// default tax route is 1 in the file.

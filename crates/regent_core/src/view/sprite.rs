@@ -13,8 +13,10 @@
 //! Index 0 is an ordinary colour and version 3's transparency is the gaps
 //! between runs, so no index can key it. Coverage gets its own mask.
 //!
-//! Uncompressed tiles are gapless, so their mask is all true, although the
-//! world blitter also skips index 255. See [`super::raster::shade::TRANSPARENT`].
+//! Uncompressed tiles are gapless, so a version 1 tile's mask is all true;
+//! a version 2 tile's is false at index 255, which its blit skips in every
+//! mode ([`Tile::keyed`]). The world blitter also skips index 255. See
+//! [`super::raster::shade::TRANSPARENT`].
 
 use crate::data::cam;
 use crate::data::error::{Error, Result};
@@ -84,7 +86,8 @@ pub struct Sprite {
     pub version: u16,
     /// See [`crate::data::tile::Tile::anchor`].
     pub anchor: (i16, i16),
-    /// False where the tile draws nothing. All true when uncompressed.
+    /// False where the tile draws nothing. All true when uncompressed,
+    /// but at a version 2 tile's index 255.
     pub covered: Vec<bool>,
     pub colour: Colour,
     pub source: PaletteSource,
@@ -115,7 +118,13 @@ impl Sprite {
         let (colour, covered, source) = match tile.format() {
             PixelFormat::Indexed => {
                 let drawn = tile.indices().expect("an indexed tile has indices");
-                let covered = drawn.iter().map(Option::is_some).collect();
+
+                // A version 2 tile's index 255 is a hole in every mode.
+                let keyed = tile.keyed();
+                let covered = drawn
+                    .iter()
+                    .map(|i| i.is_some_and(|i| !(keyed && i == shade::TRANSPARENT)))
+                    .collect();
                 let indices = drawn.into_iter().map(Option::unwrap_or_default).collect();
                 let (palette, source) =
                     resolve_palette(catalogue, archive, payload, tile.palette())?;
@@ -385,6 +394,26 @@ mod tests {
         assert_eq!(s.drawn(), 2);
         // Index 0 is a colour, not a hole.
         assert_eq!(s.rgba(), [10, 20, 30, 255, 9, 9, 9, 255]);
+    }
+
+    /// Index 255 is a hole in a version 2 tile, a colour in a version 1
+    /// (`Tile::keyed`).
+    #[test]
+    fn a_keyed_tile_draws_nothing_at_index_255() {
+        let archives = empty_catalogue();
+        let catalogue = Catalogue::build(&archives).unwrap();
+        let opaque = embedded_tile(&[0, shade::TRANSPARENT]);
+        let mut keyed = opaque.clone();
+
+        keyed[0..2].copy_from_slice(&crate::data::tile::VERSION_KEYED.to_le_bytes());
+
+        let opaque = Sprite::resolve(&catalogue, 0, &opaque).unwrap();
+        let keyed = Sprite::resolve(&catalogue, 0, &keyed).unwrap();
+
+        assert_eq!(opaque.covered, [true, true]);
+        assert_eq!(keyed.covered, [true, false]);
+        assert_eq!(keyed.ink(1, Blit::Interface), Ink::Hole);
+        assert_eq!(keyed.rgba()[4..], [0, 0, 0, 0]);
     }
 
     #[test]
