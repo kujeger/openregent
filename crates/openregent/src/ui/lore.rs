@@ -15,7 +15,7 @@ use crate::files::lore::{
     unlock_text,
 };
 use crate::files::profile::{LoreMark, Player, Profile};
-use crate::game::seen::{News, Watch};
+use crate::game::seen::{Frame, News, Watch};
 use crate::menu::Menu;
 use crate::ui::figure::{self, Figure};
 
@@ -136,6 +136,29 @@ impl Book {
             .strip(ctx, &read, &frames, shown, (place, FIGURE_SCENE))
             .map(Answer::now)
     }
+}
+
+/// Whether the simulation stepped since this last said so: a game's
+/// first frame counts, so pieces already present (a loaded save, a
+/// paused start) are folded in. Pieces, fog and kills change only at steps.
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "a Bevy system takes its parameters by value"
+)]
+fn stepped(frame: Option<Res<Frame>>, mut last: Local<Option<u32>>) -> bool {
+    frame.is_some_and(|frame| {
+        let ran = frame.is_added() || took_step(*last, frame.frames);
+
+        *last = Some(frame.frames);
+
+        ran
+    })
+}
+
+/// Whether a game at frame `now` ran a step since frame `last`, if it
+/// was looked at before.
+fn took_step(last: Option<u32>, now: u32) -> bool {
+    last != Some(now)
 }
 
 /// Fold simulation events and visible pieces into this profile.
@@ -620,6 +643,20 @@ pub fn plugin(app: &mut App) {
     app.init_resource::<Book>().add_systems(
         Update,
         sync.after(crate::game::clock::tick)
+            .run_if(stepped)
             .in_set(frame::Frame::Step),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A frame not looked at before, or at another count, is a step's.
+    #[test]
+    fn sync_waits_for_a_step() {
+        assert!(took_step(None, 0));
+        assert!(took_step(Some(0), 1));
+        assert!(!took_step(Some(1), 1));
+    }
 }
