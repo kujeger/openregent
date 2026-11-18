@@ -1,0 +1,18 @@
+<Majesty>
+	<Quest id="{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F21}">
+		<Name>Thornwood</Name>
+		<DisplayName lang="en_US">Thornwood</DisplayName>
+		<DataConfiguration>
+			<Dataset base="MajestyExpansion">
+				<Load>
+					<Template>example.q</Template>
+					<Strings>XML\thornwood_text.xml</Strings>
+					<GPL>
+						<Target>Data\thornwood.bcd</Target>
+						<Source>GPL\thornwood.gplproj</Source>
+					</GPL>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Quest>
+</Majesty>

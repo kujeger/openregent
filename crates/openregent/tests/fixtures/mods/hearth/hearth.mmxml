@@ -1,0 +1,43 @@
+<Majesty>
+	<Mod id="{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01}">
+		<Name>Hearth</Name>
+		<DisplayName lang="en_US">Hearth</DisplayName>
+		<Description lang="en_US">
+			<Short>A hearthguard: its unit in XML, its agent in GPL.</Short>
+			<Long/>
+		</Description>
+		<DataConfiguration>
+			<Dataset base="Any">
+				<Load>
+					<GPL>
+						<Target>Data\hearth.bcd</Target>
+						<Source>GPL\hearth.gplproj</Source>
+					</GPL>
+					<Descriptions>XML\hearth.xml</Descriptions>
+					<Strings>XML\hearth_text.xml</Strings>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+	<Mod id="{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F02}">
+		<Name>HearthVerdicts</Name>
+		<DisplayName lang="en_US">Hearth Verdicts</DisplayName>
+		<DataConfiguration>
+			<Dataset base="Any">
+				<Load>
+					<Strings>XML/verdicts.xml</Strings>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+	<Mod id="{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F03}">
+		<Name>HearthEmbers</Name>
+		<DisplayName lang="en_US">Hearth Embers</DisplayName>
+		<DataConfiguration>
+			<Dataset base="Any">
+				<Load>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+</Majesty>

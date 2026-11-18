@@ -340,7 +340,8 @@ mod tests {
     use super::*;
 
     const GUARDHOUSE: &str = "D666FCBE-9906-4582-A6A0-DC96F812441E";
-    const EXPANDED: &str = "{17bf53de-722f-4683-8e63-6b93d1606dff}";
+    /// The fixture's Hearth (`testdata::HEARTH`), in braces and lower case.
+    const HEARTH: &str = "{4ea27b00-1d2c-4e3f-8a51-6b7c8d9e0f01}";
     const UNKNOWN: &str = "00000000-0000-0000-0000-000000000001";
 
     /// A scratch file, `name` in a folder of its own: the folder, kept
@@ -352,11 +353,9 @@ mod tests {
         (dir, path)
     }
 
+    /// The fixture mods' library (`testdata::fixture_install`).
     fn library() -> Library {
-        crate::files::env::Install::from_env()
-            .expect("MAJESTY_HD")
-            .mods()
-            .clone()
+        crate::testdata::fixture_install().mods().clone()
     }
 
     /// Read in order; braces and case free; an unknown id hidden and kept;
@@ -368,7 +367,7 @@ mod tests {
         let (_dir, path) = scratch("round.toml");
         let text = format!(
             "[ui]\nnames = \"heroes\"\n\n\
-             [[mod]]\nid = \"{EXPANDED}\"\nname = \"hand edited\"\nenabled = true\n\n\
+             [[mod]]\nid = \"{HEARTH}\"\nname = \"hand edited\"\nenabled = true\n\n\
              [[mod]]\nid = \"{UNKNOWN}\"\nname = \"gone\"\nenabled = true\n\n\
              [[mod]]\nid = \"{GUARDHOUSE}\"\nenabled = \"yes\"\n"
         );
@@ -382,14 +381,14 @@ mod tests {
         assert_eq!(
             enabled(&entries),
             [
-                "{17BF53DE-722F-4683-8E63-6B93D1606DFF}",
+                "{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01}",
                 "{00000000-0000-0000-0000-000000000001}"
             ]
         );
 
         let (rows, kept) = rows(&entries, &library);
 
-        assert_eq!(rows[0].guid, Guid::parse(EXPANDED));
+        assert_eq!(rows[0].guid, Guid::parse(HEARTH));
         assert_eq!(rows[1].guid, Guid::parse(GUARDHOUSE));
         assert!(!rows[1].enabled, "\"yes\" is no boolean");
         assert_eq!(rows.len(), library.mods.len(), "each found mod");
@@ -407,15 +406,15 @@ mod tests {
         let text = std::fs::read_to_string(&path).expect("read");
 
         assert!(text.contains("names = \"heroes\""), "{text}");
-        assert!(text.contains("name = \"Majesty Expanded\""), "{text}");
+        assert!(text.contains("name = \"Hearth\""), "{text}");
         assert!(!text.contains("hand edited"), "{text}");
         assert!(
-            text.contains("id = \"17BF53DE-722F-4683-8E63-6B93D1606DFF\""),
+            text.contains("id = \"4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01\""),
             "{text}"
         );
         assert!(text.contains("name = \"gone\""), "kept as written: {text}");
         assert_eq!(again.len(), library.mods.len() + 1);
-        assert_eq!(again[0].guid, Guid::parse(EXPANDED));
+        assert_eq!(again[0].guid, Guid::parse(HEARTH));
         assert!(again[0].enabled);
         assert_eq!(again.last().and_then(|e| e.guid), Guid::parse(UNKNOWN));
     }
@@ -433,7 +432,7 @@ mod tests {
     fn loading_off_loads_nothing_and_keeps_the_list() {
         let (_dir, path) = scratch("loading.toml");
         let text =
-            format!("[ui]\nnames = \"heroes\"\n\n[[mod]]\nid = \"{EXPANDED}\"\nenabled = true\n");
+            format!("[ui]\nnames = \"heroes\"\n\n[[mod]]\nid = \"{HEARTH}\"\nenabled = true\n");
 
         std::fs::write(&path, &text).expect("written");
         assert_eq!(loading_at(&path), Loading::On);

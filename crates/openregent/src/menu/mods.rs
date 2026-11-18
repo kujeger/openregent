@@ -2388,12 +2388,12 @@ mod tests {
         assert_eq!(list, [entry(B, true), entry(A, true)]);
     }
 
-    /// The Workshop's Adjust Guardhouse holds one image; Majesty
-    /// Expanded's XML is said.
+    /// The SDK's Adjust Guardhouse holds one image; the fixture's
+    /// Hearth's XML is said.
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn a_mod_says_what_it_holds() {
-        let install = crate::files::env::Install::from_env().expect("MAJESTY_HD");
+        let install = crate::testdata::fixture_install();
         let library = install.mods();
         let by = |guid: &str| {
             library
@@ -2402,7 +2402,7 @@ mod tests {
         };
 
         assert_eq!(holds(by("{D666FCBE-9906-4582-A6A0-DC96F812441E}")), "1 GPL");
-        assert!(holds(by("{17BF53DE-722F-4683-8E63-6B93D1606DFF}")).contains("XML descriptions"));
+        assert!(holds(by(crate::testdata::HEARTH)).contains("XML descriptions"));
     }
 
     /// The page's list shows eleven whole rows; Load's eight, Save's six.
@@ -2469,13 +2469,13 @@ mod tests {
         assert!(never_loads(&Base::Other("Northland".to_owned())));
     }
 
-    /// Majesty Expanded's Workshop item holds 28 quests and 23 other
-    /// mods: the quests are said as the folder's. New Game+ is alone in
-    /// its item with 1 quest; Adjust Guardhouse has none.
+    /// The fixture's Hearth item holds 2 quests and 2 other mods: the
+    /// quests are said as the folder's. Thornwood Rules is alone in its
+    /// item with 1 quest; Adjust Guardhouse has none.
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn a_mods_quests_are_its_folders() {
-        let install = crate::files::env::Install::from_env().expect("MAJESTY_HD");
+        let install = crate::testdata::fixture_install();
         let library = install.mods();
         let of = |guid: &str| {
             Brings::of(
@@ -2485,39 +2485,34 @@ mod tests {
                     .expect("found"),
             )
         };
-        let expanded = of(EXPANDED);
-        let new_game = of("{DAA41917-B61F-4934-98E5-A6E386FE6DD5}");
+        let hearth = of(HEARTH);
+        let rules = of(crate::testdata::THORNWOOD_RULES);
         let guardhouse = of("{D666FCBE-9906-4582-A6A0-DC96F812441E}");
 
         assert_eq!(
-            expanded,
+            hearth,
             Brings {
-                quests: 28,
-                others: 23
+                quests: 2,
+                others: 2
             }
         );
         assert!(
-            expanded
+            hearth
                 .said()
                 .expect("said")
-                .contains("shared with 23 other mods")
+                .contains("shared with 2 other mods")
         );
-        assert!(
-            new_game
-                .said()
-                .expect("said")
-                .starts_with("Brings 1 quest:")
-        );
+        assert!(rules.said().expect("said").starts_with("Brings 1 quest:"));
         assert_eq!(guardhouse.said(), None);
     }
 
-    const EXPANDED: &str = "{17BF53DE-722F-4683-8E63-6B93D1606DFF}";
+    const HEARTH: &str = crate::testdata::HEARTH;
     const UNKNOWN: &str = "{00000000-0000-0000-0000-000000000001}";
 
-    /// An editor on the install's mods, its settings file and
-    /// collections in a fresh scratch folder.
+    /// An editor on the fixture mods, its settings file and collections
+    /// in a fresh scratch folder.
     fn editor(name: &str) -> (crate::testdata::Scratch, Editor) {
-        let install = crate::files::env::Install::from_env().expect("MAJESTY_HD");
+        let install = crate::testdata::fixture_install();
         let dir = crate::testdata::scratch(&format!("mods-page-{name}"));
         let mut editor = Editor::default();
 
@@ -2593,7 +2588,7 @@ mod tests {
     fn an_edit_is_a_change() {
         let (_dir, mut editor) = editor("change");
 
-        editor.open(&[entry(EXPANDED, true)], Loading::On);
+        editor.open(&[entry(HEARTH, true)], Loading::On);
 
         assert!(!editor.changed());
         assert!(rows(&editor)[0].enabled);
@@ -2611,7 +2606,7 @@ mod tests {
         let (_dir, mut editor) = editor("collection");
         let path = editor.list_file.clone().expect("a path");
         let text = format!(
-            "[[mod]]\nid = \"{EXPANDED}\"\nenabled = true\n\n\
+            "[[mod]]\nid = \"{HEARTH}\"\nenabled = true\n\n\
              [[mod]]\nid = \"{UNKNOWN}\"\nname = \"gone\"\nenabled = true\n"
         );
 
@@ -2646,7 +2641,7 @@ mod tests {
                 ..saved
             }
         );
-        assert_eq!(draft.rows[1].guid, Guid::parse(EXPANDED));
+        assert_eq!(draft.rows[1].guid, Guid::parse(HEARTH));
         assert!(draft.rows[1].enabled);
         assert_eq!(draft.kept.len(), 1, "kept");
         assert!(
@@ -2714,7 +2709,7 @@ mod tests {
         let (_dir, mut editor) = editor("done");
         let path = editor.list_file.clone().expect("a path");
 
-        editor.open(&[entry(EXPANDED, true)], Loading::On);
+        editor.open(&[entry(HEARTH, true)], Loading::On);
         editor.edit(Edit::Down(0));
         editor.edit(Edit::Loading);
         editor.act(Act::Done);
@@ -2724,7 +2719,7 @@ mod tests {
         assert_eq!(editor.draft, None);
         assert_eq!(mod_list::loading_at(&path), Loading::Off);
         assert_eq!(mod_list::chosen(&entries, Loading::Off).len(), 0);
-        assert_eq!(entries[1].guid, Guid::parse(EXPANDED));
+        assert_eq!(entries[1].guid, Guid::parse(HEARTH));
         assert!(entries[1].enabled, "the list kept");
     }
 
@@ -2758,7 +2753,7 @@ mod tests {
     fn cancel_discards_the_edits() {
         let (_dir, mut editor) = editor("cancel");
 
-        editor.open(&[entry(EXPANDED, true)], Loading::On);
+        editor.open(&[entry(HEARTH, true)], Loading::On);
         editor.edit(Edit::Toggle(0));
         editor.edit(Edit::Loading);
         editor.act(Act::Cancel);

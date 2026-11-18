@@ -1999,11 +1999,12 @@ mod tests {
     use super::*;
 
     /// A mod's quest put in a mod folder is offered after a Rescan, in
-    /// the extra quests' list too: no restart.
+    /// the extra quests' list too: no restart. The fixture's Thornwood
+    /// item.
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn a_rescan_offers_a_new_mods_quest() {
-        const WILD: &str = "2892764983";
+        const WILD: &str = crate::testdata::THORNWOOD_ITEM;
 
         let scratch = crate::testdata::scratch("rescan");
         let dir = scratch.path().to_path_buf();
@@ -2016,9 +2017,8 @@ mod tests {
 
         opened.with(|m| m.extras_on(&install));
 
-        let workshop =
-            crate::files::env::path(crate::files::env::WORKSHOP).expect("MAJESTY_WORKSHOP");
-        std::os::unix::fs::symlink(workshop.join(WILD), dir.join(WILD)).expect("linked");
+        let fixture = crate::testdata::fixture_mods();
+        std::os::unix::fs::symlink(fixture.join(WILD), dir.join(WILD)).expect("linked");
         opened.with(|m| {
             rescanned(m, &install);
 

@@ -1,0 +1,12 @@
+<Majesty>
+	<Mod id="{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F22}">
+		<Name>ThornwoodRules</Name>
+		<DisplayName lang="en_US">Thornwood Rules</DisplayName>
+		<DataConfiguration>
+			<Dataset base="Any">
+				<Load>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+</Majesty>

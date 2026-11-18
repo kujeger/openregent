@@ -1230,7 +1230,8 @@ pub(crate) mod tests {
         assert_eq!(first, second);
     }
 
-    /// Adjust Guardhouse, Workshop item 617966615.
+    /// Adjust Guardhouse, the HD SDK's example mod, in the fixture mods
+    /// (`testdata::fixture_mods`).
     const GUARDHOUSE_MOD: &str = "{D666FCBE-9906-4582-A6A0-DC96F812441E}";
 
     /// Adjust Guardhouse's one change, its `GuardHouse2` instance: a
@@ -1250,7 +1251,7 @@ pub(crate) mod tests {
                 .into_iter()
                 .chain(mods.iter().copied())
                 .collect();
-            let begun = crate::game::begin::test_game(&args).0;
+            let begun = crate::game::begin::fixture_game(&args).0;
             let world = begun.sim.world();
             let house = (0..world.next_id())
                 .find(|id| world.piece(*id).is_some_and(|p| &p.code.0 == b"ABE2"))
@@ -1303,7 +1304,7 @@ pub(crate) mod tests {
             .into_iter()
             .chain(mods.iter().copied())
             .collect();
-        let mut sim = crate::game::begin::test_game(&args).0.sim;
+        let mut sim = crate::game::begin::fixture_game(&args).0.sim;
         let guards = |world: &regent_core::sim::world::World| {
             (0..world.next_id())
                 .filter(|id| world.piece(*id).is_some())
@@ -1489,7 +1490,7 @@ pub(crate) mod tests {
     /// The game `args` make, played `frames` headless: its script errors,
     /// and how many records its XML made.
     fn script_errors(args: &[&str], frames: u32) -> (regent_core::sim::host::Reports, usize) {
-        let (begun, catalogue) = crate::game::begin::test_game(args);
+        let (begun, catalogue) = crate::game::begin::fixture_game(args);
         let mut sim = begun.sim;
         let made = catalogue
             .archives
@@ -1502,41 +1503,18 @@ pub(crate) mod tests {
         (sim.reports().clone(), made)
     }
 
-    /// Majesty Expanded, its XML mod.
-    const EXPANDED_MOD: &str = "{17BF53DE-722F-4683-8E63-6B93D1606DFF}";
-
-    /// Mods listing XML start and play without a script error: Phantoms
-    /// Haunt, Improved Guards Plus, and Majesty Expanded's quests over
-    /// its mod (Random Map, Sandbox Survival and War in the Sewers err
-    /// without it).
+    /// A mod listing XML starts and plays without a script error: the
+    /// fixture's Hearth alone, and its quest Hearth Watch over it, which
+    /// errs without it: its unit is the mod's XML's.
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn xml_mods_play_without_script_errors() {
+        use crate::testdata::{HEARTH, WATCH};
+
         // 100 s of game time.
         const FRAMES: u32 = 2000;
 
-        let games: [&[&str]; 5] = [
-            &["--mods", "{8c48289e-7c70-4426-8913-133f3544a182}"],
-            &["--mods", "{C39B8C91-2185-1DD1-834E-CD212019666D}"],
-            &[
-                "--quest",
-                "{8178F67E-EC43-4E83-90C9-21B56E859135}",
-                "--mods",
-                EXPANDED_MOD,
-            ],
-            &[
-                "--quest",
-                "{03A8812C-5641-4DFC-9B13-77CE79E355EE}",
-                "--mods",
-                EXPANDED_MOD,
-            ],
-            &[
-                "--quest",
-                "{6C8CBC3B-1163-43F9-997C-FEEEAA914CA1}",
-                "--mods",
-                EXPANDED_MOD,
-            ],
-        ];
+        let games: [&[&str]; 2] = [&["--mods", HEARTH], &["--quest", WATCH, "--mods", HEARTH]];
 
         for args in games {
             let (reports, made) = script_errors(args, FRAMES);
@@ -1545,13 +1523,10 @@ pub(crate) mod tests {
             assert_eq!(reports.count, 0, "{args:?}: {:?}", reports.first);
         }
 
-        // Without the mod each quest errs: an attribute its XML gives.
-        for quest in &games[2..] {
-            let (reports, made) = script_errors(&quest[..2], FRAMES);
+        let (reports, made) = script_errors(&["--quest", WATCH], FRAMES);
 
-            assert_eq!(made, 0);
-            assert!(reports.count > 0, "{quest:?} plays unmodded");
-        }
+        assert_eq!(made, 0);
+        assert!(reports.count > 0, "the quest plays unmodded");
     }
 
     /// Adjust Guardhouse gives a second guard only on an upgrade, as in
@@ -1582,16 +1557,17 @@ pub(crate) mod tests {
         );
     }
 
-    /// Majesty Expanded's copy of Barren Waste: listed after the
-    /// install's quests, named by its whole id, keyed by its CRC
-    /// (`quest::key_of`), titled by its `DisplayName` as `STRT QUES`
-    /// holds no such key, and begun with a mod as a menu's quest is.
+    /// The fixture's Second Again, its id's first word a shipped quest's
+    /// key (`QU02`): listed after the install's quests, named by its
+    /// whole id, keyed by its CRC (`quest::key_of`), titled by its
+    /// `DisplayName` as `STRT QUES` holds no such key, and begun with a
+    /// mod as a menu's quest is.
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn a_mods_quest_is_named_by_its_id_and_begins() {
-        const COPY: &str = "{31305551-0054-0032-0000-000000000000}";
+        const COPY: &str = crate::testdata::SECOND;
 
-        let install = env::Install::from_env().expect("MAJESTY_HD");
+        let install = crate::testdata::fixture_install();
         let quests = quests(&install).expect("quests");
         let picked = |given: &str| {
             quest_of(&parsed(["openregent", "--quest", given]), &quests)
@@ -1606,12 +1582,12 @@ pub(crate) mod tests {
         ));
         assert_eq!(quests[copy].named(), COPY);
         assert_eq!(
-            quests[picked("QU01").expect("QU01")].origin,
+            quests[picked("QU02").expect("QU02")].origin,
             crate::game::load::Origin::Install
         );
 
         let (begun, _) =
-            crate::game::begin::test_game(&["--quest", COPY, "--mods", GUARDHOUSE_MOD]);
+            crate::game::begin::fixture_game(&["--quest", COPY, "--mods", GUARDHOUSE_MOD]);
 
         let id = Guid::parse(COPY).expect("a GUID");
 
@@ -1619,7 +1595,7 @@ pub(crate) mod tests {
             begun.session.quest,
             Some((
                 regent_core::content::quest::key_of(id),
-                "121 - Original Quest - Barren Waste".to_owned()
+                "The Second Quest, Again".to_owned()
             ))
         );
         assert_eq!(begun.session.needs.mods.len(), 1);
@@ -1642,18 +1618,16 @@ pub(crate) mod tests {
         assert_eq!(krolm.title, "The Wrath of Krolm");
     }
 
-    /// The Wild, a Workshop quest, begun as the menus begin it: its end
-    /// panel says its own strings, ME Game Modifiers' over them
-    /// (`regent_core::view::menu::end::verdict`).
+    /// The fixture's Thornwood, a mod folder's quest, begun as the menus
+    /// begin it: its end panel says its own strings, the Hearth Verdicts
+    /// mod's over them (`regent_core::view::menu::end::verdict`).
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
-    fn a_workshop_quests_verdict_is_its_strings() {
+    fn a_mods_quests_verdict_is_its_strings() {
+        use crate::testdata::{THORNWOOD, VERDICTS};
         use regent_core::sim::world::defeat::End;
 
-        const WILD: &str = "{23713EFA-0595-4A99-9890-5178D253C70D}";
-        const MODIFIERS: &str = "{4233391D-0EEA-4E85-B7BD-AC0DE66DFF58}";
-
-        let install = env::Install::from_env().expect("MAJESTY_HD");
+        let install = crate::testdata::fixture_install();
         let quests = quests(&install).expect("quests");
         let said = |args: &[&str]| {
             let cli = parsed(std::iter::once("openregent").chain(args.iter().copied()));
@@ -1676,35 +1650,35 @@ pub(crate) mod tests {
         };
 
         assert_eq!(
-            said(&["--quest", WILD]),
+            said(&["--quest", THORNWOOD]),
             [
-                "We have pushed back the wild beasts! Victory is ours!",
-                "Our palace has fallen to the beasts... our kingdom is no more...",
+                "The thornwood is cleared. The realm rejoices!",
+                "The thornwood has swallowed the palace.",
             ]
         );
         assert_eq!(
-            said(&["--quest", WILD, "--mods", MODIFIERS]),
+            said(&["--quest", THORNWOOD, "--mods", VERDICTS]),
             [
-                "Your Majesty, we... won? I don't know how... but... we did it! Congratulations..?",
-                "Our kingdom falls, but we must never forget how long we lasted against all odds!",
+                "Against every wager, the hearth holds. Victory!",
+                "The hearth is cold, but the tale of it will be told.",
             ]
         );
     }
 
-    /// The Wild names the red player's inn `SpecifyName(redinn, "REDINN")`:
-    /// the string's message number is its id, so the quest's string of
-    /// that id names it, as HD's panel does ("Hooligan's Haughty
-    /// Hangout"); its Hooligans, `"HOOL"`, likewise ("Hooligan").
+    /// The fixture's Thornwood names its palace
+    /// `SpecifyName(palace, "THORNHALL")`: the string's message number is
+    /// its id, so the quest's string of that id names it, as HD's panel
+    /// does ("Thornhall Keep"); its first lair, `"BRAMBLE"`, likewise
+    /// ("Bramble Hold").
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
-    fn a_workshop_quests_given_name_is_its_string() {
+    fn a_mods_quests_given_name_is_its_string() {
+        use crate::testdata::THORNWOOD;
         use regent_core::view::panel::portrait;
 
-        const WILD: &str = "{23713EFA-0595-4A99-9890-5178D253C70D}";
-
-        let install = env::Install::from_env().expect("MAJESTY_HD");
+        let install = crate::testdata::fixture_install();
         let quests = quests(&install).expect("quests");
-        let cli = parsed(["openregent", "--quest", WILD]);
+        let cli = parsed(["openregent", "--quest", THORNWOOD]);
         let offered = quest_of(&cli, &quests)
             .expect("its quest")
             .map(|i| &quests[i]);
@@ -1728,7 +1702,7 @@ pub(crate) mod tests {
 
         assert_eq!(
             named.into_iter().collect::<Vec<_>>(),
-            ["Hooligan", "Hooligan's Haughty Hangout"]
+            ["Bramble Hold", "Thornhall Keep"]
         );
     }
 
@@ -1758,10 +1732,10 @@ pub(crate) mod tests {
             Setup::try_from(&Cli::parse_from(["openregent", "--mods", "{nope}"]).setup).is_err()
         );
 
-        let install = env::Install::from_env().expect("MAJESTY_HD");
+        let install = crate::testdata::fixture_install();
         let missing = Guid::parse("{00000000-0000-0000-0000-000000000001}").expect("a GUID");
-        // Majesty Expanded: XML descriptions and strings.
-        let xml = Guid::parse("{17BF53DE-722F-4683-8E63-6B93D1606DFF}").expect("a GUID");
+        // Hearth: XML descriptions and strings.
+        let xml = Guid::parse(crate::testdata::HEARTH).expect("a GUID");
 
         assert!(begin::chosen(&install, &[missing.into()]).is_err_and(|e| e.contains("none of")));
         assert!(begin::chosen(&install, &[xml.into()]).is_ok_and(|m| m.len() == 1));
