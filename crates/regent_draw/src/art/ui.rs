@@ -156,6 +156,13 @@ pub enum Picture {
     Tile(Tile),
     /// A unit's set, every layer as the map stacks it (`read::stacked`).
     Stack(Stack),
+    /// A picture cut to its top left `[width, height]`, as read: drawn
+    /// pixel for pixel as a picture of that size. `AP36`'s QUIT MAJESTY
+    /// rests on a slot 106 wide and lights on slots 102 wide; cut to 102,
+    /// every slot scales alike. For the original's art alone: it names no
+    /// override, and a picture overridden is drawn whole, as its file
+    /// holds it.
+    Part(Pic, [u16; 2]),
 }
 
 /// Step `step` of unit `code`'s set `set` facing `facing`: every
@@ -1250,6 +1257,12 @@ impl Art {
             self.entries.originals.get(&key),
             Some(Some((.., Origin::Override)))
         )
+    }
+
+    /// Whether a file in the override folder names `want`'s picture.
+    #[must_use]
+    pub fn has_override(&self, read: &dyn Read, want: Want) -> bool {
+        self.replaced(read, want)
     }
 
     /// Whether a file in the override folder names `want`'s picture.

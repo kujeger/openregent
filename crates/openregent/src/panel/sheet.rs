@@ -8,7 +8,7 @@
 //!  buttons                 their picture's slot by state, label centred
 //! ```
 
-use bevy_egui::egui::{Color32, Pos2, Rect, Response, pos2};
+use bevy_egui::egui::{Color32, Pos2, Rect, Response, Vec2, pos2};
 use regent_core::data::fourcc::FourCc;
 use regent_core::data::smnu::Kind;
 use regent_core::sim::world::guild::taxman::Step;
@@ -70,6 +70,30 @@ pub fn slots(canvas: &mut Canvas<'_>, pic: Pic) -> usize {
         canvas.ink.counted(canvas.source, pic, count);
         count
     })
+}
+
+/// The size every slot of `pic` covers, the smallest slot's, pixels;
+/// none without slots. `AP36`'s QUIT MAJESTY rests on a slot 106 wide,
+/// a shadow in its last columns, and lights on slots 102 wide; each
+/// drawn cut to 102 ([`Canvas::part`]), it keeps still (**Game**: the
+/// original's does not move). An overridden slot is drawn whole: the
+/// flaw is the original's, not its replacement's.
+fn shared(canvas: &mut Canvas<'_>, pic: Pic) -> Option<[u16; 2]> {
+    let size = (0..slots(canvas, pic))
+        .filter_map(|s| canvas.size(pic.slot(s)))
+        .reduce(Vec2::min)?;
+
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a picture's pixels"
+    )]
+    Some([size.x as u16, size.y as u16])
+}
+
+/// `size`, pixels, as a panel size.
+fn size_of([w, h]: [u16; 2]) -> Vec2 {
+    Vec2::new(f32::from(w), f32::from(h))
 }
 
 /// A control's look under the pointer: `tick`, hovered, and held while
@@ -367,22 +391,25 @@ pub fn stated(
     if let Some((record, set)) = c.art.filter(|&a| a != NO_ART) {
         let pic = Pic::of(record, set);
         let (slot, tone) = self::slot(canvas, pic, look, able.state(c.flags));
+        let drawn = pic.slot(slot);
+        let placed = match (canvas.size(drawn), shared(canvas, pic)) {
+            (Some(own), Some(size)) if own != size_of(size) && !canvas.overridden(drawn) => {
+                canvas.part(drawn, size, tone, r.min)
+            }
+            _ => canvas.picture(drawn, tone, r.min),
+        };
 
-        canvas
-            .picture(pic.slot(slot), tone, r.min)
-            .or_else(|| canvas.picture(pic, tone, r.min));
+        if placed.is_none() {
+            canvas.picture(pic, tone, r.min);
+        }
     }
 
     let text = text.or(c.text.as_deref()).map(str::trim);
 
-    // The text takes the state's colours, lit while held (SPIN white).
+    // The text takes the state's colours, lit while held (SPIN white);
+    // its line breaks kept (`AP36`'s QUIT MAJESTY in two).
     if let (Some(text), Some(record)) = (text, c.font) {
-        canvas.text(
-            record,
-            r,
-            &marked(c, text, state),
-            (ink(c, state), Align::Centre),
-        );
+        wrapped(canvas, record, r, &marked(c, text, state), ink(c, state));
     }
 
     Canvas::tip(&response, c.tooltip.as_deref());

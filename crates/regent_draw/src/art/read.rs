@@ -58,6 +58,15 @@ impl Read for (ArtSource, &Catalogue<'_>) {
                 .ok()
                 .map(|s| image(&s)),
             Picture::Stack(s) => stack::stacked(catalogue, s),
+            Picture::Part(pic, [w, h]) => {
+                let whole = image(&sprite(catalogue, pic)?);
+                let size = [
+                    usize::from(w).min(whole.size[0]),
+                    usize::from(h).min(whole.size[1]),
+                ];
+
+                Some(super::scale::cut(&whole, [0, 0], size))
+            }
         }
     }
 
@@ -83,7 +92,7 @@ impl Read for (ArtSource, &Catalogue<'_>) {
                 .archives
                 .get(archive)
                 .map(|(file, _)| Key::tile(file, index)),
-            Picture::Stack(_) => None,
+            Picture::Stack(_) | Picture::Part(..) => None,
         };
 
         key.into_iter().collect()

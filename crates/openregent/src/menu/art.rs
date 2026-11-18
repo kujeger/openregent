@@ -406,7 +406,7 @@ impl regent_draw::art::Read for Held {
                 .tiles
                 .get(&(source, tile))
                 .and_then(|&pack| Sprite::at(self.catalogue(pack)?, tile.0, tile.1)?.ok()),
-            Picture::Icon(_) | Picture::Stack(_) => None,
+            Picture::Icon(_) | Picture::Stack(_) | Picture::Part(..) => None,
         };
 
         sprite.map(|s| image(&s))

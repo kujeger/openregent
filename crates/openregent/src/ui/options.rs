@@ -31,7 +31,8 @@
 //!  ┌──────── ADJUST LEVELS ────────┐
 //!  ┌──────── RESTART ──────────────┐
 //!  ┌── MAIN MENU ──┐┌── SURRENDER ─┐   was RETURN TO MAIN MENU
-//!  ┌ QUIT MAJESTY ┐┌ RESUME PLAY ──┐
+//!  ┌ QUIT ────────┐┌ RESUME ───────┐
+//!  └ MAJESTY ─────┘└ PLAY ─────────┘
 //! ```
 //!
 //! The original pauses (app state 7) as either opens and resumes on
@@ -420,24 +421,29 @@ fn pressed(
     ids.iter()
         .filter_map(|&i| layout.control(i).map(|c| (i, c)))
         .fold(None, |hit, (i, c)| {
-            let now = one_line(canvas, c, able(i));
+            let now = labelled(canvas, c, able(i));
 
             hit.or(now.then_some(i))
         })
 }
 
-/// Button `c`, its label on one line, centred; whether pressed. `AP36`
-/// spaces QUIT MAJESTY and RESUME PLAY "QUIT      MAJESTY", perhaps to
-/// break in two (**Inferred**); drawn with one space, as the user asked.
-fn one_line(canvas: &mut Canvas<'_>, c: &ShownControl, able: Able) -> bool {
-    let label = c.text.as_deref().map(spaced);
+/// Button `c`, its label centred; whether pressed. `AP36` spaces QUIT
+/// MAJESTY and RESUME PLAY "QUIT      MAJESTY", on buttons two lines
+/// high: the original draws each in two lines (**Game**).
+fn labelled(canvas: &mut Canvas<'_>, c: &ShownControl, able: Able) -> bool {
+    let label = c.text.as_deref().map(broken);
 
     sheet::button(canvas, c, label.as_deref(), able)
 }
 
-/// `text` with each run of spaces one space.
-fn spaced(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+/// `text` broken at each run of two or more spaces: "QUIT      MAJESTY"
+/// is "QUIT\nMAJESTY", "GAME INFO" stays.
+fn broken(text: &str) -> String {
+    text.split("  ")
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
@@ -760,9 +766,10 @@ mod tests {
     }
 
     #[test]
-    fn a_spaced_label_is_one_line() {
-        assert_eq!(spaced("QUIT      MAJESTY"), "QUIT MAJESTY");
-        assert_eq!(spaced("RESUME    PLAY"), "RESUME PLAY");
+    fn a_spaced_label_breaks_in_two() {
+        assert_eq!(broken("QUIT      MAJESTY"), "QUIT\nMAJESTY");
+        assert_eq!(broken("RESUME    PLAY"), "RESUME\nPLAY");
+        assert_eq!(broken("GAME INFO"), "GAME INFO");
     }
 
     #[test]

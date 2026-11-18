@@ -74,6 +74,25 @@ impl Canvas<'_> {
         Want::of(self.source, Picture::Pic(pic))
     }
 
+    /// Whether a file in the override folder replaces `pic`.
+    pub fn overridden(&self, pic: Pic) -> bool {
+        self.art
+            .has_override(&(self.source, self.catalogue), self.want(pic))
+    }
+
+    /// `pic` cut to its top left `size`, drawn as a picture that size
+    /// ([`Picture::Part`]), its top left at panel point `at`; where it
+    /// went, panel pixels.
+    pub fn part(&mut self, pic: Pic, size: [u16; 2], tone: Tone, at: Pos2) -> Option<Rect> {
+        let want = Want::of(self.source, Picture::Part(pic, size)).tone(tone);
+        let place = Rect::from_min_size(at, self.art_size(want)?);
+        let shown = self.shown(want, place)?;
+
+        self.painter()
+            .image(shown.id, shown.rect, WHOLE, Color32::WHITE);
+        Some(place)
+    }
+
     /// `pic` at its own size, its top left at panel point `at`; where it
     /// went, panel pixels.
     pub fn picture(&mut self, pic: Pic, tone: Tone, at: Pos2) -> Option<Rect> {
