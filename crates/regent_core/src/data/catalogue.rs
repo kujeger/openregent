@@ -14,8 +14,10 @@
 //!   tile 0.
 //! - No archive is sparse. An empty record is found like a full one, and
 //!   no lookup falls back to another archive (**Binary**,
-//!   [`Catalogue::find`], [`Catalogue::positional`]). Phantoms Haunt's
-//!   16,763 empty `TILE` records are padding that none of its frames name.
+//!   [`Catalogue::find`], [`Catalogue::positional`]). A mod's empty
+//!   `TILE` records are padding that none of its frames name
+//!   (`a_mod_names_no_empty_record`, on a made-up mod; first seen in
+//!   Phantoms Haunt).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -206,8 +208,8 @@ impl<'a> Catalogue<'a> {
     ///
     /// **Binary**: in a flagged chunk the number
     /// under 2^24 is the position, the stored id unread; past the end,
-    /// none. Otherwise the last record whose id is the number: Phantoms
-    /// Haunt's unflagged `SPLT` chunk. An empty record is returned like
+    /// none. Otherwise the last record whose id is the number (first seen
+    /// in Phantoms Haunt's `SPLT` chunk). An empty record is returned like
     /// any other; HD's loader would read on past it (lib read
     /// ignores the length), but nothing names one.
     pub fn positional(
@@ -402,9 +404,9 @@ mod tests {
 
     #[test]
     fn an_unflagged_chunk_is_indexed_by_its_last_matching_id() {
-        // As Phantoms Haunt's SPLT chunk, but with ids out of order.
+        // An unflagged SPLT chunk, its ids out of order.
         let bytes = library(&[(
-            "phantom_maindata.cam",
+            "mod_maindata.cam",
             *b"SPLT",
             &[b"\x01\0\0\0", b"\x00\0\0\0", b"\x01\0\0\0"],
         )]);

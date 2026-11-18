@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn operator_words_are_ordinary_identifiers() {
         // The compiler's `AND`, `OR`, `MOD`, `NOT` name `&&`, `||`, `%`, `!`.
-        // Several Workshop mods declare `agent mod;` and compile.
+        // `Gplbcc.exe` compiles `agent mod;` (`gplbcc_diff`).
         for word in ["and", "or", "mod", "not"] {
             assert_eq!(toks(word), [Token::Ident(word)], "{word} should be a name");
         }

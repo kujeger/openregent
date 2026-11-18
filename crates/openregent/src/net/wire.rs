@@ -1164,7 +1164,7 @@ mod tests {
     use super::*;
     use regent_core::sim::game::Input;
 
-    const MOD: &str = "{17BF53DE-722F-4683-8E63-6B93D1606DFF}";
+    const MOD: &str = "{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01}";
 
     #[test]
     #[allow(clippy::too_many_lines, reason = "every kind of packet")]

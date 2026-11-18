@@ -9,7 +9,7 @@ compiler: [gpl/compiler.md](../gpl/compiler.md).
 `MajestyDatasetDefinitions.xml`
 ([below](#the-decoded-form-and-the-load)).
 
-Corpus: 75 `.bcd` files — HD 9, HD modding SDK 9, eleven Workshop mods 57.
+Corpus: 18 `.bcd` files — HD 9, HD modding SDK 9.
 
 ## Block framing
 
@@ -38,7 +38,7 @@ Save games use a different tag/size/version/count chunk tree.
 
 Only `0x00` is a header outside the outer block; the outer block's terminator is
 the last eight bytes. The three sections tile its body. **Corpus**:
-`data::bcd::Container` checks the header and the tiling on all 75 files
+`data::bcd::Container` checks the header and the tiling on all 18 files
 (`every_image_decodes_one_instruction_per_record`). **Binary**: `Gplbcc.exe`
 prints "Serializing data files..", "Serializing symbol table..",
 "Serializing bytecode..".
@@ -59,10 +59,9 @@ are misnomers.
 - Each table sorts by byte order (`Advanced_Attack` before `adept_birth`);
   section 1 sorts case-insensitively.
 - Section 1 opens `[u32 0][u32 count]`; `count` is the number of distinct names
-  section 2 defines. Majestic Majesty defines `StringInList` twice: two entries,
-  one name.
-- Corpus total: 253 prototypes, 11,473 functions, 7,741 constants
-  (`section_one_counts_what_section_two_defines`); 19,467 bodies
+  section 2 defines.
+- Corpus total: 108 prototypes, 4,830 functions, 3,815 constants
+  (`section_one_counts_what_section_two_defines`); 8,753 bodies
   (`a_definitions_scope_decodes_and_names_its_own_table`).
 - HD `bytecode.bcd`: 20 prototypes, 825 functions, 649 constants; the files
   `path.gplproj` lists hold the same prototypes and constants
@@ -72,7 +71,7 @@ are misnomers.
 - Every name in `data/bytecode.bcd` is defined in the base game's sources, and
   vice versa, bar `Mad_Temples.gpl`'s.
 
-Code: `gpl::bcd::ScopeSection`; re-encodes byte-identically on all 75 files
+Code: `gpl::bcd::ScopeSection`; re-encodes byte-identically on all 18 files
 (`a_definitions_scope_decodes_and_names_its_own_table`).
 `regent_cli codesec` prints definitions and body sizes.
 
@@ -177,7 +176,6 @@ Cross-checks:
 
 - Base game: 7,060 `opLParen` records, as the parser's 7,060 call nodes
   (`the_walk_counts_the_calls_the_parser_counts`).
-- 19,466 definitions vs 19,467 section 2 bodies: the duplicate `StringInList`.
 - `Acid_Bolt_Hit` walks to: source file, itself, `__Return_value__`,
   `thisagent`, `target`, then `12 <- (10 11)`, `13 <- (8 9 12)`,
   `17 <- (14 15 16)`.
@@ -498,9 +496,8 @@ each loop over the remaining arguments (a rest).
   count check, or reaches a fetch past the end.
 - All 166 settle from the code; none falls back on the reference. The table
   is `builtins::HD`, one `Signature` each.
-- Every shipped and Workshop call passes the required arguments. Four
-  builtins get one they never read: `CastSpell` (a fourth `""`),
-  `LocationOf`, `SetThreadInterval`, `TeleportToPoint`.
+- Every shipped call passes the required arguments. One builtin gets one
+  it never reads: `CastSpell` (a fourth `""`).
 - Reading a value as text says nothing of its type: error paths print every
   argument that way.
 
@@ -670,27 +667,34 @@ Rules the emitter needed:
   - loop `opRewind`: the body's last statement's line (a `break` record has no
     line).
 
-**`break` and `continue`**: no shipped source uses them; Workshop mods do
-(`mods_exercise_forms_the_base_corpus_never_uses`). `head` is the enclosing `opForeach`'s
+**`break` and `continue`**: no shipped source uses them; `Gplbcc.exe`
+compiles them (`gplbcc_diff`). First seen in CaravanGuards and Majestic
+Majesty. `head` is the enclosing `opForeach`'s
 record index — the loop, not a destination — and the record has no line. Hence
-`break` outside `foreach` is a compile error. `break_and_continue_name_their_loop`:
-145 mod functions; `only_workshop_images_hold_break_and_continue`.
+`break` outside `foreach` is a compile error. `break_and_continue_name_their_loop`.
 
 **`return value` inside `foreach`**: an `opBreak` naming the loop, then the
 value's records, then the loop's `opRewind`; `opReturnValue` follows, on the
-`foreach` line, and the loop's jump out lands on it. Three shipped `opBreak`s
-are this (Majestic Majesty's `defend_building_packet`, Phantom's
-`Phantom_Priestess_Assigned_To` in both copies). The value's records never
-run, and a loop that runs out returns too: code after the loop is dead. A
-literal is made at load, so Phantom's function always returns `True`; a
-computed value's slot is empty and the return crashes (**Inferred** from the
-VM's model, for Majestic Majesty). `gpl::emit` `Body::returns`;
-`a_return_inside_a_foreach_compiles_as_shipped`,
+`foreach` line, and the loop's jump out lands on it. First seen in Majestic
+Majesty's `defend_building_packet` and Phantoms Haunt's
+`Phantom_Priestess_Assigned_To`. **Compiler**:
+`Gplbcc.exe` writes these bytes for `fixtures/gpl/forms` (`gplbcc_diff`).
+The value's records never run, and a loop that runs out returns too: code
+after the loop is dead. A literal is made at load, so a `return True` there
+returns `True` for any list; a computed value's slot is empty and the return
+crashes (**Inferred** from the VM's model). `gpl::emit` `Body::returns`;
+`a_return_inside_a_foreach_compiles_past_its_loop`,
 `a_return_inside_a_foreach_returns_its_unrun_value`.
 
-Declined: `do while` (unused anywhere); `break`/`continue` outside `foreach`
-(compiler rejects it too); a `return` inside `foreach` beyond the shipped
-shape: valueless, nested, in a `while`, or two in one loop.
+A bare `return` takes the same shape with `opReturn` for `opReturnValue`. In
+a nested loop, either breaks only the innermost loop, and its return follows
+that loop. **Compiler**: `Gplbcc.exe` writes these bytes for
+`fixtures/gpl/returns` (`gplbcc_diff`);
+`a_bare_return_inside_a_foreach_follows_the_loop`.
+
+Declined: `do while` (`Gplbcc.exe` refuses it too); `break`/`continue` outside
+`foreach` (likewise); a `return` inside `foreach` in a `while`, or two in one
+loop.
 
 ### A whole section, and a whole `.bcd`
 
@@ -830,14 +834,12 @@ fix up         function values must exist; #Name slots
   function value is an error.
 - HD has a loader for `datasets.xml` that nothing calls.
 
-`gpl::load` builds the program: every call in HD's base game, expansion and
-all 57 Workshop images resolves
-(`every_workshop_image_loads_over_the_expansion`). One `#Name`, in one mod, reaches no script
-constant or attribute: a text id. Images compiled from source decode to the
+`gpl::load` builds the program: every call in HD's base game and expansion
+resolves (`hd_resolves_every_call`), and so does one in an image loaded over
+another (`an_addon_image_loads_over_its_base`). Images compiled from source decode to the
 shipped program, debug information aside; the one difference is
 `Snake_Pit_Spawn`'s fresh integer. Script calls whose argument count differs
-from the callee's prologue: three in HD, 14 more in mods
-(`every_call_fits_its_callee`).
+from the callee's prologue: three in HD (`every_call_fits_its_callee`).
 
 How the engine runs a function: [gpl/runtime.md](../gpl/runtime.md). The VM: [gpl/vm.md](../gpl/vm.md).
 

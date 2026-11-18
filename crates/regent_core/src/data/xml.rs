@@ -4,8 +4,7 @@
 //! Elements, attributes and text; comments, the `<?xml ?>` line, a
 //! `<!DOCTYPE>`, CDATA, a UTF-8 byte order mark and the five named
 //! entities with numeric ones. No namespaces, no DTD. Names are compared
-//! as written (**Inferred**: HD's `CyXml` is case-sensitive; every
-//! Workshop file spells its names one way).
+//! as written (**Inferred**: HD's `CyXml` is case-sensitive).
 //!
 //! A file that will not parse is refused whole, as HD skips it
 //! (the parse failing in desc set load xml and the strings

@@ -724,8 +724,7 @@ impl Progress {
     /// The quest of id `id` won at `ms`, as [`Progress::win`] its code
     /// ([`quest::key_of`]): HD keeps victories by code, so a mod's quest
     /// keyed by its id's CRC has its own record, and one reusing a
-    /// shipped id (`NewGame+`'s Legendary Heroes, `XQ04`) shares the
-    /// shipped quest's.
+    /// shipped id shares the shipped quest's.
     pub fn win_quest(&mut self, id: Guid, ms: u32) {
         let code = self.known(id);
 
@@ -1121,12 +1120,11 @@ mod tests {
         assert_eq!(progress.victories(one), 0);
     }
 
-    /// Majesty Expanded's Barren Waste is keyed by its id's CRC, so its
-    /// victory is its own; `NewGame+`'s Legendary Heroes reuses the
-    /// shipped id, so its victory is the shipped quest's.
+    /// A quest keyed by its id's CRC has its own victory; one reusing a
+    /// shipped id has the shipped quest's.
     #[test]
     fn a_mod_quests_victory_is_kept_by_its_code() {
-        let copy = Guid::parse("{31305551-0054-0032-0000-000000000000}").expect("a GUID");
+        let copy = Guid::parse("{5A515831-0031-0042-0000-000000000000}").expect("a GUID");
         let heroes = Guid::parse("{34305158-0000-0000-0000-000000000000}").expect("a GUID");
         let mut progress = Progress::default();
 

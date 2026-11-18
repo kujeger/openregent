@@ -5,7 +5,7 @@
 //!  APd8  ┌(pog)────── Downloaded Quests ───────┐
 //!        │          [LIST OF QUESTS]           │
 //!        │ ┌─────────────────────────────────┐^│
-//!        │ │ 13 - Big Map    Majesty Expanded│#│  rows by title; a mod
+//!        │ │ Hearth Watch              Hearth│#│  rows by title; a mod
 //!        │ │ The Wrath of Krolm          lit │v│  folder's quest names
 //!        │ [   ]  [GAME DESCRIPTION]   [   ]   │  its item's mod, dim
 //!        │ (LOAD QUEST)      ()      (CANCEL)  │

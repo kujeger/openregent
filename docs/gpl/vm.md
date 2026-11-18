@@ -98,8 +98,8 @@ trace prints), *assign*, *reset* and *parse* (from `.dat` text).
   on the next node: the next pass resumes there.
 - `break` puts the cursor at the sentinel and takes the same jump. The
   cursor is not freed, so the next pass over that loop frees it and runs no
-  iteration; the pass after runs again. Only Workshop code has either: five
-  `break`, one `continue`.
+  iteration; the pass after runs again. No shipped code has either; made-up
+  projects do (`tests/mod_gpl.rs`).
 - `while` on an empty condition handle dereferences it; only `if` checks.
 - An operator on an empty left operand crashes. `GplNull`'s operators do
   nothing, so an operator on a null leaves its result slot empty, and an `if`

@@ -2,13 +2,13 @@
 
 Game Play Language; per its documentation, it implements most of Majesty's AI.
 
-Sources: the SDK's `GPL Reference.pdf`, the Notepad++ syntax template, and two
-corpora — the 306 shipped `.gpl` files in `SDK/OriginalQuests/`
-(`every_file_lexes_without_error`), and those of eleven Steam Workshop mods.
+Sources: the SDK's `GPL Reference.pdf`, the Notepad++ syntax template, the
+306 shipped `.gpl` files in `SDK/OriginalQuests/`
+(`every_file_lexes_without_error`), and `Gplbcc.exe` run on made-up
+projects ([below](#beyond-the-shipped-corpus)).
 Provenance: [original/editions.md](../original/editions.md).
 
-Unqualified counts are the shipped corpus. The mods were compiled by
-`Gplbcc.exe` and load in the game, so they show what the language allows.
+Counts are the shipped corpus.
 
 Counts come from the lexer's tokens or the parser's tree, never grep (grep
 counts comment prose). Every count here is pinned by the test named beside it,
@@ -29,13 +29,12 @@ corpus is the authority.
 
 ## Lexical facts
 
-**Corpus**, both corpora (`every_file_lexes_without_error`,
-`every_mod_file_lexes_and_parses`):
+**Corpus** (`every_file_lexes_without_error`):
 
 | Element | Rule |
 |---|---|
 | Case | Insensitive: `TRUE` / `True` / `true`, `ThisAGent` / `THisAgent` |
-| Comment | `//` to end of line. No block comment in either corpus |
+| Comment | `//` to end of line. No block comment in the corpus |
 | String | `"..."`, no escapes, never spans lines |
 | Identifier | `[A-Za-z_][A-Za-z0-9_]*`; none begins with `_` |
 | Integer | Signed 32-bit. No hex, exponent, suffix or negative literal; `-` is always an operator |
@@ -46,7 +45,7 @@ corpus is the authority.
   have significant leading or trailing spaces.
 - Longest identifier: `returning_guardian_eval_enemies_simple`; longest name:
   `#Guardian_Atck_Hostiles_Pursuit_Range_Mod`.
-- Every integer fits `i32`; the mods' largest leave little spare.
+- Every integer fits `i32`.
 
 Floats: 62 (`token_counts_match_the_survey`), in three forms. The last two
 break a naive `\d+\.\d+`:
@@ -74,13 +73,11 @@ arithmetic passes through it, so integers wrap past 2²¹, not the reference's
 | Corpus | Bytes | Line endings |
 |---|---|---|
 | Shipped | Pure ASCII, no BOM | CRLF |
-| Mods | Stray high bytes in a few files, all in `//` comments | Mostly CRLF, some LF-only, a few mixed |
 
 Most shipped files lack a final newline, so a `//` comment can run to EOF.
 Some use an uppercase `.GPL` extension: glob case-insensitively. Only the code
-is ASCII, so the mods need a lossy decode. **Corpus**: both corpora lex and
-parse so read (`every_file_parses_without_error`,
-`every_mod_file_lexes_and_parses`).
+is ASCII, so files are decoded lossily. **Corpus**: every file lexes and
+parses so read (`every_file_parses_without_error`).
 
 ## Sigils
 
@@ -99,14 +96,13 @@ preceding token; no other apostrophe appears in code. `'S` is unknown: no
 example. The lexer takes lowercase only.
 
 `OriginalQuests` always writes `identifier 's "string literal"` (house style).
-The mods show the general form (`mods_exercise_forms_the_base_corpus_never_uses`):
+`Gplbcc.exe` takes the general form (`attribute_names_are_any_expression`,
+`gplbcc_diff`):
 
-- The name is any expression, evaluated at run time: many sites use a variable
-  (`ThisAgent's funcName`), some a parenthesised expression
-  (`thisagent's ("TaskPackageDestination" + thistask)`).
-- Accessors chain: many sites write `a's "b"'s "c"`. So `'s` is its own token,
+- The name is any expression, evaluated at run time: a variable
+  (`mod's key`) or a parenthesised expression (`mod's ("ZqTier" + tier)`).
+- Accessors chain: `who's "ZqHome"'s "ZqGold"`. So `'s` is its own token,
   not an identifier suffix.
-- Whitespace is optional: `thisagent's"cusa5"'s"extraint11"--;`.
 
 ## Keywords
 
@@ -122,8 +118,9 @@ string 394   is 384   coordinate 131   while 111   float 53   prototype 44
 break 0   continue 0   define 0
 ```
 
-Mods use `break` and `continue` (`mods_exercise_forms_the_base_corpus_never_uses`).
-`define` is used nowhere.
+`Gplbcc.exe` compiles `break` and `continue` inside a `foreach`
+(`break_and_continue_parse_as_statements`, `gplbcc_diff`). `define` is used
+nowhere.
 
 Cross-checks:
 
@@ -151,9 +148,8 @@ type cannot be written.
 and `!` (compare `NOTEQUAL` for `!=`, `INSERTER` for `<<`). The lexer takes all
 four as identifiers.
 
-Some mods declare `agent mod;` and use it as a variable
-(`mod_is_a_variable_name`), in functions
-present in their shipped `.bcd` files, so `Gplbcc.exe` accepted it. **Inferred**:
+`Gplbcc.exe` compiles `agent mod;` and its use as a variable
+(`mod_is_a_variable_name`, `gplbcc_diff`). **Inferred**:
 `and`, `or` and `not` are also legal names; no source uses them.
 
 `and`, `or`, `not` and `then` never occur in code; all apparent uses are
@@ -271,6 +267,8 @@ Easy to get wrong:
 - The corpus overrides the compiler's grammar twice: 236 bare `return;`
   statements (`statement_kind_counts_match`), and definitions with an empty
   `declare` before `begin`.
+- `declaration_block` is optional in the grammar, but `Gplbcc.exe` refuses a
+  definition without one: `syntax error at "begin" missing DECLARE`.
 
 The EBNF shows 29 of 35 rules (28 written plus the implicit `type_specifier`).
 The other six add no syntax: `iterator` and `range_specifier` alias
@@ -303,31 +301,22 @@ attributes hold any GPL type. Matches the `GenUnit` / `GSUnit` /
 `UnitDesc_Engine` split in the class map, and the `AgentID` a save keeps apart
 from an object's handle ([formats/saves.md](../formats/saves.md)).
 
-## The mod corpus
+## Beyond the shipped corpus
 
-Eleven Workshop items (`tests/mods.rs` pins counts as lower bounds, since
-Steam updates items):
+`Gplbcc.exe`, run on made-up projects (`tests/fixtures/gpl/`,
+`gplbcc_diff`), compiles: `break` and `continue` in a `foreach`, `mod` as a
+variable name, the general accessor form, `return` inside a `foreach` (bare,
+valued, nested), and a negative constant. It refuses: a definition without
+`declare`, an undeclared name (a bare `foo(1)` too), `break` in a `while`,
+and `do ... while`.
 
-| Mod | Mod |
-|---|---|
-| Monster Kingdom (`3743606613`) | The Wild (`2892764983`) |
-| Majesty Extras (`2827106524`) | Decor Buildings (`2596275776`) |
-| Majestic Majesty (`678145904`) | Improved Guards Plus (`1265189890`) |
-| NewGamePlus (`1448403412`) | Custom Guild Phantoms (`3769947406`) |
-| Improved Guards (`664340597`) | Adjust Guardhouse (`617966615`, no `.gpl`) |
-| CaravanGuards (`3554989139`) | |
+First seen in Workshop mods: `break` and `continue` in CaravanGuards
+(`3554989139`) and Majestic Majesty (`678145904`); `return` inside a
+`foreach` in Majestic Majesty and Custom Guild: Phantoms Haunt
+(`3769947406`); a negative constant in Monster Kingdom (`3743606613`).
 
-Zero lex or parse errors (`every_mod_file_lexes_and_parses`). With the base
-game alongside, every `$name` site resolves, so no mod calls outside the
-documented 166 builtins (`mod_calls_resolve_against_the_base_game`). The `.dat`
-files parse: at least 956 prototypes, 16,284 values (`every_mod_dat_file_parses`).
-
-Beyond the shipped corpus, the mods show: `break` and `continue`, `mod` as a
-variable name, the general accessor form, larger
-integers, mixed line endings and stray high bytes.
-
-Not shown: new operators, `do ... while`, `define`, `'S`, escape sequences,
-brackets or braces in code, characters outside the base set.
+Not shown: new operators, `define`, `'S`, escape sequences, brackets or
+braces in code, characters outside the base set.
 
 ## Status
 
@@ -336,7 +325,7 @@ Lexer, parser and `.dat` reader: done, in `crates/regent_core/src/gpl`
 
 Loading: done. `gpl::exec` decodes records into instructions, `gpl::load`
 builds the program as HD does — load order, first wins, one function map —
-and every call in the base game, expansion and Workshop images resolves
+and every call in the base game and expansion images resolves
 ([formats/bytecode.md](../formats/bytecode.md#the-decoded-form-and-the-load)).
 
 Interpreter: `gpl::vm` runs instructions as the engine does — one activation
@@ -346,7 +335,7 @@ and runs the 18 builtins touching no world itself; the rest go to a host
 
 Every world builtin answers from the world (`every_builtin_has_an_answer`,
 [settled.md](../settled.md#gpl)). The shipped game calls 141 builtins, 16 of
-them native (`the_builtin_inventory_is_complete`); the mods call more.
+them native (`the_builtin_inventory_is_complete`).
 The SDK documents 166 (162 in the reference index, 4 only in the Notepad++
 template). HD registers 165 of them, each with its native address, return
 type and signature — required, optional and rest arguments with their types,

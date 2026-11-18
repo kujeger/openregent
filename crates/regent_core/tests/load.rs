@@ -2,10 +2,9 @@
 //!
 //! - HD's base game and expansion, from its dataset definitions;
 //! - the `datasets.xml` groups;
-//! - every Workshop image, over HD's expansion;
 //! - images compiled from source decode to the shipped program.
 //!
-//! Needs `MAJESTY_HD` and `MAJESTY_WORKSHOP`.
+//! Needs `MAJESTY_HD`.
 
 mod common;
 
@@ -31,13 +30,9 @@ const GPL_NAMED_VALUE: &str = "#TeleportInsideDestination";
 /// A `#Name` the attribute registry answers: `ATTRIB_` then an attribute.
 const ATTRIB: &str = "#ATTRIB_";
 
-/// Every `.bcd` on disk: SDK, Workshop, HD.
+/// Every `.bcd` on disk: SDK, HD.
 fn every_bcd() -> Vec<PathBuf> {
-    common::bcds(&[common::sdk(), common::workshop(), common::hd()])
-}
-
-fn text(path: &Path) -> String {
-    String::from_utf8_lossy(&read(path)).into_owned()
+    common::bcds(&[common::sdk(), common::hd()])
 }
 
 /// HD's listed GPL images: the base game alone, or with the expansion.
@@ -108,7 +103,7 @@ fn missing(program: &Program) -> Vec<String> {
 // ---------------------------------------------------------------------------
 // The decoded form
 
-/// All 84 images decode, one instruction per record, nothing refused.
+/// All 18 images decode, one instruction per record, nothing refused.
 #[test]
 fn every_image_decodes_one_instruction_per_record() {
     let files = every_bcd();
@@ -143,9 +138,9 @@ fn every_image_decodes_one_instruction_per_record() {
             .sum::<usize>();
     }
 
-    assert_eq!(files.len(), 75, "images on disk");
-    assert_eq!(definitions, 19_466, "definitions decoded");
-    assert_eq!(instructions, 1_262_666, "instructions decoded");
+    assert_eq!(files.len(), 18, "images on disk");
+    assert_eq!(definitions, 8_753, "definitions decoded");
+    assert_eq!(instructions, 268_166, "instructions decoded");
 }
 
 /// `Acid_Bolt_Hit`, the `docs/formats/bytecode.md` specimen: a signature from the
@@ -408,84 +403,6 @@ fn the_ports_datasets_groups_resolve_every_call() {
 }
 
 // ---------------------------------------------------------------------------
-// Workshop
-
-/// A Workshop item's main image: the first `<GPL>` of its first `.mmxml`.
-/// Its other images, AI and quest variants, call into it.
-fn main_image(item: &Path) -> Option<PathBuf> {
-    let manifest = common::walk(item, &["mmxml"]).into_iter().next()?;
-    let text = text(&manifest);
-    let after = text.split("<GPL>").nth(1)?;
-    let inner = after.trim_start();
-    let inner = inner.strip_prefix("<Target>").unwrap_or(inner);
-    let listed = inner.split('<').next()?.trim();
-
-    let path = listed
-        .split(['\\', '/'])
-        .fold(manifest.parent()?.to_path_buf(), |at, part| at.join(part));
-
-    regent_core::content::on_disk(&path)
-}
-
-/// The images a Workshop image loads with, listed order: HD's expansion, its
-/// item's main image, itself.
-fn workshop_listed(image: &Path) -> Vec<PathBuf> {
-    let root = common::workshop();
-    let item = image
-        .strip_prefix(&root)
-        .ok()
-        .and_then(|rest| rest.components().next())
-        .map(|first| root.join(first))
-        .expect("inside the Workshop");
-
-    let main: Vec<PathBuf> = main_image(&item).into_iter().collect();
-
-    dataset::compose(&[
-        &hd_listed(Datasets::Expansion),
-        &main,
-        &[image.to_path_buf()],
-    ])
-}
-
-/// Every Workshop image loads over HD's expansion and its item's main image,
-/// as a mod's `<Dataset base="Any">` appends them. Every call and function
-/// value resolves.
-///
-/// One `#Name` no script defines: `NewGamePlus`'s `#LegendaryHeroesExtend`, a
-/// text id its `Data/text.xml` declares. **Inferred**: the engine's third
-/// source, descriptor by name, answers it.
-#[test]
-fn every_workshop_image_loads_over_the_expansion() {
-    const TEXT_ID: [&str; 2] = [
-        "Legendary_Heroes_Time_Extend: #LegendaryHeroesExtend",
-        "Legendary_Heroes_Time_Limit: #LegendaryHeroesExtend",
-    ];
-
-    let images = common::walk(&common::workshop(), &["bcd"]);
-    let mut unresolved = Vec::new();
-
-    for image in &images {
-        let program = load_paths(&dataset::load_order(workshop_listed(image)));
-        let mut text = missing(&program);
-
-        text.sort();
-        text.dedup();
-
-        if !text.is_empty() {
-            unresolved.push((file_name(image), text));
-        }
-    }
-
-    let want: Vec<(String, Vec<String>)> = ["Abilities.bcd", "GPLinfo.bcd", "quests.bcd"]
-        .iter()
-        .map(|image| ((*image).to_owned(), TEXT_ID.map(str::to_owned).to_vec()))
-        .collect();
-
-    assert_eq!(images.len(), 57, "Workshop images");
-    assert_eq!(unresolved, want);
-}
-
-// ---------------------------------------------------------------------------
 // Arguments
 
 /// Script calls whose argument count differs from the callee's parameters,
@@ -497,29 +414,11 @@ const HD_OFF_PROLOGUE: [&str; 3] = [
     "Enemy_Actions -> Check_Resurrect: 1 for 0",
 ];
 
-/// The same, added by Workshop images.
-const WORKSHOP_OFF_PROLOGUE: [&str; 14] = [
-    "DARK_FOREST -> Setup_Rescue_Buildings: 1 for 0",
-    "DAY_OF_RECKONING -> Setup_Rescue_Buildings: 1 for 0",
-    "HOLY_CHALICE -> Setup_Rescue_Buildings: 1 for 0",
-    "LICHE_QUEEN -> Setup_Rescue_Buildings: 1 for 0",
-    "MK_Enemy_Actions -> Check_Heal: 1 for 0",
-    "MK_Enemy_Actions -> Check_Lightning_Defense: 1 for 0",
-    "MK_Enemy_Actions -> Check_Resurrect: 1 for 0",
-    "QUEST_FOR_CROWN -> Setup_Rescue_Buildings: 1 for 0",
-    "SLAVE_PITS -> Setup_Rescue_Buildings: 1 for 0",
-    "SLAY_DRAGON -> Setup_Rescue_Buildings: 1 for 0",
-    "TOMB_DRAGON -> Setup_Rescue_Buildings: 1 for 0",
-    "VIGIL -> Setup_Rescue_Buildings: 1 for 0",
-    "make_attack_assassination -> attack_end: 2 for 3",
-    "spell_attack -> attack_end: 2 for 3",
-];
-
 /// Every call passes what its callee reads: a builtin its required
 /// arguments; a script function its parameters, bar the calls listed.
 #[test]
 fn every_call_fits_its_callee() {
-    let mut programs = vec![
+    let programs = [
         (
             "hd",
             load_paths(&dataset::load_order(hd_listed(Datasets::Base))),
@@ -529,12 +428,6 @@ fn every_call_fits_its_callee() {
             load_paths(&dataset::load_order(hd_listed(Datasets::Expansion))),
         ),
     ];
-
-    for image in common::walk(&common::workshop(), &["bcd"]) {
-        let program = load_paths(&dataset::load_order(workshop_listed(&image)));
-
-        programs.push(("workshop", program));
-    }
 
     let mut short = Vec::new();
     let mut surplus = BTreeSet::new();
@@ -584,12 +477,7 @@ fn every_call_fits_its_callee() {
     assert_eq!(short, Vec::<&str>::new(), "builtins passed too few");
     assert_eq!(
         surplus.into_iter().collect::<Vec<_>>(),
-        [
-            "CastSpell",
-            "LocationOf",
-            "SetThreadInterval",
-            "TeleportToPoint"
-        ],
+        ["CastSpell"],
         "builtins passed one they never read"
     );
 
@@ -602,17 +490,6 @@ fn every_call_fits_its_callee() {
     };
 
     assert_eq!(off("hd"), HD_OFF_PROLOGUE);
-
-    // A mod program holds HD's three and adds its own.
-    let workshop = off("workshop");
-    let added: Vec<&str> = workshop
-        .iter()
-        .filter(|call| !HD_OFF_PROLOGUE.contains(call))
-        .copied()
-        .collect();
-
-    assert!(HD_OFF_PROLOGUE.iter().all(|call| workshop.contains(call)));
-    assert_eq!(added, WORKSHOP_OFF_PROLOGUE);
 }
 
 // ---------------------------------------------------------------------------
@@ -760,21 +637,4 @@ fn prototypes_constants_and_data_sets_are_by_name() {
 
         assert!(program.prototype(shape).is_some(), "{shape}");
     }
-}
-
-/// A negative constant's value: its `opNegate` record evaluated, as
-/// gpl eval constant does. Monster Kingdom's
-/// `#WYRM_HEAL_MOD_TIER1 -2`.
-#[test]
-fn a_negative_constant_is_negative() {
-    let path = common::workshop().join("3743606613/Data/MonsterKingdom.bcd");
-    let mut names = Names::default();
-    let image = decode(&read(&path), &mut names, "MonsterKingdom.bcd");
-    let value = image
-        .definitions
-        .iter()
-        .find(|d| names.get(d.name) == "#WYRM_HEAL_MOD_TIER1")
-        .map(|d| d.kind.clone());
-
-    assert_eq!(value, Some(Kind::Constant(Literal::Int(-2))));
 }

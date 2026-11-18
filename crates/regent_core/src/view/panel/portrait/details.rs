@@ -715,8 +715,8 @@ pub fn spell_title(catalogue: &Catalogue<'_>, code: FourCc) -> Option<String> {
 /// An item key's text, item name: `INV:n` is `QITM[n]`; a
 /// descriptor code whose character `Flags` hold `IsInventoryItem` its
 /// `HEAD` title, looked up in the XML strings first (as
-/// [`super::title`]). Majestic Majesty's potions are titled
-/// `IDTXT_ITEM_HEALINGPOTIONS_1`, a text id. Anything else, none.
+/// [`super::title`]); a mod's title may be a text id. Anything else,
+/// none.
 #[must_use]
 pub fn item_name<'a>(catalogue: &Catalogue<'_>, text: &Text<'a>, key: i32) -> Option<Cow<'a, str>> {
     let [a, b, c, n] = key.to_le_bytes();
@@ -743,8 +743,7 @@ pub fn item_name<'a>(catalogue: &Catalogue<'_>, text: &Text<'a>, key: i32) -> Op
 
 /// An item's name and effect: [`item_name`]'s two lines, the name's
 /// colour markup kept for its list row to draw, the effect's dropped.
-/// `QITM[n]` holds both; a descriptor's title is a name alone. Majestic
-/// Majesty's `[color:light_red]Healing Potions:[/color] 1`.
+/// `QITM[n]` holds both; a descriptor's title is a name alone.
 /// **Inferred**: HD's list 9005 draws its rows through
 /// text markup tag, as its other dialog items do.
 #[must_use]
@@ -801,8 +800,7 @@ fn spells(catalogue: &Catalogue<'_>, piece: &Piece, level: i32) -> Vec<FourCc> {
 
 /// Each item key the piece holds, in key order (hero item list,
 /// is item key): an `INV:n` slot, or a character's code whose
-/// `Flags` hold `IsInventoryItem`, as a mod's GPL gives (Majestic
-/// Majesty's potions). **Inferred**: a building's code is none, as
+/// `Flags` hold `IsInventoryItem`, as a mod's GPL gives. **Inferred**: a building's code is none, as
 /// `World::is_item_key` leaves it.
 fn items(catalogue: &Catalogue<'_>, piece: &Piece) -> Vec<i32> {
     let item = |k: i32| {

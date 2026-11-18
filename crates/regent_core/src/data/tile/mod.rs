@@ -62,7 +62,7 @@
 //! - An empty run's `x_end` is meaningless: 304 tiles end a row with
 //!   `[0xcdcd] [0x8000]`, MSVC uninitialised-heap fill. It is not validated.
 //!
-//! Every version 3 tile in HD and the Workshop mods parses. The flag also holds
+//! Every version 3 tile in HD parses. The flag also holds
 //! on every uncompressed tile checked as `stride == width × bytes-per-pixel`.
 //!
 //! Index 0 is an ordinary colour. See `docs/formats/art.md`.

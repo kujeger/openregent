@@ -55,8 +55,7 @@ use super::fourcc::FourCc;
 
 pub const MAGIC: &[u8; 8] = b"CYLBPC  ";
 
-/// The header's version, major and minor: 1.1 in every edition and both
-/// Workshop mods.
+/// The header's version, major and minor: 1.1 in every edition.
 pub const VERSION: (u16, u16) = (1, 1);
 
 const HEADER_LEN: usize = 0x14;
@@ -65,7 +64,7 @@ const RECORD_LEN: usize = 28;
 const NAME_LEN: usize = 16;
 
 /// A chunk's flag word. Set on exactly `TILE`, `SPLT` and `CUT ` in the
-/// install; Phantoms Haunt leaves its `SPLT` chunk clear.
+/// install.
 ///
 /// In every flagged chunk the record id is the record's little-endian index
 /// (33,383 of 33,383); unflagged chunks use four-character tags.

@@ -323,7 +323,7 @@ fn ending(shot: Res<Shot>, seen: Watch, mut shown: ResMut<crate::ui::end::EndScr
 }
 
 /// `--select`'s `CODE` or `CODE:N`; a code may be an XML description's
-/// `ID`, read as the engine reads it (`string_id`): The Wild's `gribea1`.
+/// `ID`, read as the engine reads it (`string_id`).
 ///
 /// # Errors
 ///

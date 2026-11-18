@@ -70,7 +70,7 @@ const EXPECTED_KEYWORDS: &[(Keyword, usize)] = &[
     (Keyword::While, 111),
     (Keyword::Float, 53),
     (Keyword::Prototype, 44),
-    // Keywords unused by shipped source. Workshop mods use `break`.
+    // Keywords unused by shipped source. `Gplbcc.exe` compiles `break`.
     (Keyword::Break, 0),
     (Keyword::Continue, 0),
     (Keyword::Define, 0),

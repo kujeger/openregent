@@ -18,7 +18,7 @@ use logos::Logos;
 ///
 /// `and`, `or`, `mod`, `not` are absent. The compiler's `AND`, `OR`, `MOD`,
 /// `NOT` name `&&`, `||`, `%`, `!`, like `NOTEQUAL`, `MODEQUAL`, `INSERTER`.
-/// Several Workshop mods declare `agent mod;` and compile.
+/// `Gplbcc.exe` compiles `agent mod;` (`gplbcc_diff`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Keyword {
     // Control and structure.

@@ -900,7 +900,7 @@ mod tests {
     /// the welcome naming the mod.
     #[test]
     fn a_guest_lacking_a_mod_holds_the_start() {
-        let guid = regent_core::data::guid::Guid::parse("{17BF53DE-722F-4683-8E63-6B93D1606DFF}")
+        let guid = regent_core::data::guid::Guid::parse("{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01}")
             .expect("a GUID");
         let held: Holdings = [(
             guid,

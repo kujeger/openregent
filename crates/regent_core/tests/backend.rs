@@ -3,15 +3,15 @@
 //! Data section:
 //!
 //! 1. one project compiles byte for byte — the only whole-file oracle;
-//! 2. every shipped data section round-trips: 75 files, 3,101 prototypes;
+//! 2. every shipped data section round-trips: 18 files, 1,017 prototypes;
 //! 3. base game and expansion `.dat` files compile to their shipped data
 //!    sections — 408 prototypes;
-//! 4. so do 20 other projects.
+//! 4. so do the SDK's other data projects.
 //!
 //! 3 and 4 start from source, so they pin sort order and the duplicate-key rule.
 //!
-//! Needs `MAJESTY_WORKSHOP` and `MAJESTY_HD`, from the
-//! environment or `.env`. A missing one panics.
+//! Needs `MAJESTY_HD`, from the environment or `.env`. A missing one
+//! panics.
 
 mod common;
 
@@ -30,33 +30,23 @@ use regent_core::gpl::{dat, emit, proj};
 /// The only data-only project shipped, so the only whole-file oracle.
 const ORACLE: &str = "Adjust Guardhouse Mod";
 
-/// In HD, the SDK and the eleven Workshop mods.
-const BCD_FILES: usize = 75;
-const BCD_PROTOTYPES: usize = 3101;
-const BCD_VALUES: usize = 43_977;
+/// In HD and the SDK.
+const BCD_FILES: usize = 18;
+const BCD_PROTOTYPES: usize = 1_017;
+const BCD_VALUES: usize = 12_607;
 
-/// Of 61 projects on disk on GOG, 19 reproduce a shipped data section
-/// exactly. Steam's `TempProject.gplproj`, `SpecialItemsExample`'s only
-/// project, makes a 20th.
-const PROJECTS_MATCHED: usize = 19;
+/// Of 8 SDK projects on GOG, 4 have a data section, and each reproduces a
+/// shipped one exactly. Steam's `TempProject.gplproj`,
+/// `SpecialItemsExample`'s only project, makes a 5th.
+const PROJECTS_MATCHED: usize = 4;
 
-/// Size of one section-2 record, one name in scope. All 19,458 bodies are a
+/// Size of one section-2 record, one name in scope. All 8,753 bodies are a
 /// whole number of them; the smallest is one.
 const DEFINITION_RECORD: usize = 20;
 
-/// Majestic Majesty, the one project whose data section does not reproduce.
-///
-/// Its shipped `bytecode.bcd` came from newer `.dat` files: prototype names
-/// match, 373 of 375 prototypes have our values as a strict subset of theirs,
-/// and the eleven extra keys are later features (`AttackPeriod`,
-/// `Fire_Attack_Damage_Max`). It bundles a different `Gplbcc.exe` build.
-fn drifted_mod() -> PathBuf {
-    common::workshop().join("678145904")
-}
-
-/// Every `.bcd` in the SDK, the mods and HD.
+/// Every `.bcd` in the SDK and HD.
 fn every_bcd() -> Vec<PathBuf> {
-    common::bcds(&[common::sdk(), common::workshop(), common::hd()])
+    common::bcds(&[common::sdk(), common::hd()])
 }
 
 /// Compile the `.dat` files at `paths` to a data section body.
@@ -253,15 +243,8 @@ fn first_of_two_duplicate_keys_wins() {
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn every_project_reproduces_a_shipped_data_section() {
-    let roots = [common::sdk(), common::workshop()];
-
     let shipped: Vec<Vec<u8>> = every_bcd().iter().map(|p| shipped_section(p)).collect();
-    let mut projects: Vec<PathBuf> = roots
-        .iter()
-        .flat_map(|root| common::walk(root, &["gplproj"]))
-        .collect();
-
-    projects.sort();
+    let projects = common::walk(&common::sdk(), &["gplproj"]);
 
     let mut matched = 0;
     let mut unmatched = Vec::new();
@@ -281,14 +264,9 @@ fn every_project_reproduces_a_shipped_data_section() {
         }
     }
 
-    let known_drift: Vec<_> = unmatched
-        .iter()
-        .filter(|p| !p.starts_with(drifted_mod()))
-        .collect();
-
     assert!(
-        known_drift.is_empty(),
-        "projects that no longer reproduce their output: {known_drift:#?}"
+        unmatched.is_empty(),
+        "projects that no longer reproduce their output: {unmatched:#?}"
     );
     assert!(
         matched >= PROJECTS_MATCHED,
@@ -360,8 +338,7 @@ fn section_one_counts_what_section_two_defines() {
 
         assert_eq!(code.encode(), body, "{}", path.display());
 
-        // Distinct, as GPL ignores case: Majestic Majesty defines
-        // `StringInList` twice, one symbol-table name.
+        // Distinct, as GPL ignores case.
         assert_eq!(
             symbols as usize,
             code.distinct_names(),
@@ -395,7 +372,7 @@ fn section_one_counts_what_section_two_defines() {
     assert_eq!(files.len(), BCD_FILES, "the .bcd corpus");
     assert_eq!(
         (prototypes, functions, constants),
-        (253, 11_473, 7_741),
+        (108, 4_830, 3_815),
         "the census of what section 2 defines"
     );
     assert_eq!(
@@ -708,15 +685,23 @@ fn every_type_a_record_carries_is_in_the_engines_list() {
 
     assert!(!seen.contains(&0), "a record carried type 0");
 
-    // Only `reference` is unused.
+    // Only `reference` and `undefined` are unused.
     let used: BTreeSet<&str> = seen.iter().filter_map(|c| gpltype::name(*c)).collect();
+    let unused: BTreeSet<&str> = gpltype::TABLE
+        .iter()
+        .copied()
+        .filter(|name| !used.contains(name))
+        .collect();
 
-    assert!(!used.contains("reference"), "something now uses reference");
-    assert_eq!(used.len(), gpltype::TABLE.len() - 1, "{used:?}");
+    assert_eq!(
+        unused,
+        BTreeSet::from(["reference", "undefined"]),
+        "{used:?}"
+    );
 }
 
 /// Records of the constants and prototypes in every `.bcd` on disk.
-const RECORDS_OUTSIDE_FUNCTIONS: usize = 36_819;
+const RECORDS_OUTSIDE_FUNCTIONS: usize = 14_077;
 
 // ---------------------------------------------------------------------------
 // Section 1's record stream, walked rather than scanned.
@@ -758,9 +743,9 @@ fn the_record_walk_consumes_section_one_exactly() {
         records += walked.iter().map(|d| d.records.len()).sum::<usize>();
     }
 
-    assert_eq!(files.len(), 75, "the .bcd corpus");
-    assert_eq!(definitions, 19_466, "definitions walked");
-    assert_eq!(records, 1_262_666, "records walked");
+    assert_eq!(files.len(), 18, "the .bcd corpus");
+    assert_eq!(definitions, 8_753, "definitions walked");
+    assert_eq!(records, 268_166, "records walked");
 }
 
 /// Opcode 38, `opLParen` (token `call`): 7,060 in HD's image, as the parser's
@@ -936,15 +921,17 @@ fn every_code_section_round_trips() {
         bytes += symbols.len();
     }
 
-    assert_eq!(files.len(), 75, "the .bcd corpus");
-    assert_eq!(bytes, 63_761_000, "bytes of section 1 round-tripped");
+    assert_eq!(files.len(), 18, "the .bcd corpus");
+    assert_eq!(bytes, 13_611_415, "bytes of section 1 round-tripped");
 }
 
 /// A record's `head` is set on exactly the control-transfer opcodes.
 ///
-/// No opcode carries a `head` only sometimes. Seven always do: `opIf`,
-/// `opWhile`, `opContinue`, `opBreak`, the `foreach` cursor pair
-/// `opAdvance`/`opRewind`, and `opLocalize` (a parameter index, not a target).
+/// No opcode carries a `head` only sometimes. Five always do: `opIf`,
+/// `opWhile`, the `foreach` cursor pair `opAdvance`/`opRewind`, and
+/// `opLocalize` (a parameter index, not a target). No shipped image holds
+/// `opBreak` or `opContinue`, which name their loop
+/// (`mod_gpl::break_and_continue_name_their_loop`).
 ///
 /// **Inferred**: `head` is a jump target. Checked by
 /// `a_jumps_head_lands_on_a_record`.
@@ -991,15 +978,7 @@ fn a_records_head_is_set_on_exactly_the_control_transfer_opcodes() {
 
     assert_eq!(
         named,
-        [
-            "opLocalize",
-            "opAdvance",
-            "opRewind",
-            "opIf",
-            "opWhile",
-            "opContinue",
-            "opBreak",
-        ],
+        ["opLocalize", "opAdvance", "opRewind", "opIf", "opWhile",],
         "the opcodes carrying a head changed"
     );
 }
@@ -1028,7 +1007,7 @@ fn a_records_opening_slot_carries_no_payload() {
         }
     }
 
-    assert_eq!(records, 1_262_666, "records seen");
+    assert_eq!(records, 268_166, "records seen");
     assert_eq!(
         words.into_iter().collect::<Vec<u32>>(),
         [0, u32::MAX],
@@ -1120,11 +1099,11 @@ fn a_definitions_prologue_follows_from_its_signature() {
 
     assert_eq!(
         opens,
-        BTreeMap::from([((advance, 4), 11_472), ((nop, 0), 7_994)]),
+        BTreeMap::from([((advance, 4), 4_830), ((nop, 0), 3_923)]),
         "a definition opened some other way"
     );
-    assert_eq!(counted, 11_472, "functions");
-    assert_eq!(parameters, 14_743, "parameters numbered");
+    assert_eq!(counted, 4_830, "functions");
+    assert_eq!(parameters, 5_674, "parameters numbered");
 }
 
 /// A record's index is its expression slot number.
@@ -1171,7 +1150,7 @@ fn a_records_index_is_its_expression_slot() {
         }
     }
 
-    assert_eq!(named, 221_978, "calls checked");
+    assert_eq!(named, 45_308, "calls checked");
 }
 
 /// A jump's head is a record index in `0..=records`.
@@ -1233,8 +1212,8 @@ fn a_jumps_head_lands_on_a_record() {
         }
     }
 
-    assert_eq!(forward, 184_319, "forward jumps");
-    assert_eq!(backward, 3_812, "backward jumps, which are loops");
+    assert_eq!(forward, 28_299, "forward jumps");
+    assert_eq!(backward, 1_387, "backward jumps, which are loops");
 }
 
 /// The prologue matches the signature, name and type, on every function of
@@ -1545,8 +1524,8 @@ fn every_calls_callee_is_a_name_or_a_slot() {
         }
     }
 
-    assert_eq!(named, 221_724, "calls naming their callee");
-    assert_eq!(through, 254, "calls through a slot");
+    assert_eq!(named, 45_195, "calls naming their callee");
+    assert_eq!(through, 113, "calls through a slot");
 }
 
 /// The two typed slots are the operands; how many are used is the opcode's
@@ -1616,14 +1595,7 @@ fn an_opcodes_arity_is_how_many_value_slots_it_uses() {
 
     assert_eq!(
         table[&0],
-        [
-            "(39)",
-            "opAdvance",
-            "opBreak",
-            "opContinue",
-            "opExit",
-            "opRewind"
-        ],
+        ["(39)", "opAdvance", "opExit", "opRewind"],
         "the nullary opcodes"
     );
     assert_eq!(
@@ -1762,8 +1734,8 @@ fn marks_seen() -> Marks {
 /// `opNop`: tag 10 with an operand, 11 without.
 ///
 /// One exception, unexplained: `Snake_Pit_Spawn`'s `opPlus` carries tag 1
-/// (`integer`) instead of 12, in the three files shipping it. Its operands are
-/// `integer` references, like 181,893 other `opPlus` records'.
+/// (`integer`) instead of 12, in the two files shipping it. Its operands are
+/// `integer` references, like every other `opPlus` record's.
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn a_records_mark_is_decided_by_its_opcode() {
@@ -1803,11 +1775,11 @@ fn a_records_mark_is_decided_by_its_opcode() {
 
     assert_eq!(varies, ["opNop", "opPlus"], "opcodes with no settled mark");
     assert_eq!(
-        odd, ["Snake_Pit_Spawn"; 3],
+        odd, ["Snake_Pit_Spawn"; 2],
         "the records carrying a real type"
     );
-    assert_eq!(nop_with, 438_362, "opNop with an operand");
-    assert_eq!(nop_without, 27_460, "opNop with none");
+    assert_eq!(nop_with, 85_671, "opNop with an operand");
+    assert_eq!(nop_without, 12_676, "opNop with none");
 
     assert_eq!(
         settled[&(true, 10)],
@@ -2019,7 +1991,7 @@ fn a_float_literal_is_fixed_point_with_a_scale_of_1024() {
     }
 
     assert_eq!(others, 0, "a second word on a slot that is not a float");
-    assert_eq!(floats, 344, "float literals in the corpus");
+    assert_eq!(floats, 146, "float literals in the corpus");
 }
 
 /// [`regent_core::gpl::emit::prologue`] reproduces the SDK image's prologue
@@ -2216,141 +2188,6 @@ fn the_emitter_holds_on_projects_it_was_not_fitted_to() {
         ["OriginalQuests/DataMX/MX_Data.bcd: Snake_Pit_Spawn"],
         "functions that differ"
     );
-}
-
-/// `break` and `continue`, from mods; no shipped source has either.
-/// `CaravanGuards` has the only `continue`; the only uncommented `break`s are
-/// two in Majestic Majesty.
-///
-/// Both compile alike, not to a jump: `head` is the enclosing `opForeach`'s
-/// record, and there is no source line. Fits `docs/gpl/compiler.md` on `foreach`
-/// depth tracking.
-///
-/// One more `opBreak` comes from a `return` inside a `foreach`, which also
-/// moves `opReturnValue` past the loop's `opRewind`
-/// (`Phantom_Priestess_Assigned_To`).
-#[test]
-#[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
-fn break_and_continue_name_their_loop() {
-    use regent_core::gpl::ast::Item;
-    use regent_core::gpl::emit;
-
-    let workshop = common::workshop();
-    let cases: [(&str, &str, &str); 2] = [
-        ("3554989139", "TempProject.gplproj", "CaravanGuards.bcd"),
-        ("3769947406", "GPL/Phantom.gplproj", "GPL/Phantom.bcd"),
-    ];
-
-    let (mut tried, mut declined) = (0, 0);
-
-    for (item, project, image) in cases {
-        let root = workshop.join(item);
-        let sources = project_sources(&root.join(project));
-        let data = std::fs::read(root.join(image)).unwrap_or_else(|e| panic!("{image}: {e}"));
-        let program = bcd::Container::parse(&data).expect("a program");
-        let sections = program.sections().expect("three sections");
-        let walked = walk(sections.symbols.body).unwrap_or_else(|e| panic!("{image}: {e}"));
-        let compiled: BTreeMap<&str, &_> = walked.iter().map(|d| (d.name, d)).collect();
-
-        for (_, text) in &sources {
-            let script = regent_core::gpl::parse(text).script;
-
-            for item in &script.items {
-                let Item::Function(f) = item else { continue };
-                let Some(definition) = compiled.get(f.name) else {
-                    continue;
-                };
-
-                let file = definition.records[0].text;
-                let Some(ours) = emit::function(f, text, file) else {
-                    declined += 1;
-                    continue;
-                };
-
-                tried += 1;
-
-                assert_eq!(ours, definition.records, "{image}: {}", f.name);
-            }
-        }
-    }
-
-    assert_eq!(tried, 145, "mod functions emitted");
-    assert_eq!(declined, 0, "functions using an unspecified construct");
-}
-
-/// Majestic Majesty's `defend_building_packet`: a `return` inside a `foreach`
-/// whose value is a call, record for record as its image has it. With
-/// `Phantom_Priestess_Assigned_To`, the two shipped specimens.
-#[test]
-#[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
-fn a_return_inside_a_foreach_compiles_as_shipped() {
-    use regent_core::gpl::ast::Item;
-
-    const NAME: &str = "defend_building_packet";
-
-    let root = drifted_mod().join("GPL");
-    let data = std::fs::read(root.join("bytecode.bcd")).expect("Majestic Majesty's image");
-    let program = bcd::Container::parse(&data).expect("a program");
-    let sections = program.sections().expect("three sections");
-    let walked = walk(sections.symbols.body).expect("section 1");
-    let shipped = walked.iter().find(|d| d.name == NAME).expect("shipped");
-
-    let raw = std::fs::read(root.join("DecisionTrees/Modules/Defend_Home_MM.gpl")).expect("source");
-    let text = String::from_utf8_lossy(&raw);
-    let script = regent_core::gpl::parse(&text).script;
-    let f = script
-        .items
-        .iter()
-        .find_map(|item| match item {
-            Item::Function(f) if f.name == NAME => Some(f),
-            _ => None,
-        })
-        .expect("defined");
-
-    let ours = emit::function(f, &text, shipped.records[0].text).expect("emitted");
-    let breaks = ours.iter().filter(|r| r.opcode == Op::Break.code()).count();
-
-    assert_eq!(ours, shipped.records);
-    assert_eq!(breaks, 1);
-}
-
-/// `opBreak` and `opContinue` records over the 75 files, all in Workshop
-/// images: `guard_check`'s `continue`; two source `break`s in Majestic
-/// Majesty; three `opBreak`s from a `return` inside a `foreach`, in its
-/// `defend_building_packet` and in `Phantom_Priestess_Assigned_To`, whose
-/// image ships twice.
-#[test]
-#[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
-fn only_workshop_images_hold_break_and_continue() {
-    use regent_core::gpl::opcode::Op;
-
-    let workshop = common::workshop();
-    let (mut breaks, mut continues) = (0, 0);
-
-    for path in every_bcd() {
-        let raw = std::fs::read(&path).expect("a .bcd");
-        let program = bcd::Container::parse(&raw).expect("a program");
-        let sections = program.sections().expect("three sections");
-        let walked = walk(sections.symbols.body).expect("section 1");
-
-        let codes = walked.iter().flat_map(|d| &d.records).map(|r| r.opcode);
-        let (b, c) = codes.fold((0, 0), |(b, c), code| {
-            (
-                b + usize::from(code == Op::Break.code()),
-                c + usize::from(code == Op::Continue.code()),
-            )
-        });
-
-        assert!(
-            b + c == 0 || path.starts_with(&workshop),
-            "{}",
-            path.display()
-        );
-        breaks += b;
-        continues += c;
-    }
-
-    assert_eq!((breaks, continues), (5, 1));
 }
 
 /// The source paths a project lists, in order, as written: `lowlevel.gpl` for
@@ -2594,7 +2431,7 @@ fn a_definitions_scope_decodes_and_names_its_own_table() {
         }
     }
 
-    assert_eq!(bodies, 19_467, "bodies decoded");
+    assert_eq!(bodies, 8_753, "bodies decoded");
     assert_eq!(
         payloads.into_iter().collect::<Vec<u8>>(),
         [1, 2, 3, 4, 5, 6, 7, 8],
@@ -2707,48 +2544,4 @@ fn a_whole_bcd_is_compiled_from_its_project() {
         5,
         "images reproduced byte for byte: {identical:?}"
     );
-}
-
-/// Monster Kingdom (Workshop `3743606613`): its source holds negative
-/// constants, `expression #WYRM_HEAL_MOD_TIER1 -2`.
-const NEGATIVE_MOD: &str = "3743606613";
-
-/// A negative constant's value record is an `opNegate` of the literal, as
-/// a body's `-2` is: `Gplbcc.exe` folds nothing. The engine evaluates the
-/// records, so the value is still -2.
-#[test]
-#[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
-fn a_negative_constant_negates_its_literal() {
-    use regent_core::gpl::ast::{ExprKind, Item};
-
-    let root = common::workshop().join(NEGATIVE_MOD);
-    let image = std::fs::read(root.join("Data/MonsterKingdom.bcd")).expect("shipped");
-    let program = bcd::Container::parse(&image).expect("a program");
-    let sections = program.sections().expect("three sections");
-    let walked = walk(sections.symbols.body).expect("walks");
-    let theirs: BTreeMap<String, &Compiled<'_>> = walked
-        .iter()
-        .map(|d| (d.name.to_ascii_lowercase(), d))
-        .collect();
-
-    let src = std::fs::read_to_string(root.join("GPL/MK_Globals.gpl")).expect("source");
-    let script = regent_core::gpl::parse(&src).script;
-    let negative: Vec<_> = script
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            Item::Constant(c) if matches!(c.value.kind, ExprKind::Unary { .. }) => Some(c),
-            _ => None,
-        })
-        .collect();
-
-    assert_eq!(negative.len(), 3, "negative constants");
-
-    for c in negative {
-        let shipped = theirs[&format!("#{}", c.name).to_ascii_lowercase()];
-        let ours = emit::constant(c, &src, shipped.records[0].text).expect("emits");
-
-        assert_eq!(shipped.records[2].opcode, Op::Negate.code());
-        assert_eq!(ours, shipped.records, "#{}", c.name);
-    }
 }

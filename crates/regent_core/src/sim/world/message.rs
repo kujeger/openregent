@@ -75,7 +75,7 @@ pub struct Message {
 /// a string by string id's rules, the same code
 /// ([`crate::data::fourcc::string_id`]): empty 0, four bytes a FOURCC,
 /// opening with a digit its `atoi`, else its CRC. So a Text id names its
-/// string: The Wild's `SpecifyName(unit, "HOOL")` gives "Hooligan"
+/// string: `SpecifyName(unit, "BRAMBLE")` gives the string of that id
 /// ([`super::naming::Given`]).
 pub(super) fn number(value: &Value) -> Option<i32> {
     match value {
@@ -343,8 +343,8 @@ mod tests {
             Some(i32::from_le_bytes(*b"ARE1"))
         );
         assert_eq!(
-            number(&Value::String("REDINN".into())),
-            Some(crate::data::crc::crc(b"REDINN").cast_signed())
+            number(&Value::String("THORNHALL".into())),
+            Some(crate::data::crc::crc(b"THORNHALL").cast_signed())
         );
     }
 }

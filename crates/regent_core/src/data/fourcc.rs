@@ -79,7 +79,7 @@ const QUOTES: [u8; 2] = *b"'\"";
 /// `atoi`; else CRC-32 from all ones, not inverted ([`super::crc`]). A
 /// descriptor's XML `ID` is read so (string id cached, the same with a
 /// cache): the SDK's `"MagicBall"` names its descriptor and its item,
-/// a mod's `"MBPortal"` its building.
+/// a mod's `"ZqPortal"` its building.
 ///
 /// ```
 /// use regent_core::data::fourcc::string_id;

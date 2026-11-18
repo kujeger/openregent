@@ -406,8 +406,7 @@ impl<'a> Text<'a> {
     ///
     /// All 142 characters and buildings resolve
     /// (`a_help_id_resolves_to_its_topic`). Not keyed, the [`Strings`]
-    /// entry of the id's word: a
-    /// mod's `HelpID value="MK_hPalace"`.
+    /// entry of the id's word: a mod's `HelpID` that keys no topic.
     #[must_use]
     pub fn help(&self, id: FourCc) -> Option<Cow<'a, str>> {
         self.keyed(HELP, id).or_else(|| self.fallback(id.word()))
@@ -964,27 +963,26 @@ mod tests {
     const BLUE: Option<[u8; 3]> = Some([0x70, 0x70, 0xff]);
     const RED: Option<[u8; 3]> = Some([0xff, 0, 0]);
 
-    /// The Wild's Grizzly Bear: a hex tag colours its words, then the
-    /// caller's colour again.
+    /// A hex tag colours its words, then the caller's colour again.
     #[test]
     fn a_hex_tag_colours_the_text_up_to_its_end() {
         assert_eq!(
-            runs("Bears.\r\n[color:7070ff]Living in the...[/color] Done"),
+            runs("Wolves.\r\n[color:7070ff]Roaming the...[/color] Done"),
             [
-                (None, "Bears.\r\n"),
-                (BLUE, "Living in the..."),
+                (None, "Wolves.\r\n"),
+                (BLUE, "Roaming the..."),
                 (None, " Done")
             ]
         );
     }
 
     /// Names and tags fold case; `=` separates as `:` does; the value is
-    /// trimmed (Majestic Majesty's `[color: BDB76B]`).
+    /// trimmed (`[color: 4A7F3C]`).
     #[test]
     fn a_tag_folds_case_and_takes_either_separator() {
         assert_eq!(runs("[COLOR=Red]a"), [(RED, "a")]);
         assert_eq!(runs("[fcolor: red ]a"), [(RED, "a")]);
-        assert_eq!(runs("[color: BDB76B]a"), [(Some([0xbd, 0xb7, 0x6b]), "a")]);
+        assert_eq!(runs("[color: 4A7F3C]a"), [(Some([0x4a, 0x7f, 0x3c]), "a")]);
     }
 
     /// Tags nest: a close goes back to the colour under it, and past the
@@ -1016,13 +1014,13 @@ mod tests {
         );
     }
 
-    /// Other brackets are text: Majestic Majesty's "Embers [Level 1]", a
-    /// lone `[`, a name with no end.
+    /// Other brackets are text: "Ash [Rank 2]", a lone `[`, a name
+    /// with no end.
     #[test]
     fn a_bracket_that_is_no_colour_tag_is_text() {
-        assert_eq!(runs("Embers [Level 1]"), [(None, "Embers [Level 1]")]);
+        assert_eq!(runs("Ash [Rank 2]"), [(None, "Ash [Rank 2]")]);
         assert_eq!(runs("[b]x[/b] [ [color"), [(None, "[b]x[/b] [ [color")]);
-        assert!(matches!(plain("Embers [Level 1]"), Cow::Borrowed(_)));
+        assert!(matches!(plain("Ash [Rank 2]"), Cow::Borrowed(_)));
     }
 
     /// A background tag is dropped and changes nothing drawn.

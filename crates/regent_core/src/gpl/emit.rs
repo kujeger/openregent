@@ -992,8 +992,8 @@ fn constant_in<'a>(
     let line = text.line(c.span.start);
 
     // One record for the value. A leading `-` is not folded: an
-    // `opNegate` of the literal, as in a body (Monster Kingdom's
-    // `#WYRM_HEAL_MOD_TIER1 -2`); the engine evaluates the records.
+    // `opNegate` of the literal, as in a body (`gplbcc_diff`; first seen in
+    // Monster Kingdom); the engine evaluates the records.
     let value = match &c.value.kind {
         ExprKind::Unary {
             op: UnOp::Neg,
@@ -1110,9 +1110,9 @@ fn entry_name<'a>(item: &'a Item<'a>, src: &'a str) -> &'a str {
 
 /// Emit section 1 from a project's source files.
 ///
-/// Case-insensitive name order, as in all 75 `.bcd` files. Stable sort, so a
-/// name defined twice (one Workshop mod) keeps file order; the compiler's
-/// order there is unknown.
+/// Case-insensitive name order, as in all 18 `.bcd` files. Stable sort, so a
+/// name defined twice keeps file order; the compiler's order there is
+/// unknown.
 ///
 /// `None` if any definition cannot be emitted.
 #[must_use]
@@ -1478,9 +1478,9 @@ impl<'a> Body<'a, '_> {
     ///
     /// The value's records follow the `opBreak`, so they never run: the
     /// function returns whatever the value's slot last held, and the loop
-    /// running out returns it too, skipping what follows the loop. **Game**:
-    /// shipped `Phantom_Priestess_Assigned_To` and Majestic Majesty's
-    /// `defend_building_packet`.
+    /// running out returns it too, skipping what follows the loop.
+    /// **Compiler**: `Gplbcc.exe` on `fixtures/gpl/forms`. First seen in
+    /// Majestic Majesty and Phantoms Haunt.
     ///
     /// A bare `return` writes `opReturn` there instead. In a nested loop
     /// either breaks only the innermost; its return follows that loop.
@@ -1667,7 +1667,7 @@ mod tests {
     }
 
     /// A file's last prototype carries the line of its end: past a final
-    /// newline, the line after it (Monster Kingdom's `AIRoot9`).
+    /// newline, the line after it.
     #[test]
     fn a_last_prototype_takes_the_line_past_the_end() {
         for (src, line) in [

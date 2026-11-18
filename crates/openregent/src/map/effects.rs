@@ -923,8 +923,8 @@ mod tests {
     }
 
     /// A piece whose draw effects change is despawned, not tinted that
-    /// frame too: its bodies go with it, and a lift made on one panicked
-    /// (Phantoms Haunt's phantom, day 8 37.1 s). Its new drawing is
+    /// frame too: its bodies go with it, and a lift made on one panicked.
+    /// Its new drawing is
     /// tinted the next frame.
     #[test]
     fn a_piece_whose_tint_changes_is_despawned_not_tinted_again() {

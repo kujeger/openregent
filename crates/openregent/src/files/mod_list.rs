@@ -5,8 +5,8 @@
 //!  $XDG_CONFIG_HOME/openregent/mods.toml
 //!
 //!  [[mod]]
-//!  id = "17BF53DE-722F-4683-8E63-6B93D1606DFF"   the GUID; braces and case free
-//!  name = "Majesty Expanded"                     for a reader: rewritten on save
+//!  id = "4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01"   the GUID; braces and case free
+//!  name = "Hearth"                               for a reader: rewritten on save
 //!  description = "Short text"                    the same: <Short>, else <Long>
 //!  enabled = true                                a new game loads it
 //! ```

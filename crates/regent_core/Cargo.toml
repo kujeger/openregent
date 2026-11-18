@@ -176,14 +176,6 @@ name = "missile"
 required-features = ["install"]
 
 [[test]]
-name = "mod_library"
-required-features = ["install"]
-
-[[test]]
-name = "mods"
-required-features = ["install"]
-
-[[test]]
 name = "movement"
 required-features = ["install"]
 
@@ -237,10 +229,6 @@ required-features = ["install"]
 
 [[test]]
 name = "terrain"
-required-features = ["install"]
-
-[[test]]
-name = "text_markup"
 required-features = ["install"]
 
 [[test]]

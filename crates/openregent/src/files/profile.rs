@@ -13,7 +13,7 @@
 //!      progress.toml            version = 1, last_won = "QU01"
 //!                               [seen] advisor, expert_hint, ending
 //!                               [quests.QU01] victories = 2, best_ms = 900000
-//!                               [quests."{31305551-0054-0032-…}"]  a mod's quest
+//!                               [quests."{5A515831-0031-0042-…}"]  a mod's quest
 //! ```
 //!
 //! `<dir>` is the name made safe ([`folder`]): letters, digits, space,
@@ -869,12 +869,12 @@ mod tests {
         assert!(profiles.last().is_none());
     }
 
-    /// A mod's quest's victory is kept by its id, its code a CRC
-    /// (Majesty Expanded's Barren Waste, not `QU01`), and comes back so;
+    /// A mod's quest's victory is kept by its id, its code a CRC, and
+    /// comes back so;
     /// the last won too.
     #[test]
     fn a_mod_quests_progress_is_named_by_its_id() {
-        const COPY: &str = "{31305551-0054-0032-0000-000000000000}";
+        const COPY: &str = "{5A515831-0031-0042-0000-000000000000}";
 
         let dir = scratch("mod_quest");
         let profiles = Profiles::at(&dir);

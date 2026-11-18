@@ -86,14 +86,14 @@ A test file wholly in one tier has `required-features` in its crate's
 data needs this.
 
 Nothing needs the game's assets to compile. The `install` tests
-locate them by environment variable:
+locate them by environment variable. No test reads a Workshop mod: mods are
+made-up fixtures (`tests/fixtures/`).
 
 | Variable | Example | Holds |
 |---|---|---|
 | `MAJESTY_HD` | `~/.local/share/Steam/steamapps/common/Majesty HD` | The Windows HD edition, 1.5.2.28, GOG or Steam `beta2` — the target; its `SDK/` is the modding SDK |
-| `MAJESTY_WORKSHOP` | `…/steamapps/workshop/content/73230` | Subscribed Workshop mods |
 
-Each may instead go in `.env`, keeping a local install layout out of
+It may instead go in `.env`, keeping a local install layout out of
 the shell profile. `.env` is gitignored; copy
 [.env.example](../.env.example).
 
@@ -295,17 +295,17 @@ rotting quietly. That is how the three quest-map versions were found.
 | `tests/icons.rs` | The art | The interface pictures a spell draws |
 | `tests/attrib.rs`, `opcode.rs` | HD's data, the lexer, the shipped bytecode | The tables copied from the executables agree with them |
 | `tests/corpus.rs` | 306 SDK `.gpl` files | Every claim in [docs/gpl/language.md](../docs/gpl/language.md) |
-| `tests/mods.rs` | 361 Workshop `.gpl` files, 14 `.cam` archives | The same, on files written by strangers |
-| `tests/backend.rs` | Both, plus 21 projects | `regent_cli compile` reproduces `Gplbcc.exe` byte for byte |
+| `tests/mod_gpl.rs` | None: made-up projects (`tests/fixtures/gpl/`) | The forms only mods use, `break`, `continue` and `return` in a `foreach` among them |
+| `tests/mod_manifests.rs` | None: a made-up install and mod folders (`tests/fixtures/manifests/`) | Mod and quest manifests, descriptions, strings, colour tags |
+| `tests/mod_archives.rs` | None: a made-up base and mod (`tests/fixtures/archives/`) | Every payload reader on a mod's archives, and how they compose over a base |
+| `tests/backend.rs` | Both, plus the SDK's projects | `regent_cli compile` reproduces `Gplbcc.exe` byte for byte |
+| `tests/gplbcc_diff.rs` | `Gplbcc.exe`, run under `wine` off Windows; the made-up projects in `tests/fixtures/gpl/` | Both compilers write the same bytes, or both refuse |
 | `tests/doc_paths.rs` | The notes | Every Rust path and `.rs` file they name exists |
 | `tests/the_corpus/`, `fresh_generated.rs` | The freestyle quest and chart; **Measured** on saves | The generator's inputs; a fresh game against its golden list |
 
 `tests/common/` holds the tests' shared sim and generator helpers,
 not a test target. The corpus lookup is the `regent_corpus` crate, re-exported there; it
 reads `.env`.
-
-Counts against the mods are deliberately lower bounds, because Steam updates
-workshop items without asking.
 
 The conventions these tests enforce — counts from a parser rather than a grep, a
 second corpus before calling something impossible — are in

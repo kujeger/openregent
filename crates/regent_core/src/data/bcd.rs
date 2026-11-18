@@ -20,8 +20,7 @@
 //!             section 3         data — prototype instances from `.dat` files
 //! ```
 //!
-//! Holds for all 75 `.bcd` files of HD, its modding SDK and the eleven Steam
-//! Workshop mods.
+//! Holds for all 18 `.bcd` files of HD and its modding SDK.
 //!
 //! Section 2's three name tables have 20, 825 and 649 entries in the base game,
 //! as in the sources; its definitions are those section 1 counts.

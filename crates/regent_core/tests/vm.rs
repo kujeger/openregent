@@ -2,7 +2,7 @@
 //! hand-worked cases from the `ops` and `runtime` tables, and runs the whole
 //! corpus against a host that only logs.
 //!
-//! Needs `MAJESTY_HD` and `MAJESTY_WORKSHOP`.
+//! Needs `MAJESTY_HD`.
 
 mod common;
 
@@ -1500,10 +1500,10 @@ const UNTYPED_RETURNS: [&str; 2] = ["Multiple_Attack_Check", "Recall_Check"];
 
 /// Script functions over every image, each counted in the image that
 /// defines it.
-const CORPUS_FUNCTIONS: usize = 11_472;
+const CORPUS_FUNCTIONS: usize = 4_830;
 
 /// Their runs, one per sample vector.
-const CORPUS_RUNS: usize = 26_551;
+const CORPUS_RUNS: usize = 10_701;
 
 /// What stops a corpus run. Most are the logging host's: its builtins leave
 /// defaults (empty lists, zeros, null functions), its attributes are fresh
@@ -1513,49 +1513,31 @@ const CORPUS_RUNS: usize = 26_551;
 /// - Null agent sample read for an attribute: the engine's throw.
 /// - `ListMember` of an empty list a builtin left; divide by a zero default.
 /// - An attribute no prototype declares, so null: an `if` on the empty
-///   result of an operator on it, or conversions from it (`bool`, `int`, ...);
-///   an operator on that empty result is a null-operand crash.
+///   result of an operator on it, or a conversion from it to `bool`.
 /// - Integer list samples where agents are wanted (`gplagent&`).
 /// - `Multiple_Attack_Check` and `Recall_Check` return a value with no type.
-/// - A call to a function no loaded image defines calls the null record, so
-///   its result is null: `ecs_return_rat`'s `$rn`.
-/// - `while` on an empty result of a null attribute: unchecked, a crash.
 /// - [`Crash::Unending`]: loops waiting on world state the host never
 ///   changes, or counting to a 2^21 sample.
-const CORPUS_STOPS: [(&str, usize); 19] = [
-    ("Assignment to NULL attempted.", 9),
-    ("Divide by zero error.", 239),
-    (
-        "If statement evaluates to a NULL value in function $()",
-        146,
-    ),
+const CORPUS_STOPS: [(&str, usize); 8] = [
+    ("Assignment to NULL attempted.", 4),
+    ("Divide by zero error.", 183),
+    ("If statement evaluates to a NULL value in function $()", 57),
     (
         "ListMember() tried to access an element # beyond its size",
-        1411,
+        573,
     ),
     (
         "Tried to get attribute \"%s\"from a non-existent agent ",
-        8074,
+        3_038,
     ),
-    ("bad conversion to bool", 308),
-    ("bad conversion to bool&", 4),
-    ("bad conversion to coord&", 2),
-    ("bad conversion to float", 5),
-    ("bad conversion to gplagent&", 884),
-    ("bad conversion to gpllist&", 1),
-    ("bad conversion to int", 17),
-    ("bad conversion to list&", 21),
-    ("bad conversion to string", 12),
-    ("bad conversion to string&", 16),
-    ("crash: NullValue(Condition)", 4),
-    ("crash: NullValue(Operand)", 6),
-    ("crash: NullValue(Result)", 5),
-    ("crash: Unending", 47),
+    ("bad conversion to bool", 38),
+    ("bad conversion to gplagent&", 673),
+    ("crash: Unending", 17),
 ];
 
-/// Every `.bcd` on disk: SDK, Workshop, HD.
+/// Every `.bcd` on disk: SDK, HD.
 fn every_bcd() -> Vec<PathBuf> {
-    let roots = [common::sdk(), common::workshop(), common::hd()];
+    let roots = [common::sdk(), common::hd()];
 
     let mut out: Vec<PathBuf> = roots
         .iter()

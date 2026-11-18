@@ -100,14 +100,14 @@ fn the_call_terminator_is_the_call_opcode() {
 }
 
 /// The shipped bytecode never uses the three opcodes the name table lacks:
-/// 39 is the highest in all 84 `.bcd` files.
+/// 39 is the highest in all its `.bcd` files.
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn no_shipped_bytecode_uses_the_inline_attribute_opcodes() {
     use regent_core::data::bcd;
     use regent_core::gpl::bcd::walk;
 
-    let roots = [common::sdk(), common::workshop(), common::hd()];
+    let roots = [common::sdk(), common::hd()];
     let mut paths: Vec<PathBuf> = roots
         .iter()
         .flat_map(|root| common::walk(root, &["bcd"]))
@@ -132,6 +132,6 @@ fn no_shipped_bytecode_uses_the_inline_attribute_opcodes() {
         highest = highest.max(top.unwrap_or_default());
     }
 
-    assert_eq!(paths.len(), 75, "the .bcd files of every edition and mod");
+    assert_eq!(paths.len(), 18, "the .bcd files of every edition");
     assert_eq!(highest, opcode::BODY);
 }

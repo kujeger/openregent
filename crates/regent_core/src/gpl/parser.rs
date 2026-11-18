@@ -737,10 +737,10 @@ impl<'a> Parser<'a> {
 
     /// `primary ( "'s" primary )*` — the attribute accessor.
     ///
-    /// `IDENT "'s" STRING` covers the shipped corpus. Workshop mods chain
-    /// accessors (`a's "b"'s "c"`, 157 sites) and compute the attribute
-    /// (`x's funcName`, `x's ("prefix" + n)`, 646 sites), hence the loop and a
-    /// full `primary` on the right.
+    /// `IDENT "'s" STRING` covers the shipped corpus. `Gplbcc.exe` also
+    /// compiles chained accessors (`a's "b"'s "c"`) and a computed attribute
+    /// (`x's funcName`, `x's ("prefix" + n)`; `gplbcc_diff`), hence the loop
+    /// and a full `primary` on the right.
     fn accessor_expression(&mut self) -> Rule<Expr<'a>> {
         let mut obj = self.primary_expression()?;
 
@@ -953,8 +953,8 @@ mod tests {
 
     #[test]
     fn accessor_attribute_need_not_be_a_literal() {
-        // No shipped source; 646 workshop mod sites. The name is evaluated at
-        // run time.
+        // No shipped source; `Gplbcc.exe` compiles it. The name is evaluated
+        // at run time.
         let ExprKind::Attr { attr, .. } = rhs_of("x = ThisAgent's funcName;").kind else {
             panic!()
         };
@@ -1153,8 +1153,8 @@ mod tests {
 
     #[test]
     fn operator_words_are_names_not_operators() {
-        // `mod` is a local in several compiling workshop mods. Same for `and`,
-        // `or`, `not`: the compiler tokens of those names spell `&&`, `||`, `!`.
+        // `Gplbcc.exe` compiles `mod` as a local. Same for `and`, `or`, `not`
+        // (**Inferred**): the compiler tokens of those names spell `&&`, `||`, `!`.
         let s = ok("function F(agent mod)\ndeclare\n agent and, or, not;\nbegin\nend");
 
         let Item::Function(f) = &s.items[0] else {

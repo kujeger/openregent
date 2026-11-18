@@ -146,8 +146,7 @@ fn every_archive_the_settings_load_is_on_disk() {
 }
 
 /// [`deps::Expr::parse`] balances the stack on every table: every operator
-/// finds its operands, one value remains. The Phantoms Haunt mod's `BDEP` is a
-/// non-Cyberlore sample of the notation.
+/// finds its operands, one value remains.
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn every_shipped_dependency_table_parses() {
@@ -168,13 +167,12 @@ fn every_shipped_dependency_table_parses() {
         vec![
             ("Data/miscdata.cam".to_owned(), 49, 21),
             ("DataMX/mx_miscdata.cam".to_owned(), 55, 26),
-            ("the Phantoms Haunt mod".to_owned(), 56, 27),
         ],
         "the building tables changed shape"
     );
 
     // `QDEP`, a different notation.
-    for (name, bytes) in tables().iter().take(2) {
+    for (name, bytes) in &tables() {
         let rules = deps::quests(&text_of(bytes, FourCc::new(b"QDEP")))
             .unwrap_or_else(|e| panic!("{name} QDEP: {e}"));
 
@@ -182,10 +180,7 @@ fn every_shipped_dependency_table_parses() {
     }
 }
 
-/// Every id in a rule resolves to a `DUNT`: 160 rules, 60 distinct ids.
-///
-/// One exception: the mod's `PHG1` guild, declared in `phantom_units.xml` and
-/// compiled by HD at load time. The mod ships no `DUNT` archive.
+/// Every id in a rule resolves to a `DUNT`: 104 rules, 59 distinct ids.
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn every_building_dependency_names_a_building() {
@@ -217,19 +212,12 @@ fn every_building_dependency_names_a_building() {
         }
     }
 
-    assert_eq!(rules, 160, "the rules read");
-    assert_eq!(named.len(), 60, "the distinct ids the three tables name");
-    assert_eq!(
-        unresolved,
-        BTreeSet::from([FourCc::new(b"PHG1")]),
-        "a rule names something that is no DUNT"
+    assert_eq!(rules, 104, "the rules read");
+    assert_eq!(named.len(), 59, "the distinct ids the two tables name");
+    assert!(
+        unresolved.is_empty(),
+        "a rule names something that is no DUNT: {unresolved:?}"
     );
-
-    // The exception is a real building, not a misread word.
-    let xml = common::workshop().join("3769947406/Data/phantom_units.xml");
-    let source = std::fs::read_to_string(&xml).unwrap_or_else(|e| panic!("{}: {e}", xml.display()));
-
-    assert!(source.contains("PHG1"), "the mod's own units name no PHG1");
 }
 
 /// A quest rule adds a difficulty field and writes `NONE` for no requirement.
@@ -237,7 +225,7 @@ fn every_building_dependency_names_a_building() {
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn a_quest_rule_carries_a_difficulty_and_names_only_quests() {
-    for (name, bytes) in tables().iter().take(2) {
+    for (name, bytes) in &tables() {
         let rules = deps::quests(&text_of(bytes, FourCc::new(b"QDEP"))).unwrap();
         let defined: BTreeSet<FourCc> = rules.iter().map(|r| r.id).collect();
 
@@ -315,7 +303,7 @@ fn the_dependency_tables_do_not_need_their_blank_last_line() {
     );
 }
 
-/// The archives with dependency tables: base, expansion, Phantoms Haunt mod.
+/// The archives with dependency tables: base and expansion.
 fn tables() -> Vec<(String, Vec<u8>)> {
     let game = common::hd();
     let mut out = Vec::new();
@@ -326,22 +314,6 @@ fn tables() -> Vec<(String, Vec<u8>)> {
 
         out.push((relative.to_owned(), bytes));
     }
-
-    let mods = common::walk(&common::workshop(), &["cam"]);
-
-    let phantom = mods
-        .iter()
-        .find(|p| {
-            p.file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.eq_ignore_ascii_case("phantom_miscdata.cam"))
-        })
-        .expect("the Phantoms Haunt mod's own miscdata");
-
-    out.push((
-        "the Phantoms Haunt mod".to_owned(),
-        std::fs::read(phantom).expect("readable"),
-    ));
 
     out
 }
