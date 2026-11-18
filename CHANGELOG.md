@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-18
+
+### Changed
+
+- QUIT MAJESTY and RESUME PLAY buttons in Options now wrap, avoiding ugly overflow
+- Shapechanged heroes retain their proper panels -- no longer will a cultist seem to be a monster just because they happen to be a Hellbear
+- Peasants at work / Magic at work art now shows for buildings under construction
+- Stricter GPL compiler, matching the original Gplbcc.exe better
+
 ## [0.4.0] - 2026-11-17
 
 ### Changed
