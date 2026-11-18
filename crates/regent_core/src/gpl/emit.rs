@@ -15,6 +15,7 @@
 //! see `a_whole_bcd_is_compiled_from_its_project`.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -121,6 +122,13 @@ pub enum Error {
     Parse { file: String, errors: String },
     /// A construct without a specimen; see [`function`].
     Unwritable(String),
+    /// A name no parameter or local declares, which `Gplbcc.exe` refuses;
+    /// see [`undeclared`].
+    Undeclared {
+        file: String,
+        line: usize,
+        name: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -130,6 +138,9 @@ impl fmt::Display for Error {
             Error::Read(path, e) => write!(f, "{}: {e}", path.display()),
             Error::Parse { file, errors } => write!(f, "{file}:{errors}"),
             Error::Unwritable(file) => write!(f, "{file}: a definition the emitter cannot write"),
+            Error::Undeclared { file, line, name } => {
+                write!(f, "{file}:{line}: identifier {name} not declared")
+            }
         }
     }
 }
@@ -200,7 +211,7 @@ pub fn compile_listed(project: &super::proj::Project, label: &Path) -> Result<Ve
             let parsed = super::parse(t);
 
             if parsed.errors.is_empty() {
-                Ok(parsed.script)
+                checked(parsed.script, t, file)
             } else {
                 Err(Error::Parse {
                     file: file.clone(),
@@ -242,8 +253,9 @@ pub fn compile_source(src: &str, file: &str) -> Result<Vec<u8>, Error> {
         });
     }
 
+    let script = checked(parsed.script, src, file)?;
     let units = [Unit {
-        script: &parsed.script,
+        script: &script,
         src,
         file,
     }];
@@ -267,6 +279,51 @@ pub fn project_data_section(path: &Path) -> Result<Vec<u8>, Error> {
     let project = read_project(path)?;
 
     section_of(&project.data)
+}
+
+/// `script`, if every name it uses is declared; see [`undeclared`].
+fn checked<'a>(script: Script<'a>, src: &str, file: &str) -> Result<Script<'a>, Error> {
+    match undeclared(&script, src) {
+        Some((line, name)) => Err(Error::Undeclared {
+            file: file.to_owned(),
+            line,
+            name,
+        }),
+        None => Ok(script),
+    }
+}
+
+/// The first name a definition uses that none of its parameters or locals
+/// declares, and its line. `Gplbcc.exe` refuses the source ("identifier
+/// foo not declared"), as a value, a target or a callee: `foo(1)` too,
+/// since a script's function is called as `$foo`. Names match
+/// case-insensitively.
+fn undeclared(script: &Script<'_>, src: &str) -> Option<(usize, String)> {
+    script.items.iter().find_map(|item| {
+        let declared: HashSet<String> = item
+            .params()
+            .iter()
+            .map(|p| p.name)
+            .chain(
+                item.decls()
+                    .iter()
+                    .flat_map(|d| d.names.iter().map(|(n, _)| *n)),
+            )
+            .map(str::to_ascii_lowercase)
+            .collect();
+
+        // visit_exprs takes no early exit: keep the first.
+        let mut first = None;
+        item.visit_exprs(&mut |e| {
+            if let (None, ExprKind::Ident(name)) = (&first, &e.kind)
+                && !declared.contains(&name.to_ascii_lowercase())
+            {
+                first = Some((e.span.start, (*name).to_owned()));
+            }
+        });
+
+        first.map(|(at, name)| (super::diag::location(src, at).0, name))
+    })
 }
 
 /// Each of `errors` as `line:column: message`, `; ` between: the file
@@ -1459,6 +1516,27 @@ mod tests {
             .iter()
             .map(|(k, _)| k.as_ref())
             .collect()
+    }
+
+    /// `Gplbcc.exe` refuses a name no parameter or local declares, as a
+    /// value, a target or a callee: a script's function is called as
+    /// `$Name`, so a bare `ZqA(1)` names an undeclared variable.
+    #[test]
+    fn an_undeclared_identifier_is_refused() {
+        let src = "function ZqA() is integer\ndeclare\n\tinteger n;\nbegin\n\
+                   \tn = ZqA(1);\n\treturn n;\nend\n";
+        let err = compile_source(src, "t.gpl").expect_err("refused");
+
+        assert_eq!(err.to_string(), "t.gpl:5: identifier ZqA not declared");
+    }
+
+    /// Names match case-insensitively, as the language does.
+    #[test]
+    fn a_declared_identifier_matches_in_any_case() {
+        let src = "function ZqA(integer Arg) is integer\ndeclare\n\tinteger n;\nbegin\n\
+                   \tN = ARG;\n\treturn n;\nend\n";
+
+        assert!(compile_source(src, "t.gpl").is_ok());
     }
 
     #[test]
