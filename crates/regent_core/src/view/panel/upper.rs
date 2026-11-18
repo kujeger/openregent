@@ -3,6 +3,7 @@
 //! opens, the warriors' guild's roster counts, the rogues' extortion.
 //! openregent's `panel::upper` draws them.
 
+use crate::data::attrib::FIRST_STAGE_BUILT;
 use crate::data::fourcc::FourCc;
 use crate::data::text::{Text, printf};
 use crate::sim::game::Input;
@@ -206,6 +207,70 @@ impl Contests {
     }
 }
 
+/// A building site's cover: a panel of its own over the building
+/// panel's lower part, its own frame's place (202 × 101 at (0, 326)).
+pub const SITE_PANEL: FourCc = FourCc(*b"APb9");
+
+/// The cover's text box, and the button over the whole cover that
+/// takes its clicks, with the tooltip "This building is currently
+/// under construction".
+pub const SITE_TEXT: i32 = 1;
+pub const SITE_BUTTON: i32 = 2;
+
+/// The code prefixes whose site is magic's: the Wizards Guild, the
+/// Wizards Tower, the Sorcerer's Abode.
+const MAGIC_SITES: [[u8; 3]; 3] = [*b"ABY", *b"ABM", *b"ABq"];
+
+/// What a building site's cover shows.
+///
+/// **Binary**: every building's controller, on its panel's opening and
+/// on a change of `APB:1`, opens [`SITE_PANEL`] over it while `APB:1
+/// FirstStageBuilt` is 0, and closes it once set. An upgrade being
+/// built (`APB:2`) has none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Site {
+    /// `INBg` 1023, the hammer and saw; `GMTX` 265 "Peasants at work
+    /// on site."
+    Peasants,
+    /// `INBg` 1035, the orb; `GMTX` 266 "Magic at work on site."
+    Magic,
+}
+
+impl Site {
+    /// The cover building `piece` shows: none once its first stage
+    /// stands.
+    #[must_use]
+    pub fn of(piece: &Piece) -> Option<Site> {
+        let magic = MAGIC_SITES.iter().any(|m| piece.code.0.starts_with(m));
+
+        match (piece.word(FIRST_STAGE_BUILT), magic) {
+            (0, true) => Some(Site::Magic),
+            (0, false) => Some(Site::Peasants),
+            _ => None,
+        }
+    }
+
+    /// Its picture, in place of the panel's own.
+    #[must_use]
+    pub const fn art(self) -> (FourCc, i32) {
+        let set = match self {
+            Site::Peasants => 1023,
+            Site::Magic => 1035,
+        };
+
+        (FourCc(*b"INBg"), set)
+    }
+
+    /// Its `GMTX` line, in [`SITE_TEXT`].
+    #[must_use]
+    pub const fn text(self) -> usize {
+        match self {
+            Site::Peasants => 265,
+            Site::Magic => 266,
+        }
+    }
+}
+
 /// A temple hero's count on a warriors' guild's panel: its icon, the
 /// count's box, the count.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -331,6 +396,30 @@ impl Extorted {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A site of `code`, `built` its `APB:1`.
+    fn site(code: [u8; 4], built: Option<i32>) -> Option<Site> {
+        let piece = Piece {
+            code: FourCc(code),
+            attributes: built
+                .map(|b| (FIRST_STAGE_BUILT.packed(), b))
+                .into_iter()
+                .collect(),
+            ..Piece::default()
+        };
+
+        Site::of(&piece)
+    }
+
+    #[test]
+    fn the_wizards_and_the_sorcerer_build_by_magic() {
+        for code in [*b"ABY1", *b"ABM1", *b"ABq1"] {
+            assert_eq!(site(code, None), Some(Site::Magic));
+        }
+
+        assert_eq!(site(*b"ABD1", Some(0)), Some(Site::Peasants));
+        assert_eq!(site(*b"ABY1", Some(1)), None);
+    }
 
     fn roster(paladins: Option<usize>, discord: Option<usize>) -> Roster {
         war_roster(WarRoster {

@@ -15,6 +15,7 @@ use regent_core::sim::world::defeat::End;
 use regent_core::sim::world::demolish::refund;
 use regent_core::sim::world::recruit::Recruit;
 use regent_core::sim::world::{CROWN, World, new_map::NEUTRAL};
+use regent_core::view::panel::upper::Site;
 
 mod common;
 
@@ -157,6 +158,20 @@ fn a_second_hut_keeps_off_the_first() {
 
     assert_eq!(places[0], at(40, 40));
     assert_ne!(places[1], at(40, 40));
+}
+
+/// An ordered hut is a site, its panel covered by peasants at work; a
+/// placed one stands built, uncovered. The game's rules never set
+/// `APB:1`, as the original's scripts do once a site is whole.
+#[test]
+fn an_ordered_hut_is_a_peasants_site() {
+    let scene = kingdom().gold(1000).unit(Placed::new(HUT, [20.0, 20.0]));
+    let p = played(&build_at(Run::new(scene, SECOND), 2, 40, 40));
+    let site = |id| p.world.piece(id).and_then(Site::of);
+    let ordered = p.all(HUT).into_iter().find(|&h| h != placed(1));
+
+    assert_eq!(site(placed(1)), None);
+    assert_eq!(ordered.and_then(site), Some(Site::Peasants));
 }
 
 /// A demolished hut goes, and an eighth of its price comes back.

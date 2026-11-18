@@ -243,6 +243,7 @@ pub fn show(
     }
 
     let Some(page) = page else {
+        upper::crown(canvas);
         return asked;
     };
     // The selection panel's "?" names its help page.
@@ -250,6 +251,8 @@ pub fn show(
         .and_then(|c| c.panel)
         .and_then(|p| panels.layout(catalogue, text, p));
     let id = match page {
+        // `shown` gives none: the crown above.
+        Page::Crown => return asked,
         Page::Help => selection.map_or(HELP, |l| portrait::help_page(&l)),
         Page::Topic(_) => HELP,
         Page::Build => BUILD,
@@ -354,10 +357,10 @@ impl Holder {
 /// The page drawn for `page` under `holder`: none with nothing
 /// selected, as clearing the selection closes its panels;
 /// the build list and its tips only under the
-/// palace, another piece its tips.
+/// palace, another piece its tips; [`Page::Crown`] none.
 const fn shown(page: Page, holder: Holder) -> Option<Page> {
     match (page, holder) {
-        (_, Holder::Nothing) => None,
+        (_, Holder::Nothing) | (Page::Crown, _) => None,
         (Page::Build | Page::Topic(_), Holder::Other) => Some(Page::Help),
         _ => Some(page),
     }

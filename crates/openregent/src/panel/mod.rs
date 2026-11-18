@@ -60,6 +60,9 @@ pub const MAIN: FourCc = FourCc(*b"APMK");
 /// What the page under the selection shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Page {
+    /// No page: the slot's own picture, the crown (`APMK` 4000, `INDe`
+    /// 1000). A building site opens none (**Game**).
+    Crown,
     /// The selected kind's tips, `AP95` (`HelpController`).
     #[default]
     Help,

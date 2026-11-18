@@ -255,6 +255,29 @@ mini views on it; with neither, nothing (`World::selected`, `player_palace`).
 openregent selects every human seat's; each machine shows its own
 (`World::selection`).
 
+### A building site's cover
+
+**Binary**: every building's panel, at its opening and on a change of
+`APB:1`, opens panel `APb9` over itself while `APB:1 FirstStageBuilt` is
+0, and closes it once set. One is open at a time. An upgrade being built
+(`APB:2`) has none. `APb9` is 202×101 at (0, 326): the building panel's
+lower part, under the portrait and hit points.
+
+| Code prefix | Picture | Text box 1, (9, 16) 102×68 |
+|---|---|---|
+| `ABY`, `ABM`, `ABq` (Wizards Guild, Wizards Tower, Sorcerer's Abode) | `INBg` 1035, an orb | `GMTX` 266 "Magic at work on site." |
+| any other | `INBg` 1023, hammer and saw | `GMTX` 265 "Peasants at work on site." |
+
+Button 2 covers the whole of it, tooltip "This building is currently
+under construction" (`APb9` string 1). **Inferred**: it takes the clicks
+of the controls below. `APb9`'s string 0, "PEASANTS AT WORK ON SITE", is
+the layout's and is replaced at the opening.
+
+**Game** (captures of a Blacksmith's and a Wizards Guild's site): a
+site's selection opens no page; the page slot shows its own picture,
+`APMK` 4000's `INDe` 1000, the crown. `upper::Site`, `Page::Crown`,
+`a_sites_cover_lies_on_the_panels_foot`, `an_ordered_hut_is_a_peasants_site`.
+
 ### A building's progress bar
 
 **Binary**: while a guild recruits or a researcher researches, its panel
