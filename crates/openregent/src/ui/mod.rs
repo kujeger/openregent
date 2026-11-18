@@ -1347,6 +1347,7 @@ mod tests {
             owned,
             at: (0, 0),
             contests: None,
+            site: None,
         };
         let asked = |c: &Chosen, page| query(c, page, Upper::of(page, c, None));
         let palace = chosen(b"AP39", true);

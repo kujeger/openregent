@@ -1117,6 +1117,11 @@ dumped file can be edited and dropped back
   `Stats::overrides` counts pictures drawn from one and files found.
 - Neither the game view's sprites (indices, not RGBA) nor the quest map's
   levels read it.
+- A button whose slots differ in size draws each cut to the smallest
+  (`Picture::Part`, `sheet::shared`): `AP36`'s QUIT MAJESTY rests on a
+  slot 106 wide, a stray shadow in its last columns, and lights on slots
+  102 wide. The cut is for the original's art: an overridden slot is
+  drawn whole.
 
 ### Upscaling
 

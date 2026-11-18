@@ -78,7 +78,7 @@ use regent_core::view::panel::portrait::{self, Crown, Health};
 use regent_core::view::panel::tip;
 use regent_core::view::panel::upper::{
     self, BAND_IDS, CONTEST_ICONS, CONTESTS, Contests, GAMBLE_PANEL, HALL_PANEL, OUTPOST_PANEL,
-    Opens, Owner, PALACE_PANELS, ROGUES_PANEL, id,
+    Opens, Owner, PALACE_PANELS, ROGUES_PANEL, SITE_BUTTON, SITE_PANEL, SITE_TEXT, Site, id,
 };
 use regent_draw::data::Corpus;
 
@@ -164,6 +164,8 @@ pub struct Chosen {
     pub at: (i32, i32),
     /// A Fairgrounds' contests.
     pub contests: Option<Contests>,
+    /// A building site's cover ([`SITE_PANEL`]).
+    pub site: Option<Site>,
 }
 
 impl Chosen {
@@ -208,12 +210,9 @@ impl Chosen {
             .filter(|_| has_bar)
             .map(|(now, most)| Health::of(now, most));
 
-        let panel = unit.as_ref().and_then(|u| {
-            u.desc
-                .character()
-                .and_then(|c| c.dialog_id())
-                .or_else(|| u.desc.building()?.dialog_id())
-        });
+        let panel = unit
+            .as_ref()
+            .and_then(|u| details::panel_of(&u.desc, piece));
         // A hero's own rule: `APb5` once dismissed.
         let panel = match &details {
             Some(Details::Hero(h)) => Some(h.panel),
@@ -247,6 +246,7 @@ impl Chosen {
             owned: shown.owner == local,
             at: shown.at,
             contests: Contests::of(panel, piece),
+            site: piece.filter(|_| kind == Kind::Building).and_then(Site::of),
         }
     }
 
@@ -294,6 +294,7 @@ impl Chosen {
         match self.kind {
             Kind::Hero => hero.unwrap_or(HERO_PAGE),
             Kind::Building if self.foreign.is_some() => Page::Help,
+            Kind::Building if self.site.is_some() => Page::Crown,
             Kind::Building if self.palace() => Page::Build,
             Kind::Building if self.panel == Some(details::MAUSOLEUM_PANEL) => Page::Crypt,
             Kind::Building if world.members(id).is_some() => Page::Members,
@@ -440,7 +441,47 @@ pub fn show(
         _ => {}
     }
 
+    if let Some(site) = chosen.site {
+        cover(canvas, panels, &layout, site, text);
+    }
+
     asked
+}
+
+/// A building site's cover over the panel's lower part: its picture,
+/// its line, and a button over the whole that takes the panel's clicks
+/// there.
+///
+/// ```text
+///   0 ┌──────────────┐  the building's panel
+///     │ name, picture│
+/// 144 ├──────────────┤  APb9 at its own frame's place
+///     │ Peasants  ⚒  │
+/// 245 └──────────────┘
+/// ```
+fn cover(canvas: &mut Canvas<'_>, panels: &mut Panels, under: &Layout, site: Site, text: &Text) {
+    let Some(cover) = panels.layout(canvas.catalogue, text, SITE_PANEL) else {
+        return;
+    };
+    let top = |l: &Layout| sheet::rect(&l.panel).map_or(0.0, |r| r.min.y);
+    let shift = vec2(0.0, top(&cover) - top(under));
+    let (record, set) = site.art();
+
+    canvas.picture(Pic::of(record, set), Tone::Plain, Pos2::ZERO + shift);
+
+    if let (Some(c), Some(line)) = (cover.control(SITE_TEXT), text.gmtx(site.text()))
+        && let Some(r) = sheet::rect(c)
+    {
+        sheet::label(canvas, c, r.translate(shift), &line);
+    }
+
+    if let Some(c) = cover.control(SITE_BUTTON)
+        && let Some(r) = sheet::rect(c)
+    {
+        let pressed = canvas.press(r.translate(shift), ("site", SITE_BUTTON));
+
+        Canvas::tip(&pressed, c.tooltip.as_deref());
+    }
 }
 
 /// The name box, 8005, on the crown's units:
@@ -930,6 +971,39 @@ mod tests {
         assert!(pressed, "the upgrade button lost its click");
     }
 
+    /// A site's cover is `APb9`: the hammer and saw, its line's box and
+    /// the button over it, flush with the building panel's foot.
+    #[test]
+    #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+    fn a_sites_cover_lies_on_the_panels_foot() {
+        let catalogue = hd();
+        let text = Text::build(catalogue);
+        let layout = |id| {
+            regent_core::view::menu::layout(catalogue, &text, id)
+                .expect("a panel")
+                .expect("parses")
+        };
+        let (cover, building) = (layout(SITE_PANEL), layout(FourCc(*b"AP01")));
+        let foot = |l: &Layout| l.panel.rect.map(|r| r.y + r.height);
+
+        assert_eq!(cover.panel.art, Some(Site::Peasants.art()));
+        assert_eq!(
+            text.gmtx(Site::Peasants.text()).as_deref(),
+            Some("Peasants at work on site.")
+        );
+        assert_eq!(
+            text.gmtx(Site::Magic.text()).as_deref(),
+            Some("Magic at work on site.")
+        );
+        assert_eq!(foot(&cover), foot(&building));
+        assert!(cover.control(SITE_TEXT).is_some_and(|c| c.font.is_some()));
+        assert!(
+            cover
+                .control(SITE_BUTTON)
+                .is_some_and(|c| c.tooltip.is_some())
+        );
+    }
+
     /// HD's catalogue, once.
     pub(super) fn hd() -> &'static Catalogue<'static> {
         crate::testdata::hd()
@@ -970,6 +1044,7 @@ mod tests {
             owned: true,
             at: (0, 0),
             contests,
+            site: None,
         };
         let fit = Fit {
             scale,
@@ -1125,7 +1200,7 @@ mod tests {
     }
 
     /// The outpost opens on its build list, as the palace does: both are
-    /// palace panels.
+    /// palace panels. A site opens no page: the crown.
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn an_outpost_opens_on_its_build_list() {
@@ -1134,7 +1209,7 @@ mod tests {
         let palace = world
             .player_palace(regent_core::sim::world::CROWN)
             .expect("a palace");
-        let first = |panel| {
+        let first = |panel, site| {
             Chosen {
                 agent: palace,
                 code: FourCc(*b"ABJ1"),
@@ -1150,12 +1225,15 @@ mod tests {
                 owned: true,
                 at: (0, 0),
                 contests: None,
+                site,
             }
             .first_page(world, program, None)
         };
 
         for panel in PALACE_PANELS {
-            assert_eq!(first(panel), Page::Build, "{panel}");
+            assert_eq!(first(panel, None), Page::Build, "{panel}");
         }
+
+        assert_eq!(first(FourCc(*b"AP01"), Some(Site::Peasants)), Page::Crown);
     }
 }
