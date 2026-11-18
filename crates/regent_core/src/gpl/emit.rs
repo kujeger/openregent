@@ -682,7 +682,8 @@ struct Body<'a, 'l> {
 struct Loop<'a> {
     /// Its `opForeach` record. `break` and `continue` name their loop by it.
     at: u32,
-    /// The `opReturnValue` of a `return` in its body, written after the loop.
+    /// The `opReturnValue` or `opReturn` of a `return` in its body, written
+    /// after the loop.
     ret: Option<Record<'a>>,
 }
 
@@ -1216,15 +1217,13 @@ fn unspecified(s: &Stmt<'_>) -> bool {
 /// As [`unspecified`], tracking how many `foreach` enclose the statement.
 ///
 /// `break` and `continue` name their `opForeach`, so outside one they have
-/// nothing to name; the compiler rejects them too. A `return` with a value
-/// inside one is [`Body::returns`]; two shipped sites show it, each the only
-/// `return` of a loop not nested in another. Anything else is refused: no
-/// valueless one, none inside a `while` or a nested loop, one per loop.
+/// nothing to name; the compiler rejects them too. A `return` inside one is
+/// [`Body::returns`], bare or with a value, in a nested loop too. Anything
+/// else is refused: none inside a `while` in a loop, one per loop.
 fn inside(s: &Stmt<'_>, loops: u8) -> bool {
     match &s.kind {
         StmtKind::DoWhile { .. } => true,
         StmtKind::Break | StmtKind::Continue => loops == 0,
-        StmtKind::Return(value) => loops > 1 || (loops == 1 && value.is_none()),
         StmtKind::Block(body) => body.iter().any(|s| inside(s, loops)),
         StmtKind::If { then, els, .. } => {
             inside(then, loops) || els.as_deref().is_some_and(|s| inside(s, loops))
@@ -1233,7 +1232,7 @@ fn inside(s: &Stmt<'_>, loops: u8) -> bool {
         StmtKind::Foreach { body, .. } => {
             inside(body, loops.saturating_add(1)) || returns(body) > 1
         }
-        StmtKind::Expr(_) => false,
+        StmtKind::Expr(_) | StmtKind::Return(_) => false,
     }
 }
 
@@ -1353,7 +1352,7 @@ impl<'a> Body<'a, '_> {
                 let ret = reference(RETURN_RECORD);
 
                 match value {
-                    Some(e) if !self.loops.is_empty() => self.returns(e, line),
+                    _ if !self.loops.is_empty() => self.returns(value.as_ref(), line),
                     Some(e) => {
                         // The value gets its own slot, as a call argument.
                         let got = self.expr(e);
@@ -1482,17 +1481,30 @@ impl<'a> Body<'a, '_> {
     /// running out returns it too, skipping what follows the loop. **Game**:
     /// shipped `Phantom_Priestess_Assigned_To` and Majestic Majesty's
     /// `defend_building_packet`.
-    fn returns(&mut self, value: &'a Expr<'a>, line: u16) {
+    ///
+    /// A bare `return` writes `opReturn` there instead. In a nested loop
+    /// either breaks only the innermost; its return follows that loop.
+    /// **Compiler**: `Gplbcc.exe` on `fixtures/gpl/returns`.
+    fn returns(&mut self, value: Option<&'a Expr<'a>>, line: u16) {
         let open = self.loops.last().expect("inside a loop").at;
         let mut stop = blank(Op::Break, "", NO_LINE);
         stop.head = open;
         self.push(stop);
 
-        let got = self.expr(value);
-        let got = reference(self.materialise(got, line));
+        let ret = reference(RETURN_RECORD);
+        let record = if let Some(e) = value {
+            let got = self.expr(e);
+            let got = reference(self.materialise(got, line));
 
-        let mut record = blank(Op::ReturnValue, "", line);
-        record.values = [reference(RETURN_RECORD), got];
+            let mut record = blank(Op::ReturnValue, "", line);
+            record.values = [ret, got];
+            record
+        } else {
+            let mut record = blank(Op::Return, "", line);
+            record.values[0] = ret;
+            record
+        };
+
         self.loops.last_mut().expect("inside a loop").ret = Some(record);
     }
 }
@@ -1528,6 +1540,48 @@ mod tests {
         let err = compile_source(src, "t.gpl").expect_err("refused");
 
         assert_eq!(err.to_string(), "t.gpl:5: identifier ZqA not declared");
+    }
+
+    /// A bare `return` inside a `foreach`, as `Gplbcc.exe` writes it: an
+    /// `opBreak` naming the loop, and an `opReturn` past the loop on the
+    /// `foreach` line, where the jump out lands. A nested loop's `return`
+    /// breaks only that loop.
+    ///
+    /// ```text
+    /// 10 opForeach            line 2
+    /// 11 opAdvance  -> 16
+    /// 12 opGreaterThan
+    /// 13 opIf       -> 15
+    /// 14 opBreak    (10)
+    /// 15 opRewind   -> 10
+    /// 16 opReturn             line 2
+    /// 17 opReturn             line 5
+    /// ```
+    #[test]
+    fn a_bare_return_inside_a_foreach_follows_the_loop() {
+        let src = "function ZqStop(list l)\ndeclare\n\tinteger n;\nbegin\n\
+                   \tforeach n in l do\n\t\tif (n > 2)\n\t\t\treturn;\n\treturn;\nend\n";
+        let parsed = crate::gpl::parse(src).script;
+        let out = script(&parsed, src, "t.gpl").expect("emits");
+        let records = &out[0].records;
+        let ops: Vec<_> = records[10..]
+            .iter()
+            .map(|r| (Op::from_code(r.opcode), r.head, r.line))
+            .collect();
+
+        assert_eq!(
+            ops,
+            [
+                (Some(Op::Foreach), 0, 5),
+                (Some(Op::Advance), 16, 5),
+                (Some(Op::GreaterThan), 0, 6),
+                (Some(Op::If), 15, 6),
+                (Some(Op::Break), 10, NO_LINE),
+                (Some(Op::Rewind), 10, 7),
+                (Some(Op::Return), 0, 5),
+                (Some(Op::Return), 0, 8),
+            ]
+        );
     }
 
     /// Names match case-insensitively, as the language does.
