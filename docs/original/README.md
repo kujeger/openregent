@@ -2,7 +2,7 @@
 
 | File | Holds |
 |---|---|
-| [editions.md](editions.md) | The HD target, its two builds, the modding SDK, Workshop mods |
+| [editions.md](editions.md) | The HD target, its two builds, the modding SDK |
 | [architecture.md](architecture.md) | The class map: subsystems, messages, orders, the VM's classes |
 | [movement.md](movement.md) | Walking: orders, the planner, turns and steps; `DMOV` |
 | [sound.md](sound.md) | When a sound plays, how loud and where; the music |

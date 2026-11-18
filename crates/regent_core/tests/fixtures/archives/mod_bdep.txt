@@ -1,0 +1,7 @@
+# The made-up mod's building rules: the base's, and its own guild.
+ZBP1
+ZBP2 : ZBP1
+ZBG1 : ZBP1 ZBP2 ||
+ZBT1 : ZBG1 ZBP2 &&
+ZMG1 : ZBP1 ZBP2 NOT NOT ||
+

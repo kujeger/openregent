@@ -39,9 +39,10 @@
 //!
 //! ## What says key 2 is a rectangle
 //!
-//! The Phantoms Haunt mod disables a button by zeroing the last two of the four
-//! words `(103, 162, 93, 26)` at `AP10 + 0x0d34` in HD. This reader puts a
-//! [`Rect`] there.
+//! The four words `(103, 162, 93, 26)` at `AP10 + 0x0d34` in HD are a
+//! control's rectangle, and this reader puts a [`Rect`] there. The offset
+//! was found by the Phantoms Haunt mod, which zeroes its size to disable a
+//! button.
 //!
 //! Across HD's thirteen resolutions, 96 of the 102 moving words are in key-2
 //! items, one in a [`RECT_TOO`]. Only two panels move; in `APdb` (32 words of 3353, eleven files)
@@ -521,8 +522,6 @@ impl Panel {
     }
 
     /// The item whose value begins at `offset` bytes into the payload.
-    ///
-    /// For the Phantoms Haunt offset into `AP10`.
     #[must_use]
     pub fn at_offset(&self, offset: usize) -> Option<Item<'_>> {
         self.items().find(|item| item.value_offset() == offset)
@@ -786,7 +785,7 @@ mod tests {
         assert_eq!(item.value, [33]);
     }
 
-    /// The offset is the one the Phantoms Haunt mod quotes, in miniature.
+    /// `AP10 + 0x0d34`, in miniature.
     #[test]
     fn an_item_is_found_by_the_byte_offset_of_its_value() {
         let panel = Panel::parse(&sample()).unwrap();

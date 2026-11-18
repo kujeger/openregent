@@ -140,52 +140,6 @@ Guardhouse is the only shipped data-only project, and openregent's compiler
 reproduces it byte for byte (`guardhouse_mod_compiles_byte_for_byte`).
 WrathOfKrolm is a real program with its output.
 
-## The Workshop mods
-
-`steamapps/workshop/content/73230/` — Workshop items: more `.gpl` than the
-shipped source, and `.dat` files.
-
-A second, independent corpus: strangers' code, not one team's house style.
-They were compiled by `Gplbcc.exe` and load in the retail game, so what they do
-is legal GPL (`every_mod_dat_file_parses`). Some items ship `Gplbcc.exe`:
-the SDK's build of 2016-04-11, bar `678145904`'s of 2016-03-06. Two language rules rest on them; see
-[gpl/language.md](../gpl/language.md).
-
-Two mods ship `.cam` archives, one with over 600 sprite records the install
-lacks (`mods_ship_content_the_install_does_not` checks the floor).
-Nothing in the SDK writes a `.cam`; their builder is unknown, except for the
-one below.
-
-### One mod documents its own build
-
-[Custom Guild: Phantoms Haunt][haunt] (item 3769947406) publishes its toolchain:
-a 6,900-line Python CAM builder, a 6,400-line validator, and art-pipeline notes.
-The only known third-party tool that writes every payload type.
-
-[haunt]: https://github.com/Phantomstar721/majesty-gold-hd-custom-guild-phantoms-haunt
-
-Its claims about engine rules (unverified unless marked):
-
-- A mod archive is sparse; a zero-length record means "fall through". Does
-  not hold: an empty record is padding, never named
-  ([formats/README.md](../formats/README.md#no-archive-is-sparse)).
-- The executable addresses some slots directly, e.g. a building's build-menu
-  icon tile that no animation record names. So walking `IMAG` references does
-  not list every drawable tile.
-- A `DSND` `HEAD` length is `8 + len(name) + 2`, unpadded; renaming a sound
-  moves `PRIM`. Matches the `HEAD` layout in
-  [formats/payloads.md](../formats/payloads.md).
-- Freestyle crashes when any mod supplies a custom `.cam`. Unexplained.
-
-XML descriptors are a runtime input: the mod defines a unit, three buildings,
-six spells, projectiles, overlays and particles in XML only — its archives
-hold no `DUNT` or `DACT`, just art, text, sound and one `DATA` record — and it
-runs.
-
-Its XML uses `CanUse`, `AllowedWeapon`, `AllowedArmor` and an `<AllowedSpells>`
-list, which no known offset explains. `CanUse` is nowhere in `PRIM`: it is
-filled at load (`desc::Unit::can_use`).
-
 ## HD-specific files
 
 **Inferred**: HD changed presentation, not simulation. Its `Data/` adds:
@@ -235,34 +189,6 @@ Differences, corpus against GOG:
 `UIData_*.dat` (`AP42`, `APda`) and the files only in GOG or Steam. No
 script differs between `beta2` and GOG. Mods are found outside the
 install, so all read the same ones.
-
-### One recording, two builds
-
-**Measured**, no test: a quest XQ05 log recorded on GOG, with two mods (house_mend, built in;
-Improved Guards Plus, Workshop 1265189890), replays to its last frame
-(24,450) on GOG and on Steam `beta2`, and parts from the corpus's data at
-frame 4,000's digest. With GOG's `MX_Build.bcd` on Steam data it replays all
-24,450 frames; GOG's `MX_Task.bcd`, `MX_Data.bcd` or `bytecode.bcd` alone do
-not help. The only code that file changes is `Release_Guards`, now longer
-in records.
-
-How it parts, by snapshots: world and thread queues agree to frame 3,881.
-At 3,882 only the queues differ: GOG's frame ends its 1,500-record budget
-some threads sooner. At 3,884 a peasant starts repairing Guardhouse1 on GOG and
-not on Steam. The cheap digest first differs at 3,938. With no budget
-(`budget:unbounded`) both builds agree at frames 4,000 and 7,000. So the fix
-changes timing, not outcome, in this game: a longer function spends more of
-the budget. **Inferred**: the extra records are `Release_Guards`' run in
-frame 3,882; no trace says which thread ran then.
-
-So, under the budget, any change to GPL code could desync two players,
-even one that does nothing different. openregent runs no budget
-([enhancements.md](../openregent/enhancements.md)), so a longer function
-alone no longer parts them (**Inferred**: no other rule of play reads a record count). openregent's LAN hello hashes the SDK `.bcd` bytes
-(`lobby::data_hash`) and refuses a peer whose hash differs: these two
-builds cannot start a game together. Archives are hashed by name and
-length only; mods are hashed apart, each by its files
-([multiplayer.md](../openregent/multiplayer.md)).
 
 ### What 1.5.2.28 changes in play
 

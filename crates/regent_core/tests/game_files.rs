@@ -1203,24 +1203,22 @@ fn quest_and_chart_files_are_recognised() {
     );
 }
 
-/// Every `.qdd` of every edition and mod reads whole: no stray line, no
-/// unclosed value.
+/// Every `.qdd` of every edition reads whole: no stray line, no unclosed
+/// value.
 #[test]
 fn every_shipped_qdd_parses() {
     let mut files = 0;
 
-    for root in [common::hd(), common::workshop()] {
-        for path in common::walk(&root, &["qdd"]) {
-            let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-            let quests = qdd::parse(&String::from_utf8_lossy(&bytes))
-                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    for path in common::walk(&common::hd(), &["qdd"]) {
+        let bytes = std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        let quests = qdd::parse(&String::from_utf8_lossy(&bytes))
+            .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
 
-            assert!(!quests.is_empty(), "{}", path.display());
-            files += 1;
-        }
+        assert!(!quests.is_empty(), "{}", path.display());
+        files += 1;
     }
 
-    assert_eq!(files, 6, "the shipped .qdd count changed");
+    assert_eq!(files, 4, "the shipped .qdd count changed");
 }
 
 #[test]

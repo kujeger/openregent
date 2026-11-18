@@ -53,7 +53,7 @@ pub const QUEST: &str = "mqxml";
 pub const ANY: &str = "Any";
 
 /// Folders deeper than this under a mod folder are not walked: a guard
-/// against a link loop. The deepest Workshop file is 5 down.
+/// against a link loop.
 const MAX_DEPTH: usize = 16;
 
 /// `<Dataset base>`: the dataset a mod is for.
@@ -516,26 +516,26 @@ sources = ["GPL/Guardhouse.dat"]
         assert!(!patch_text.contains("display_name"));
     }
 
-    /// Two mods in one file, as Majesty Expanded writes them.
+    /// Two mods in one file.
     const TWO: &str = r#"<Majesty>
-	<Mod id="{17BF53DE-722F-4683-8E63-6B93D1606DFF}">
+	<Mod id="{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01}">
 		<DataConfiguration>
 			<Dataset base="Any">
 				<Load>
-					<Descriptions>XML\M_Buildings_Mod.xml</Descriptions>
-					<GPL>Data\MajestyExtras.bcd</GPL>
-					<Strings>XML\BagTD_Text.xml</Strings>
+					<Descriptions>XML\Zq_Buildings.xml</Descriptions>
+					<GPL>Data\Zq_Hearth.bcd</GPL>
+					<Strings>XML\Zq_Text.xml</Strings>
 				</Load>
 			</Dataset>
 		</DataConfiguration>
-		<DisplayName lang="en_US">Majesty Expanded</DisplayName>
+		<DisplayName lang="en_US">Hearth</DisplayName>
 	</Mod>
-	<Mod id="{47466302-B0EB-488C-BDFE-B91BCEAB1662}">
+	<Mod id="{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F04}">
 		<DataConfiguration>
 			<Dataset base="MajestyExpansion">
 				<Load>
 					<GPL>
-						<Target>Data\AI_solo_ally.bcd</Target>
+						<Target>Data\Zq_Ally.bcd</Target>
 					</GPL>
 				</Load>
 			</Dataset>
@@ -549,7 +549,7 @@ sources = ["GPL/Guardhouse.dat"]
         let mods = parse(TWO, Path::new("item/x.mmxml"), Path::new("item"));
 
         assert_eq!(mods.len(), 2);
-        assert_eq!(mods[0].title(), "Majesty Expanded");
+        assert_eq!(mods[0].title(), "Hearth");
         assert_eq!(mods[0].base, Base::Any);
         assert_eq!(mods[0].load.programs.len(), 1);
         assert!(mods[0].has_xml());
@@ -557,7 +557,7 @@ sources = ["GPL/Guardhouse.dat"]
         assert_eq!(mods[1].base, Base::Expansion);
         assert_eq!(
             mods[1].load.programs,
-            [(None, "Data\\AI_solo_ally.bcd".to_owned())]
+            [(None, "Data\\Zq_Ally.bcd".to_owned())]
         );
         assert!(!mods[1].has_xml());
         assert_eq!(mods[1].dir, Path::new("item"));

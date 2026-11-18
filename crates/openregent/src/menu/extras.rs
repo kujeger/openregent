@@ -5,7 +5,7 @@
 //!  APd8  ┌(pog)────── Downloaded Quests ───────┐
 //!        │          [LIST OF QUESTS]           │
 //!        │ ┌─────────────────────────────────┐^│
-//!        │ │ 13 - Big Map    Majesty Expanded│#│  rows by title; a mod
+//!        │ │ Hearth Watch              Hearth│#│  rows by title; a mod
 //!        │ │ The Wrath of Krolm          lit │v│  folder's quest names
 //!        │ [   ]  [GAME DESCRIPTION]   [   ]   │  its item's mod, dim
 //!        │ (LOAD QUEST)      ()      (CANCEL)  │
@@ -479,21 +479,22 @@ mod tests {
         );
     }
 
-    /// A Workshop quest whose files are there starts; one listing an
-    /// image not on disk says which, from its folder.
+    /// A mod folder's quest whose files are there starts; one listing an
+    /// image not on disk says which, from its folder. The fixture's
+    /// Thornwood.
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn a_quest_missing_a_file_says_which() {
-        let install = Install::from_env().expect("MAJESTY_HD");
+        let install = crate::testdata::fixture_install();
         let files = dataset::Install::new(&install.hd, Bytecode::Sdk(&install.sdk));
         let library = install.mods();
         let found = library
             .quests
             .iter()
-            .find(|f| f.quest.name == "BigMap")
-            .expect("Big Map");
+            .find(|f| f.quest.name == "Thornwood")
+            .expect("Thornwood");
         let mut offered = Offered {
-            title: "13 - Big Map".to_owned(),
+            title: "Thornwood".to_owned(),
             quest: found.quest.clone(),
             origin: Origin::Mod(found.package.clone()),
         };

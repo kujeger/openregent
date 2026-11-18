@@ -138,11 +138,9 @@ fn removing_a_duplicate_under_the_cursor_reads_the_freed_node() {
 /// A `return` inside a `foreach`, compiled as `Gplbcc.exe` does
 /// (`emit::Body::returns`): `opBreak`, the value's records, which never run,
 /// and `opReturnValue` where the loop's jump out lands. A literal's object is
-/// made at load, so `Phantom_Priestess_Assigned_To`'s shape returns `True`
-/// on every path through the loop, empty list included; the `return False`
-/// after it never runs. A computed value's slot is empty: the return crashes.
-/// **Inferred**: so does Majestic Majesty's `defend_building_packet`, a call's
-/// value, whenever it reaches its loop.
+/// made at load, so a `return True` there returns `True` on every path
+/// through the loop, empty list included; the `return False` after it never
+/// runs. A computed value's slot is empty: the return crashes.
 #[test]
 fn a_return_inside_a_foreach_returns_its_unrun_value() {
     let program = compiled(

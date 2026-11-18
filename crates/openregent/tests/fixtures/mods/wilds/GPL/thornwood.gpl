@@ -1,0 +1,13 @@
+// The quest's start, named as the manifest's <Name>: the palace and the
+// first lair named by the quest's strings.
+function Thornwood()
+declare
+	agent palace, hold;
+	list lairs;
+begin
+	palace = $GetPlayerOnePalace();
+	$SpecifyName(palace, "THORNHALL");
+	$ListObjects(palace, "Lair", -1, lairs, #NoHiddenMap, #NotMyPlayer);
+	hold = $ListMember(lairs, 1);
+	$SpecifyName(hold, "BRAMBLE");
+end

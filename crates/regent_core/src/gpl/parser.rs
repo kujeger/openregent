@@ -329,25 +329,21 @@ impl<'a> Parser<'a> {
         Ok(params)
     }
 
-    /// The `declare` block. Optional per the grammar; present on every corpus
-    /// definition, empty in 641.
+    /// The `declare` block. Required: `Gplbcc.exe` refuses a definition
+    /// without one ("missing DECLARE"), though its grammar marks it optional.
+    /// Empty in 641 corpus definitions.
     ///
     /// Also returns the keyword's span: with nothing declared, the compiled
     /// body-boundary record carries its line. See `gpl::emit::prologue`.
-    fn declaration_block(&mut self) -> Rule<(Vec<Decl<'a>>, Option<Span>)> {
-        let at = self.span();
-
-        if !self.eat_kw(Keyword::Declare) {
-            return Ok((Vec::new(), None));
-        }
-
+    fn declaration_block(&mut self) -> Rule<(Vec<Decl<'a>>, Span)> {
+        let at = self.expect_kw(Keyword::Declare, "before `begin`")?;
         let mut decls = Vec::new();
 
         while self.peek().is_some_and(is_type_keyword) {
             decls.push(self.compound_declaration()?);
         }
 
-        Ok((decls, Some(at)))
+        Ok((decls, at))
     }
 
     /// `type name ( ',' name )* ';'`
@@ -741,10 +737,10 @@ impl<'a> Parser<'a> {
 
     /// `primary ( "'s" primary )*` — the attribute accessor.
     ///
-    /// `IDENT "'s" STRING` covers the shipped corpus. Workshop mods chain
-    /// accessors (`a's "b"'s "c"`, 157 sites) and compute the attribute
-    /// (`x's funcName`, `x's ("prefix" + n)`, 646 sites), hence the loop and a
-    /// full `primary` on the right.
+    /// `IDENT "'s" STRING` covers the shipped corpus. `Gplbcc.exe` also
+    /// compiles chained accessors (`a's "b"'s "c"`) and a computed attribute
+    /// (`x's funcName`, `x's ("prefix" + n)`; `gplbcc_diff`), hence the loop
+    /// and a full `primary` on the right.
     fn accessor_expression(&mut self) -> Rule<Expr<'a>> {
         let mut obj = self.primary_expression()?;
 
@@ -957,8 +953,8 @@ mod tests {
 
     #[test]
     fn accessor_attribute_need_not_be_a_literal() {
-        // No shipped source; 646 workshop mod sites. The name is evaluated at
-        // run time.
+        // No shipped source; `Gplbcc.exe` compiles it. The name is evaluated
+        // at run time.
         let ExprKind::Attr { attr, .. } = rhs_of("x = ThisAgent's funcName;").kind else {
             panic!()
         };
@@ -1157,8 +1153,8 @@ mod tests {
 
     #[test]
     fn operator_words_are_names_not_operators() {
-        // `mod` is a local in several compiling workshop mods. Same for `and`,
-        // `or`, `not`: the compiler tokens of those names spell `&&`, `||`, `!`.
+        // `Gplbcc.exe` compiles `mod` as a local. Same for `and`, `or`, `not`
+        // (**Inferred**): the compiler tokens of those names spell `&&`, `||`, `!`.
         let s = ok("function F(agent mod)\ndeclare\n agent and, or, not;\nbegin\nend");
 
         let Item::Function(f) = &s.items[0] else {
@@ -1181,6 +1177,24 @@ mod tests {
         let p = parse("function F()\ndeclare\nbegin\n x = !a;\nend");
 
         assert!(!p.is_ok());
+    }
+
+    /// `Gplbcc.exe` refuses a definition with no `declare`: `line 2:
+    /// syntax error at "begin" missing DECLARE`, function and prototype alike.
+    #[test]
+    fn a_definition_needs_its_declare() {
+        for src in [
+            "function F() is integer\nbegin\nend",
+            "prototype P(integer a)\nbegin\nend",
+        ] {
+            let p = parse(src);
+
+            assert!(
+                p.errors.iter().any(|e| e.message.contains("declare")),
+                "{src}: {:?}",
+                p.errors
+            );
+        }
     }
 
     #[test]

@@ -2031,7 +2031,7 @@ mod tests {
 
     /// Two mods' GUIDs: the tests' setup names both.
     const MODS: [&str; 2] = [
-        "{17BF53DE-722F-4683-8E63-6B93D1606DFF}",
+        "{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01}",
         "{D666FCBE-9906-4582-A6A0-DC96F812441E}",
     ];
 

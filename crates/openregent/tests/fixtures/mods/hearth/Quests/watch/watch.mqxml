@@ -1,0 +1,17 @@
+<Majesty>
+	<Quest id="{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F11}">
+		<Name>HearthWatch</Name>
+		<DisplayName lang="en_US">Hearth Watch</DisplayName>
+		<DataConfiguration>
+			<Dataset base="MajestyExpansion">
+				<Load>
+					<Template>example.q</Template>
+					<GPL>
+						<Target>Data\watch.bcd</Target>
+						<Source>GPL\watch.gplproj</Source>
+					</GPL>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Quest>
+</Majesty>

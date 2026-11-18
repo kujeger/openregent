@@ -88,9 +88,11 @@ Test: `a_flagged_chunk_numbers_its_records`.
 
 **Binary**: the flag marks indexed records. Set, a number under 2^24 is the
 position and the stored id is unread; clear, the number is matched against the
-ids, the last match winning (Phantoms Haunt's `SPLT` chunk). Tests:
+ids, the last match winning (first seen in Phantoms Haunt's `SPLT` chunk,
+Workshop `3769947406`). Tests:
 `a_flagged_chunk_is_indexed_by_position_not_id`,
-`an_unflagged_chunk_is_indexed_by_its_last_matching_id`.
+`an_unflagged_chunk_is_indexed_by_its_last_matching_id`; a made-up mod's
+`SPLT`, `every_mod_tile_resolves_its_palette`.
 
 Tile numbering is archive-local: an `IMAG` frame indexes its own archive's
 `TILE` chunk. No global tile id.
@@ -107,10 +109,11 @@ An empty record does not stand for the stock one. **Binary**:
 - A load reads at the record's offset and ignores its length, so an empty
   `TILE` would load the next full record.
 
-`phantom_maindata.cam`'s `TILE` records are mostly empty: padding, since a
-frame number is a position. None of its 2,608 frames names an empty one. Its low tiles are stock copies, its own art past the stock count. No
-other Workshop or SDK archive has an empty record. Test:
-`phantoms_haunt_names_no_empty_record`.
+A mod's `TILE` records may be mostly empty: padding, since a frame number is
+a position (first seen in Phantoms Haunt's `phantom_maindata.cam`). No frame
+names an empty one; its low tiles are stock copies, its
+own art past the stock count. Test, on a made-up mod:
+`a_mod_names_no_empty_record`.
 
 Later archives override earlier ones by section and record name, whole records.
 No merging: two mods supplying `DATA/BDEP` give one table.
@@ -166,8 +169,8 @@ Long Description =
 [value, may span lines]
 ```
 
-`quests/maj.qdd` holds more than ten blocks; HD and the Workshop
-mods ship six `.qdd` files (`every_shipped_qdd_parses`).
+`quests/maj.qdd` holds more than ten blocks; HD ships four `.qdd` files
+(`every_shipped_qdd_parses`), and a mod's reads alike (`every_mod_qdd_parses`).
 
 A developer comment says the quest name must match `RGSMissionTemplate`. Ids
 match `.q` filenames (`barren_waste.q` ↔ `BARREN_WASTE`), linking metadata,

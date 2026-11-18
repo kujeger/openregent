@@ -1,0 +1,8 @@
+<Majesty>
+	<Language id="en_US">
+		<Text id="IDTXT_QUEST_WIN_MESSAGE">The thornwood is cleared. The realm rejoices!</Text>
+		<Text id="IDTXT_QUEST_LOSS_MESSAGE">The thornwood has swallowed the palace.</Text>
+		<Text id="THORNHALL">Thornhall Keep</Text>
+		<Text id="BRAMBLE">Bramble Hold</Text>
+	</Language>
+</Majesty>

@@ -1,0 +1,10 @@
+// The quest's start, named as the manifest's <Name>: a hearthguard, the
+// Hearth mod's unit, posted at the palace.
+function HearthWatch()
+declare
+	agent palace, guard;
+begin
+	palace = $GetPlayerOnePalace();
+	guard = $SpawnUnit(palace, "Hearthguard");
+	$SetAttribute(guard, #ATTRIB_HP, 20);
+end

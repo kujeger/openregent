@@ -798,14 +798,14 @@ mod tests {
         }
     }
 
-    /// The Wild's Grizzly Bear help: its tagged sentence wraps to several
+    /// A help text's tagged sentence wraps to several
     /// lines, each in the tag's colour; the sentence before is the
     /// box's, and no tag is left in any line.
     #[test]
     fn a_tag_colours_every_line_it_wraps_to() {
-        const HELP: &str = "Grizzly Bears are a more ferocious species of Hellbears.\r\n\r\n\
-                            [color:7070ff]Living in the Hellfire Mountains, Grizzly Bears \
-                            rarely are spotted by humans.[/color]";
+        const HELP: &str = "Ash Wolves are a hardier kind of the grey wolf.\r\n\r\n\
+                            [color:7070ff]Roaming the Cinder Hills, Ash Wolves \
+                            are seldom seen by townsfolk.[/color]";
         let font = Font::of(316.0, 15.0);
         let blue = Color32::from_rgb(0x70, 0x70, 0xff);
         let lines = with_fonts(|ctx| font.wrapped(ctx, 1.0, (HELP, Color32::WHITE), 180.0));

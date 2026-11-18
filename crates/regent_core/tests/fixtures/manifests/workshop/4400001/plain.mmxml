@@ -1,0 +1,13 @@
+<Majesty>
+	<Mod id="{5A1C0D11-7E22-4B30-9F41-0A6B3C5D7E01}">
+		<Name>PlainImage</Name>
+		<DisplayName lang="en_US">Plain Image</DisplayName>
+		<DataConfiguration>
+			<Dataset base="Any">
+				<Load>
+					<GPL>Data/plain.bcd</GPL>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+</Majesty>

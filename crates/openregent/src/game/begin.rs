@@ -787,15 +787,30 @@ pub fn test_game(args: &[&str]) -> (Begun, Catalogue<'static>) {
     ))
 }
 
+/// The same, its mods found in the fixture's folder
+/// (`testdata::fixture_install`).
+#[cfg(test)]
+pub fn fixture_game(args: &[&str]) -> (Begun, Catalogue<'static>) {
+    let setup =
+        crate::cli::tests::parsed(std::iter::once("openregent").chain(args.iter().copied()));
+
+    setup_on(&crate::testdata::fixture_install(), &setup)
+}
+
 /// The same, of `setup`.
 #[cfg(test)]
 pub fn test_setup(setup: &Setup) -> (Begun, Catalogue<'static>) {
-    let install = Install::from_env().expect("MAJESTY_HD");
-    let quests = crate::quests(&install).expect("quests");
+    setup_on(&Install::from_env().expect("MAJESTY_HD"), setup)
+}
+
+/// The game `setup` asks for on `install`.
+#[cfg(test)]
+pub fn setup_on(install: &Install, setup: &Setup) -> (Begun, Catalogue<'static>) {
+    let quests = crate::quests(install).expect("quests");
     let offered = crate::cli::quest_of(setup, &quests)
         .expect("its quest")
         .map(|i| &quests[i]);
-    let plan = Plan::of(&install, setup, offered).expect("planned");
+    let plan = Plan::of(install, setup, offered).expect("planned");
     let catalogue = regent_draw::data::catalogue_of(plan.sources()).expect("catalogue");
 
     (plan.begin(&catalogue).expect("begun"), catalogue)

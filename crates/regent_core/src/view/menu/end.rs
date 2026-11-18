@@ -361,7 +361,7 @@ const FREESTYLE_VERDICT: FourCc = FourCc(*b"FRE0");
 ///  3. QEND / LOSX by FRE0
 /// ```
 ///
-/// So Wrath of Krolm, Vampiric Revenge and every Workshop quest take
+/// So Wrath of Krolm, Vampiric Revenge and a mod's quest take
 /// step 2: a mod's or quest's `<Strings>` say it. `quest` is `None`
 /// for a custom game, keyed `FRE1` ([`End::verdict`]), no slot's key.
 /// Step 2 needs the quest's record; every game

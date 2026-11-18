@@ -1,0 +1,23 @@
+<Majesty>
+	<Mod id="{5A1C0D11-7E22-4B30-9F41-0A6B3C5D7E05}">
+		<Name>FirstPack</Name>
+		<DisplayName lang="en_US">First Pack</DisplayName>
+		<DataConfiguration>
+			<Dataset base="Any">
+				<Load>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+	<Mod id="{5A1C0D11-7E22-4B30-9F41-0A6B3C5D7E06}">
+		<Name>SecondPack</Name>
+		<DisplayName lang="en_US">Second Pack</DisplayName>
+		<DataConfiguration>
+			<Dataset base="Any">
+				<Load>
+					<Strings>XML\words.xml</Strings>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+</Majesty>

@@ -1,0 +1,23 @@
+// A small base game for an add-on to load over.
+
+expression #ZQ_GOLD 40
+
+function ZqGold() is integer
+declare
+begin
+	return #ZQ_GOLD;
+end
+
+function ZqTax(integer gold) is integer
+declare
+begin
+	return gold / 4;
+end
+
+prototype ZqKeep()
+declare
+	integer gold;
+	string label;
+	boolean open;
+begin
+end

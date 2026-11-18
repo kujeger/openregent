@@ -1,0 +1,39 @@
+<Majesty>
+	<Description type="Unit" subType="Building" ID="ZQA1" Name="Hall">
+		<Engine>
+			<Info value="BlockGround"/>
+		</Engine>
+		<Game>
+			<Cost value="150"/>
+			<MaxHP value="220"/>
+			<SightRange value="5"/>
+			<HelpID value="ZQ_hEcho"/>
+		</Game>
+	</Description>
+	<Description type="Unit" subType="Character" ID="ZQC1" Name="Scout">
+		<Engine>
+			<Info value="BlockGround"/>
+		</Engine>
+		<Game>
+			<MaxHP value="35"/>
+			<SightRange value="7"/>
+		</Game>
+	</Description>
+	<Description type="Unit" subType="Character" ID="ZQC3" Name="Warden">
+		<Engine>
+			<Info value="BlockGround"/>
+		</Engine>
+		<Game>
+			<MaxHP value="50"/>
+			<SightRange value="6"/>
+		</Game>
+	</Description>
+	<Description type="Unit" subType="Character" ID="ZQI1" Name="Tonic1" Description="IDTXT_ZQ_TONIC_1">
+		<Engine>
+			<Info value="BlockGround"/>
+		</Engine>
+		<Game>
+			<Flags value="IsInventoryItem"/>
+		</Game>
+	</Description>
+</Majesty>

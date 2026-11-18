@@ -1,0 +1,6 @@
+[Hearthguard]
+	{Monster
+		(type Monster)
+		(subtype xx)
+	}
+[end]

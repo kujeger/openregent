@@ -133,7 +133,7 @@ decision. Player intent is written in `RWRD`, the reward flags, and those settin
 | The Liche Queen is on no collision layer: she walks through buildings and units | [original/movement.md](original/movement.md) | `the_liche_queen_walks_on_no_collision_layer` |
 | Actions, timed orders, lying dead and gravestones; dead heroes' lists and graveyards | [original/movement.md](original/movement.md), [bytecode.md](gpl/vm.md#world-builtins), `movement::action`, `world::timed`, `world::graveyard` |
 | A clock probe names each run's frame; the scheduler's model places every probe run | [gpl/vm.md](gpl/vm.md#what-the-probe-showed), **Measured** |
-| `regent_cli compile` compiles every function back byte for byte; HD runs its image; Workshop sources rebuild their `.bcd` | [gpl/compiler.md](gpl/compiler.md), `a_whole_bcd_is_compiled_from_its_project` |
+| `regent_cli compile` compiles every function back byte for byte; HD runs its image; `Gplbcc.exe` writes the same bytes for made-up projects | [gpl/compiler.md](gpl/compiler.md), `a_whole_bcd_is_compiled_from_its_project`, `gplbcc_diff` |
 
 ## Sound
 

@@ -1109,7 +1109,8 @@ mod tests {
     }
 
     /// A game with a mod saves the mod as needed: it loads where the mod
-    /// is found, and is refused, the mod named, where it is not.
+    /// is found, and is refused, the mod named, where it is not. The
+    /// SDK's Adjust Guardhouse, in the fixture mods.
     #[test]
     #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
     fn a_save_needs_its_mods() {
@@ -1125,7 +1126,8 @@ mod tests {
             "--mods".to_owned(),
             GUARDHOUSE.to_owned(),
         ]);
-        let (begun, catalogue) = crate::game::begin::test_setup(&cli);
+        let install = crate::testdata::fixture_install();
+        let (begun, catalogue) = crate::game::begin::setup_on(&install, &cli);
         let (mut sim, session) = (begun.sim, begun.session);
         let text = Text::build(&catalogue);
 
@@ -1142,7 +1144,6 @@ mod tests {
 
         write(&path, &contents).expect("written");
 
-        let install = Install::from_env().expect("MAJESTY_HD");
         let quests = crate::quests(&install).expect("quests");
         let loaded = Plan::resumed(&install, &path, &quests).err();
         let bare = install.clone().with_mod_folders(Vec::new());

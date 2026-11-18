@@ -72,14 +72,9 @@ fn every_shipped_panel_consumes_exactly() {
     }
 }
 
-/// The format's only outside witness: Phantom's Haunt zeroes the last two of
-/// four words at `AP10 + 0x0d34` to disable the
-/// temple-spell button, so those four are one control's rectangle.
-///
-/// The reader must put a rectangle item there, holding the mod author's
-/// numbers.
+/// `AP10 + 0x0d34` is an item boundary: a control's rectangle.
 #[test]
-fn the_mods_anchor_lands_on_a_rectangle() {
+fn ap10_holds_a_rectangle_at_0x0d34() {
     let anchors = [("Windows HD", common::hd().join("Data/textdata.cam"), 0x0d34)];
 
     for (edition, path, offset) in anchors {
@@ -105,7 +100,7 @@ fn the_mods_anchor_lands_on_a_rectangle() {
                 width: 93,
                 height: 26
             }),
-            "{edition}: the mod's rectangle changed"
+            "{edition}: the rectangle changed"
         );
     }
 }

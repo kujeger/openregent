@@ -1,0 +1,34 @@
+// A return inside a foreach: bare, and in a nested loop.
+
+function ZqStop(list l)
+declare
+	integer n;
+begin
+	foreach n in l do
+		if (n > 2)
+			return;
+	return;
+end
+
+function ZqDeep(list l)
+declare
+	integer n;
+begin
+	foreach n in l do
+	begin
+		foreach n in l do
+			return;
+	end
+end
+
+function ZqFind(list l) is integer
+declare
+	integer n;
+begin
+	foreach n in l do
+	begin
+		foreach n in l do
+			return 1;
+	end
+	return 0;
+end

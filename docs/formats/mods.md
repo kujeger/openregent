@@ -5,8 +5,9 @@ game's dataset. **Binary** unless marked. Code: `regent_core::content::mods` (ma
 `dataset::Install::files_with` and `quest_with` (composition),
 `data::desc::xml` and `data::text::Strings` (XML); regent_draw
 `data::Sources`; openregent `env::mod_folders`, `begin::chosen`,
-`menu::mods`, `mod_list`, `builtin`. Tests: `regent_core/tests/mod_library.rs` on the
-Workshop items, `regent_core/tests/desc_xml.rs`, openregent's
+`menu::mods`, `mod_list`, `builtin`. Tests: `regent_core/tests/mod_manifests.rs` on
+hand-made folders (`tests/fixtures/manifests`, no game data),
+`regent_core/tests/desc_xml.rs`, openregent's
 `adjust_guardhouse_raises_the_most_guards`,
 `adjust_guardhouse_adds_a_guard_on_upgrade`, `a_save_needs_its_mods`,
 `xml_mods_play_without_script_errors`, `loading_off_loads_nothing_and_keeps_the_list`,
@@ -16,7 +17,7 @@ Workshop items, `regent_core/tests/desc_xml.rs`, openregent's
 
 ```text
 <Majesty>
-  <Mod id="{D666FCBE-9906-4582-A6A0-DC96F812441E}">   several a file (Majesty Expanded: many)
+  <Mod id="{4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01}">   several a file
     <Name/> <DisplayName lang="en_US"/>
     <Description lang="en_US"><Short/><Long/></Description>
     <DataConfiguration>
@@ -29,17 +30,16 @@ Workshop items, `regent_core/tests/desc_xml.rs`, openregent's
 
 - List kinds: 0 CAM, 1 GPL, 2 Constants,
   3 Template, 4 Descriptions, 5 Strings, 6 GPLSource.
-- A mod is keyed by its GUID. Elements may come in any
-  order: Majesty Expanded writes `DisplayName` after `DataConfiguration`.
+- A mod is keyed by its GUID.
 - Paths are relative to the manifest's folder, `\` or `/` between parts.
 - HD never compiles GPL: only `<Target>` loads; `<Source>` and
   `<GPLSource>` feed the GPL debugger's source view.
 - `Dataset base` is read as a word. Any other text
   fits no dataset (**Inferred**); HD's dialog says "unknown".
 
-**Corpus**: 39 mods, 30 quests (`the_workshop_holds_39_mods_and_30_quests`).
-One mod lists no XML: Adjust Guardhouse. 7 are for the expansion, 32 for `Any`
-(`each_workshop_mod_names_a_base`).
+A manifest may hold several mods, and a mod may list no XML, as Adjust
+Guardhouse does (`a_folder_holds_its_mods_and_quests`, on made-up folders).
+Each names its base (`each_mod_names_a_base`).
 
 ## Where mods are found
 
@@ -214,15 +214,12 @@ An enhancement ([openregent/enhancements.md](../openregent/enhancements.md)): HD
   its place; each found in any case. Compiled by
   `gpl::emit::compile_listed`, `builtin`'s compiler. Section 1 records
   each `.gpl` as the manifest spells it.
-- `.bcd` wins: a Workshop mod ships both, and its `.bcd` is what HD
-  plays. To test an edit, leave the `.bcd` out. Each compile and reuse is
+- `.bcd` wins, as HD loads only `<Target>`. To test an edit, leave the
+  `.bcd` out. Each compile and reuse is
   said at info.
 - The key hashes the compiler's source (`MAJ_COMPILER`, the `regent_core`
   library and `Cargo.lock`, from `build.rs`) and each file's spelling,
   path and bytes: an edit to either recompiles, the older image removed.
-- The manifest's spelling is what `MakeGPL.ps1` hands `Gplbcc.exe`:
-  Improved Guards compiles to its shipped `.bcd` byte for byte
-  ([gpl/compiler.md](../gpl/compiler.md)).
 - The Mods page's Rescan scans the folders again and recompiles changed
   sources, and reads the offered quests again: an edit, or a new mod's
   quest, plays without a restart.
@@ -258,10 +255,10 @@ present.
   ([XML](#xml)).
 - No archive is sparse: an empty mod record wins like any other, in HD
   too, and a frame's tile is its own archive's
-  ([README.md](README.md#no-archive-is-sparse)). Phantoms
-  Haunt's art resolves (`phantoms_haunt_names_no_empty_record`).
+  ([README.md](README.md#no-archive-is-sparse)); on a made-up mod,
+  `a_mod_names_no_empty_record`.
 
-Adjust Guardhouse (Workshop `617966615`) replaces the `GuardHouse2` data
+The SDK's Adjust Guardhouse replaces the `GuardHouse2` data
 instance: `Max_Guards` 2, not 1. Its `.bcd` holds that one prototype and
 no code. It copies the base game's instance, so over the expansion its
 guardhouse also loses `upgradescript`.
@@ -295,8 +292,8 @@ that guard's birth again finds it running. Test: openregent's
 
   ```text
   [[mod]]
-  id = "17BF53DE-722F-4683-8E63-6B93D1606DFF"   GUID; braces and case free
-  name = "Majesty Expanded"                     display name, else <Name>
+  id = "4EA27B00-1D2C-4E3F-8A51-6B7C8D9E0F01"   GUID; braces and case free
+  name = "Hearth"                               display name, else <Name>
   description = "…"                             <Short>, else <Long>
   enabled = true
   ```
@@ -351,8 +348,8 @@ HD loads each descriptor set's archive records, then every
   `default` 0; else the text's id. Pass 1 lets it find a record defined
   later, or in another set: `UpgradeTo value="Guardhouse2"` is `ABE2`.
 - An `ID` is read as a string id: four bytes a code, a number its value,
-  else CRC-32. Many Workshop descriptions use a name (`MBPortal`), so an
-  id field reads any nonzero word (`desc::id_field`).
+  else CRC-32. A name is a CRC-32 too, so an id field reads any nonzero
+  word (`desc::id_field`).
 - HD drops: a `subType` not in the set's table by name, so the SDK
   example's `subType="4"`, and `General` (the unit set spells it
   `Generic`); `Script type` and `cProc` (written 0); `AllowedSpells`' `ID` (an index is the
@@ -375,9 +372,9 @@ description (1,145 records, `OriginalQuests`) makes the archive's
 record byte for byte, but for words its XML cannot say
 (`the_sdk_xml_makes_the_archive_records`: the export's filled
 `CanUse`, uninitialised words, unflagged overrides, a name two sounds
-share). The Workshop's 60 listed files hold 1,592 descriptions, all
-read (`every_workshop_description_reads`); Majestic Majesty replaces 130
-shipped records, Phantoms Haunt adds 68 (`a_mods_record_replaces_the_shipped_one`).
+share). On made-up mods, every listed description reads
+(`every_description_reads`), and a mod's record replaces a shipped one
+whole (`a_mods_record_replaces_the_shipped_one`).
 
 **Inferred**: a sound's phases each in order. The loop as read fetches
 the first `Phase` again, which would not end.
@@ -406,12 +403,8 @@ syntax in `regent_core::data::text`'s Markup):
 ```
 
 The info box (chat lines) reads no tag; openregent drops
-them there (`text::untagged`), so no tag shows. **Corpus**: 1,319 lines in
-10 Workshop files hold a tag, every one read
-(`every_workshop_colour_tag_is_read`): help, names and action
-descriptions (Majestic Majesty, Monster Kingdom, Majesty Extras, Decor
-Buildings, The Wild), East Cheswick's briefing, two Majestic Majesty
-scripts' service and research names. HD asks it where a table misses:
+them there (`text::untagged`), so no tag shows. A made-up mod's tags are read in every form
+(`every_colour_tag_is_read`, `colour_tag_forms_are_read`). HD asks it where a table misses:
 
 ```text
  GMTX index past the table     by the index
@@ -422,17 +415,17 @@ scripts' service and research names. HD asks it where a table misses:
  a quest's win, loss message   IDTXT_QUEST_WIN_MESSAGE, IDTXT_QUEST_LOSS_MESSAGE
 ```
 
-So a mod's `HelpID value="MK_hPalace"` shows its string. A script's
+So a mod's `HelpID` that keys no `HPTX` topic shows its string
+(`a_mods_help_is_its_string`; first seen in Monster Kingdom). A script's
 string message (`SpecifyName`, `MessageFlag`, `IsMessageFlagPresent`) is
 a number by the string id rules, and the activity text finds the string of
-that id: The
-Wild's `SpecifyName(redinn, "REDINN")` names the inn "Hooligan's Haughty
-Hangout", `"HOOL"` its Hooligans, `MessageFlag(guy, "EVENT1")` hangs its
-`EVENT1` text. Tests: openregent's `a_workshop_quests_given_name_is_its_string`,
-`a_message_is_a_number`. A GPL `#Name`
-is not looked up here: HD's fix-up asks script constants, attributes and
-descriptor names only, so NewGame+'s
-`#LegendaryHeroesExtend`, a text id, is not found in HD either.
+that id: a made-up quest's `SpecifyName(palace, "THORNHALL")` names its
+palace by its string of that id (first seen in The Wild, Workshop
+`2892764983`). Tests: openregent's
+`a_mods_quests_given_name_is_its_string`, `a_message_is_a_number`. A GPL
+`#Name` is not looked up here: HD's fix-up asks script constants,
+attributes and descriptor names only, so a text id named as a `#Name` is
+not found in HD either (first seen in NewGamePlus, Workshop `1448403412`).
 
 The end panel's verdict (`view::menu::end::verdict`), each step asked where the one before is empty:
 
@@ -446,19 +439,19 @@ The end panel's verdict (`view::menu::end::verdict`), each step asked where the 
 `QEND` and `LOSX`, like `QUES`, are merged across archives
 (`data::text::MERGED`): an expansion game's hold the base's `FRE0`.
 
-So every Workshop quest, Wrath of Krolm and Vampiric Revenge say their
+So a mod's quest, Wrath of Krolm and Vampiric Revenge say their
 strings: Krolm's loss is its XML's "and", not `LOSX MD01`'s "&". A mod's
-string replaces a quest's: ME Game Modifiers (`{4233391D-…}`) over The
-Wild. A custom game is `FRE1`, no slot, so a mod's message shows there
+string replaces a quest's (a made-up mod over a made-up quest; first seen
+with ME Game Modifiers over The Wild). A custom game is `FRE1`, no slot, so a mod's message shows there
 too (**Binary**; untried in HD). Tests:
 `a_verdict_asks_the_tables_then_the_strings`,
 `a_mods_string_says_a_quests_verdict`, openregent's
-`a_workshop_quests_verdict_is_its_strings`.
+`a_mods_quests_verdict_is_its_strings`.
 
 An item key is `INV:n`, `QITM` n, or a character's code
-whose `Flags` hold `IsInventoryItem`, its `HEAD` title through the strings.
-Majestic Majesty's potions are titled `IDTXT_ITEM_HEALINGPOTIONS_1`, so
-their names are its strings. Shown by the hero's items page and a chest or sign naming its first item;
+whose `Flags` hold `IsInventoryItem`, its `HEAD` title through the strings:
+a mod's item titled by a text id is named by the mod's string (first seen
+in Majestic Majesty's potions). Shown by the hero's items page and a chest or sign naming its first item;
 no shop panel names an item this way. A dropped item's name comes from
 `QITM` (`view::panel::portrait::dropped_name`). Test:
 `a_mods_string_names_its_item`. A scene's `items` gives one
@@ -467,7 +460,7 @@ no shop panel names an item this way. A dropped item's name comes from
 ## Quests
 
 A `.mqxml` in a mod folder is a quest, listed whatever mods are enabled,
-as HD lists every Workshop quest. It joins
+as HD lists every mod folder's quest. It joins
 the quest map's downloadable list, after the install's extras; its own
 lists compose as an install quest's. A mod's quest is named by its whole
 id in `--quest` and the recording, and holds no map slot.
@@ -476,22 +469,20 @@ A quest's code comes from its id (`quest::key_of`):
 
 ```text
 {36305551-0000-0000-0000-000000000000}   only the first word set: that word, QU06
-{31305551-0054-0032-0000-000000000000}   anything more: CRC-32 of the 16 bytes,
-                                         from all ones, not inverted: 0xea29f48e
+{5A515831-0031-0042-0000-000000000000}   anything more: CRC-32 of the 16 bytes,
+                                         from all ones, not inverted: 0x91369e27
 ```
 
-So Majesty Expanded's Barren Waste is not `QU01`: `STRT QUES` has no
-title for it, and it shows its `DisplayName`,
-"121 - Original Quest - Barren Waste". NewGame+'s Legendary Heroes
-reuses the shipped id `{34305158-0000-…}`, so it is `XQ04`. A second
+So a quest keyed by a CRC has no `STRT QUES` title, and shows its
+`DisplayName` (`a_quests_copy_is_keyed_by_its_ids_crc`; first seen in
+Majesty Expanded's Barren Waste, Workshop `2827106524`). A second
 quest of a code is added only from another source; the code's first record
 wins lookups. `<Difficulty>` (Easy, Medium, Hard, Master, any case, else
 Easy) is what a quest with no map slot is rated.
 
 ### Victories
 
-HD keeps victories by code (`questdata_majx.sav`), so a mod's quest keyed by a CRC has its own, and
-NewGame+'s Legendary Heroes shares the shipped `XQ04`'s. They show where
+HD keeps victories by code (`questdata_majx.sav`), so a mod's quest keyed by a CRC has its own. They show where
 a pick in the extra quests' list `APd8` shows them: `GMTX` 136 with the difficulty, or once won
 137 with victories and best time, as the map's title bar.
 

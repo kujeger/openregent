@@ -105,8 +105,8 @@ crate" there says what each depends on.
   its own plane: index 0 is a colour and an RLE gap is the only transparency,
   so no spare index can mark it.
 - Model only holes the corpus has. `Colour::Indexed` has no `Option<Palette>`:
-  no indexed tile names a missing palette, in HD and the Workshop
-  mods (**Corpus**; HD in `every_tile_in_a_dataset_resolves_to_pixels`), so a
+  no indexed tile names a missing palette in HD (**Corpus**;
+  `every_tile_in_a_dataset_resolves_to_pixels`), so a
   missing palette is an error. `FrameSource::Missing` stays: a tile number past
   a chunk's end is bounded by a computed count, not a measurement.
 - `Sprite::rgba` widens 565 by bit replication. The screen does not: the

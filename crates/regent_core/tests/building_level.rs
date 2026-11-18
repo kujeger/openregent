@@ -52,16 +52,19 @@ const HUT_2: FourCc = FourCc::new(b"ZTH2");
 /// the script the engine dispatches after an upgrade, which the game's
 /// rules lack.
 const SEEN: &str = "function LevelSeen(agent b)
+declare
 begin
     $SetAttribute(b, #ATTRIB_MaxGuildMembers, $GetBuildingLevel(b));
 end
 
 function Finish(agent b)
+declare
 begin
     $SetAttribute(b, #ATTRIB_CurrentStageBuilt, 1);
 end
 
 function building_upgraded(agent b)
+declare
 begin
 end
 ";

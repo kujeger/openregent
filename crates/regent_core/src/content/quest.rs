@@ -296,7 +296,7 @@ fn difficulty(word: Option<&str>) -> Difficulty {
 ///
 /// ```text
 ///  {36305551-0000-0000-0000-000000000000}   QU06, a shipped quest
-///  {31305551-0054-0032-0000-000000000000}   0xea29f48e, a mod's copy of QU01
+///  {5A515831-0031-0042-0000-000000000000}   0x91369e27, a mod's quest
 /// ```
 #[must_use]
 pub fn key_of(id: Guid) -> FourCc {
@@ -396,7 +396,7 @@ pub(crate) fn element<'a>(text: &'a str, name: &str) -> Option<&'a str> {
 /// A quest's own end messages, `<Win>` and `<Loss>`:
 /// asked before the
 /// strings' `IDTXT_QUEST_WIN_MESSAGE` and `IDTXT_QUEST_LOSS_MESSAGE`.
-/// **Corpus**: no install or Workshop quest has one.
+/// **Corpus**: no install quest has one.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Messages {
     pub win: Option<String>,

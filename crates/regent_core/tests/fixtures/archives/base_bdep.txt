@@ -1,0 +1,6 @@
+# The made-up base game's building rules, postfix.
+ZBP1
+ZBP2 : ZBP1
+ZBG1 : ZBP1 ZBP2 ||
+ZBT1 : ZBG1 ZBP2 &&
+

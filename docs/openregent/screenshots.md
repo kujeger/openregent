@@ -738,9 +738,9 @@ Mini view 1 (`tracking`;
   - The menus' Start Quest reads its map word off the clock
     (`freestyle::clock`, as the original), so each start is a new map; the
     GPL seed stays `--seed`'s default.
-  - `AP36` spaces "QUIT      MAJESTY" and "RESUME    PLAY"; openregent draws
-    them on one line with one space (`options::spaced`;
-    `a_spaced_label_is_one_line`).
+  - `AP36` spaces "QUIT      MAJESTY" and "RESUME    PLAY" on buttons two
+    lines high; openregent breaks each in two, as the original draws them
+    (`options::broken`; `a_spaced_label_breaks_in_two`).
 - Chat (`chat`): Enter opens a line, Enter sends, Escape
   cancels; while open the game sees no key. The line is `AP35`'s text
   field (`INDn` 1000), its middle cut to 360 × 26 HD pixels, centred over

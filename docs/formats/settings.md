@@ -32,7 +32,7 @@ cannot refute a rule.
 
 ```
 ABQ1 : ABJ2 ABJ3 ||          Temple to Fervus needs Palace level 2 or 3
-PHG1 : ABJ2 ABJ3 NOT NOT ||  a mod's rule, same shape
+ZMG1 : ABJ2 ABJ3 NOT NOT ||  a mod's rule, same shape
 ```
 
 - `ABJ2`, `ABJ3`: Palace levels. `#` starts a comment. Lines are CRLF.
@@ -40,9 +40,10 @@ PHG1 : ABJ2 ABJ3 NOT NOT ||  a mod's rule, same shape
   to parse. This reader does not need it:
   `the_dependency_tables_do_not_need_their_blank_last_line`.
 - Parsed as a stack: every operator finds its operands, one value left. Holds on
-  all 160 rules of the three shipped tables
+  all 104 rules of the two shipped tables
   (`every_shipped_dependency_table_parses`; the count,
-  `every_building_dependency_names_a_building`).
+  `every_building_dependency_names_a_building`), and a made-up mod's
+  (`a_mods_dependency_table_parses`).
 - **Binary**: per owner, a code is absent, placed (`CurrentStageBuilt` 0) or
   finished, ruins left out. An id directly under `NOT` asks placed, any other id
   finished; operators give 0 or 1; no rule is met. So `x NOT` is "none
@@ -50,10 +51,11 @@ PHG1 : ABJ2 ABJ3 NOT NOT ||  a mod's rule, same shape
   3 line has one, and the upgrade button reads the `BTDT` cap table
   instead. `data::deps::Expr::holds`;
   `an_id_under_not_asks_placed_and_a_bare_id_finished`.
-- Every id a rule names, its own included, resolves to a `DUNT` record — 60
-  distinct (`every_building_dependency_names_a_building`). Exception: `PHG1`
-  (Phantoms Haunt guild), declared in `phantom_units.xml` and compiled by the
-  HD toolchain at load; the mod ships no `DUNT`.
+- Every id a rule names, its own included, resolves to a `DUNT` record — 59
+  distinct (`every_building_dependency_names_a_building`). A mod's rule may
+  name a building only its XML declares, compiled at load
+  (`a_mod_rule_names_a_building_its_xml_defines`; first seen in Phantoms
+  Haunt's guild).
 
 `QDEP` adds a difficulty field:
 

@@ -43,11 +43,10 @@ differs between two files of equal height follows the width:
 | screen width | 11 | 0 | 5 | 0 |
 | screen height | 0 | 40 | 0 | 8 |
 
-Outside witness: the Phantoms Haunt mod disables `AP10`'s temple-spell button
-by zeroing the last two of `(103, 162, 93, 26)` at `AP10 + 0x0d34`, leaving
-later controls at their offsets; a zero-size control cannot be drawn or
-clicked. The reader puts an item boundary at exactly that offset in HD's
-`textdata.cam` (`the_mods_anchor_lands_on_a_rectangle`).
+The reader puts an item boundary at `AP10 + 0x0d34` in HD's `textdata.cam`,
+a rectangle `(103, 162, 93, 26)` (`ap10_holds_a_rectangle_at_0x0d34`). The
+offset was found by Phantoms Haunt (Workshop `3769947406`), which zeroes its
+size to disable the temple-spell button.
 
 ## Key 12 is a record id
 
@@ -59,12 +58,6 @@ key-13 words move with them
 **Corpus**, no test: every key-12 value is four printable
 characters, an `IMAG` record: `INTI` (interface textures), `DEM2` (buttons).
 Key 13 is its set.
-
-## Where the handler lives
-
-**Inferred**, from the Phantoms Haunt mod's report: `AP07` is an
-executable-supported recruitment dialog, so handlers are compiled in and only
-layout is data.
 
 ## The GPL debugger's panels
 

@@ -7,17 +7,17 @@ grammar: [language.md](language.md).
 ## Status
 
 Complete against the 306 shipped `.gpl` and 15 `.dat` files
-(`every_file_lexes_without_error`, `every_dat_file_parses`) and every Workshop
-mod's `.gpl` and `.dat` (`tests/mods.rs`, lower bounds).
+(`every_file_lexes_without_error`, `every_dat_file_parses`).
 
-| Check | Shipped | Workshop mods |
-|---|---|---|
-| Files lexed | all, zero errors, 253,176 tokens (`token_counts_match_the_survey`) | all, zero errors |
-| Files parsed | all, zero errors | all, zero errors |
-| `.dat` files parsed | 417 prototypes, 5,176 values (`every_dat_file_parses`) | at least 956 prototypes, 16,284 values (`every_mod_dat_file_parses`) |
-| `$name` references resolved | 19,819 of 19,819 (`every_function_reference_resolves`) | all, with the base game alongside |
+| Check | Shipped |
+|---|---|
+| Files lexed | all, zero errors, 253,176 tokens (`token_counts_match_the_survey`) |
+| Files parsed | all, zero errors |
+| `.dat` files parsed | 417 prototypes, 5,176 values (`every_dat_file_parses`) |
+| `$name` references resolved | 19,819 of 19,819 (`every_function_reference_resolves`) |
 
-The mods test forms the shipped files do not use.
+Forms the shipped files do not use are held on made-up projects
+(`tests/mod_gpl.rs`, `tests/fixtures/gpl/`).
 
 Parser node counts against the lexer's token counts (`statement_kind_counts_match`,
 `top_level_item_counts_match`, `expression_counts_match_the_token_stream`):
@@ -75,8 +75,9 @@ crates/regent_core/src/base/
 
 crates/regent_core/tests/
 ├── corpus.rs   the 306 shipped files, counts pinned exactly
-├── mods.rs     the Workshop mods, counts as lower bounds (Steam updates them)
+├── mod_gpl.rs  forms only mods use, on made-up projects (fixtures/gpl/)
 ├── backend.rs  the back end, against the compiler's own output
+├── gplbcc_diff.rs  Gplbcc.exe and emit on the made-up projects
 ├── load.rs     decode and load every image; every call resolves
 ├── opcode.rs   opcode table, against the lexer and the shipped bytecode
 ├── ops.rs      operators in worked cases
@@ -95,13 +96,10 @@ cargo run --bin regent_cli -- resolve "$SDK/OriginalQuests"   # call resolution 
 cargo run --bin regent_cli -- dat     "$SDK"                  # .dat prototypes
 cargo run --bin regent_cli -- codesec "$SDK/OriginalQuests/Data/bytecode.bcd"
 cargo run --bin regent_cli -- compile project.gplproj out.bcd # compile a project
-
-# Mods call base-game functions, so resolve both trees together:
-cargo run --bin regent_cli -- resolve "$SDK/OriginalQuests" "$WORKSHOP"
 ```
 
-Tests read `MAJESTY_HD` (the SDK is its `SDK/`) and `MAJESTY_WORKSHOP` (environment or `.env`);
-an unset variable fails the tests that need it.
+Tests read `MAJESTY_HD` (the SDK is its `SDK/`; environment or `.env`);
+unset, it fails the tests that need it.
 
 ## Design
 
@@ -160,6 +158,8 @@ documented; nothing calls it. The template also lists `LogOn`, `LogOff` and
   sum to the aggregate 37,891.
 - `do ... while` and `%=` have no corpus coverage. They follow the compiler's
   grammar and are marked untested in comments.
+  `Gplbcc.exe` refuses `do ... while` ("in rule statement, no viable
+  alternative for tree"), as ours does (`both_compilers_refuse_the_same_sources`).
 
 ## The back end
 
@@ -176,8 +176,19 @@ cargo run --bin regent_cli -- datasec "$SDK/OriginalQuests/Data/bytecode.bcd"
 ```
 
 It mirrors `Gplbcc.exe` (`MakeGPL.bat`: `gplbcc -in <project>.gplproj -out
-<name>.bcd`). A construct no corpus demonstrates (`do while`, a valueless
-`return` inside `foreach`) is refused rather than guessed.
+<name>.bcd`). A construct no corpus or `Gplbcc.exe` run demonstrates (a
+`return` inside a `while` in a `foreach`, two in one loop) is refused rather
+than guessed. As in `Gplbcc.exe`,
+a name no parameter or local declares, in any case, is an error ("identifier
+foo not declared"): a bare `foo(1)` too, since a script's function is `$foo`
+(`an_undeclared_identifier_is_refused`).
+
+Made-up projects in `crates/regent_core/tests/fixtures/gpl/` hold the forms
+only mods use, with no game data (`tests/mod_gpl.rs`). `tests/gplbcc_diff.rs`
+runs `Gplbcc.exe` on the same projects (under `wine` off Windows): the same
+bytes, or both refuse. Both refuse a definition with no `declare`
+("missing DECLARE"), though the grammar marks the block optional
+(`a_definition_needs_its_declare`).
 
 Block framing: `data::block`; the file layout: `data::bcd`. Block contents:
 `gpl::bcd`. Compiler behaviour: `gpl::emit`. Format:
@@ -205,35 +216,26 @@ disk (`tests/backend.rs`).
 | Check | Scale | Test |
 |---|---|---|
 | Byte-exact whole files | 5 of the SDK's 7 projects, plus the one data-only mod | `a_whole_bcd_is_compiled_from_its_project`, `guardhouse_mod_compiles_byte_for_byte` |
-| Data sections decoded and re-encoded identically | at least 75 files, 3,101 prototypes, 43,977 values | `every_data_section_round_trips` |
-| Projects whose `.dat` files reproduce a shipped data section | 20 of 21 | `every_project_reproduces_a_shipped_data_section` |
-| Section-2 tables that walk and tally | 75 files, 253 prototypes, 11,473 functions, 7,741 constants | `section_one_counts_what_section_two_defines` |
+| Data sections decoded and re-encoded identically | at least 18 files, 1,017 prototypes, 12,607 values | `every_data_section_round_trips` |
+| SDK projects whose `.dat` files reproduce a shipped data section | all 4 with one (GOG; Steam adds a 5th) | `every_project_reproduces_a_shipped_data_section` |
+| Section-2 tables that walk and tally | 18 files, 108 prototypes, 4,830 functions, 3,815 constants | `section_one_counts_what_section_two_defines` |
 | Definitions whose scope-record count is predicted from source | 3,544 of 3,544 | `section_two_records_count_the_names_in_scope` |
-| Section-2 bodies decoded and re-encoded identically | 19,467 of 19,467 | `a_definitions_scope_decodes_and_names_its_own_table` |
+| Section-2 bodies decoded and re-encoded identically | 8,753 of 8,753 | `a_definitions_scope_decodes_and_names_its_own_table` |
 | Section-1 entries emitted from source, record for record | 3,608 of 3,609 | `a_whole_code_section_is_built_from_the_sources` |
 | Section-1 constant entries checked field by field against the parser | 1,511 | `section_one_records_a_constant_s_file_line_and_value` |
-| Section-1 walked to the last byte | 75 files; 1,494 definitions in the base game | `the_record_walk_consumes_section_one_exactly`, `the_walk_counts_the_calls_the_parser_counts` |
+| Section-1 walked to the last byte | 18 files; 1,494 definitions in the base game | `the_record_walk_consumes_section_one_exactly`, `the_walk_counts_the_calls_the_parser_counts` |
 | Calls read, against the parser's own count | 7,060, as the parser counts | `the_walk_counts_the_calls_the_parser_counts` |
+| Made-up projects compiled by `Gplbcc.exe` and by `emit` | the same bytes, or both refuse | `gplbcc_diff.rs` |
 
 The re-encode row proves only that the decoder loses nothing. The
 reproduce-from-source row tests the normalisation (two sort orders, the
-duplicate rule); most of those projects are mods, and nearly all also contain
-`.gpl`.
+duplicate rule).
 
-The one miss, Majestic Majesty, is not a compiler difference: its shipped
-`bytecode.bcd` was built from newer `.dat` files than it ships. Prototype names
-match, all but two prototypes have our values as a strict subset of theirs,
-and the keys only they carry are later features (`AttackPeriod`,
-`Fire_Attack_Damage_Max`, …).
-
-Workshop mods that ship a `<GPL>`'s sources and its `.bcd`, compiled from the
-manifest's list (`openregent` `workshop_sources_compile_to_their_bcd`, at least
-14): all but two are byte-exact once source paths are spelled as the image records them (debug
-text, often the author's absolute path). Improved Guards matches as is. The
-other two differ for reasons outside the compiler: a manifest missing its
-`.dat`, and the `Snake_Pit_Spawn` mark. Two mods set rules:
-Phantoms' Haunt, `return` inside `foreach`
-([formats/bytecode.md](../formats/bytecode.md)); Monster Kingdom, these two:
+No shipped project uses `break`, `continue`, `return` inside `foreach` or a
+negative constant. Made-up projects hold them: `tests/mod_gpl.rs` checks their
+records, and `Gplbcc.exe` writes the same bytes for them (`gplbcc_diff.rs`).
+`return` inside `foreach`: [formats/bytecode.md](../formats/bytecode.md). And,
+first seen in Monster Kingdom (Workshop `3743606613`):
 
 - `expression #X -2` compiles to an `opNegate` of the literal, not a folded
   `-2`. The engine evaluates the records, so `exec` negates it too.
@@ -241,7 +243,7 @@ Phantoms' Haunt, `return` inside `foreach`
   `lines()` when the file ends in a newline.
 
 `dat::Value::Int` holds a number, not its spelling, so `007` would emit as `7`.
-No value in either corpus is affected.
+No shipped value is affected.
 `integer_spelling_is_normalised` records the limitation.
 
 ## Next

@@ -15,6 +15,7 @@
 //! see `a_whole_bcd_is_compiled_from_its_project`.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -121,6 +122,13 @@ pub enum Error {
     Parse { file: String, errors: String },
     /// A construct without a specimen; see [`function`].
     Unwritable(String),
+    /// A name no parameter or local declares, which `Gplbcc.exe` refuses;
+    /// see [`undeclared`].
+    Undeclared {
+        file: String,
+        line: usize,
+        name: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -130,6 +138,9 @@ impl fmt::Display for Error {
             Error::Read(path, e) => write!(f, "{}: {e}", path.display()),
             Error::Parse { file, errors } => write!(f, "{file}:{errors}"),
             Error::Unwritable(file) => write!(f, "{file}: a definition the emitter cannot write"),
+            Error::Undeclared { file, line, name } => {
+                write!(f, "{file}:{line}: identifier {name} not declared")
+            }
         }
     }
 }
@@ -200,7 +211,7 @@ pub fn compile_listed(project: &super::proj::Project, label: &Path) -> Result<Ve
             let parsed = super::parse(t);
 
             if parsed.errors.is_empty() {
-                Ok(parsed.script)
+                checked(parsed.script, t, file)
             } else {
                 Err(Error::Parse {
                     file: file.clone(),
@@ -242,8 +253,9 @@ pub fn compile_source(src: &str, file: &str) -> Result<Vec<u8>, Error> {
         });
     }
 
+    let script = checked(parsed.script, src, file)?;
     let units = [Unit {
-        script: &parsed.script,
+        script: &script,
         src,
         file,
     }];
@@ -267,6 +279,51 @@ pub fn project_data_section(path: &Path) -> Result<Vec<u8>, Error> {
     let project = read_project(path)?;
 
     section_of(&project.data)
+}
+
+/// `script`, if every name it uses is declared; see [`undeclared`].
+fn checked<'a>(script: Script<'a>, src: &str, file: &str) -> Result<Script<'a>, Error> {
+    match undeclared(&script, src) {
+        Some((line, name)) => Err(Error::Undeclared {
+            file: file.to_owned(),
+            line,
+            name,
+        }),
+        None => Ok(script),
+    }
+}
+
+/// The first name a definition uses that none of its parameters or locals
+/// declares, and its line. `Gplbcc.exe` refuses the source ("identifier
+/// foo not declared"), as a value, a target or a callee: `foo(1)` too,
+/// since a script's function is called as `$foo`. Names match
+/// case-insensitively.
+fn undeclared(script: &Script<'_>, src: &str) -> Option<(usize, String)> {
+    script.items.iter().find_map(|item| {
+        let declared: HashSet<String> = item
+            .params()
+            .iter()
+            .map(|p| p.name)
+            .chain(
+                item.decls()
+                    .iter()
+                    .flat_map(|d| d.names.iter().map(|(n, _)| *n)),
+            )
+            .map(str::to_ascii_lowercase)
+            .collect();
+
+        // visit_exprs takes no early exit: keep the first.
+        let mut first = None;
+        item.visit_exprs(&mut |e| {
+            if let (None, ExprKind::Ident(name)) = (&first, &e.kind)
+                && !declared.contains(&name.to_ascii_lowercase())
+            {
+                first = Some((e.span.start, (*name).to_owned()));
+            }
+        });
+
+        first.map(|(at, name)| (super::diag::location(src, at).0, name))
+    })
 }
 
 /// Each of `errors` as `line:column: message`, `; ` between: the file
@@ -495,9 +552,9 @@ fn prologue_in<'a>(
         }
     }
 
-    let boundary = f.declare_at.as_ref().map(|at| text.line(at.start));
+    let boundary = text.line(f.declare_at.start);
 
-    out.push(blank(Op::Body, "", last.or(boundary).unwrap_or(line)));
+    out.push(blank(Op::Body, "", last.unwrap_or(boundary)));
     out
 }
 
@@ -625,7 +682,8 @@ struct Body<'a, 'l> {
 struct Loop<'a> {
     /// Its `opForeach` record. `break` and `continue` name their loop by it.
     at: u32,
-    /// The `opReturnValue` of a `return` in its body, written after the loop.
+    /// The `opReturnValue` or `opReturn` of a `return` in its body, written
+    /// after the loop.
     ret: Option<Record<'a>>,
 }
 
@@ -934,8 +992,8 @@ fn constant_in<'a>(
     let line = text.line(c.span.start);
 
     // One record for the value. A leading `-` is not folded: an
-    // `opNegate` of the literal, as in a body (Monster Kingdom's
-    // `#WYRM_HEAL_MOD_TIER1 -2`); the engine evaluates the records.
+    // `opNegate` of the literal, as in a body (`gplbcc_diff`; first seen in
+    // Monster Kingdom); the engine evaluates the records.
     let value = match &c.value.kind {
         ExprKind::Unary {
             op: UnOp::Neg,
@@ -1052,9 +1110,9 @@ fn entry_name<'a>(item: &'a Item<'a>, src: &'a str) -> &'a str {
 
 /// Emit section 1 from a project's source files.
 ///
-/// Case-insensitive name order, as in all 75 `.bcd` files. Stable sort, so a
-/// name defined twice (one Workshop mod) keeps file order; the compiler's
-/// order there is unknown.
+/// Case-insensitive name order, as in all 18 `.bcd` files. Stable sort, so a
+/// name defined twice keeps file order; the compiler's order there is
+/// unknown.
 ///
 /// `None` if any definition cannot be emitted.
 #[must_use]
@@ -1159,15 +1217,13 @@ fn unspecified(s: &Stmt<'_>) -> bool {
 /// As [`unspecified`], tracking how many `foreach` enclose the statement.
 ///
 /// `break` and `continue` name their `opForeach`, so outside one they have
-/// nothing to name; the compiler rejects them too. A `return` with a value
-/// inside one is [`Body::returns`]; two shipped sites show it, each the only
-/// `return` of a loop not nested in another. Anything else is refused: no
-/// valueless one, none inside a `while` or a nested loop, one per loop.
+/// nothing to name; the compiler rejects them too. A `return` inside one is
+/// [`Body::returns`], bare or with a value, in a nested loop too. Anything
+/// else is refused: none inside a `while` in a loop, one per loop.
 fn inside(s: &Stmt<'_>, loops: u8) -> bool {
     match &s.kind {
         StmtKind::DoWhile { .. } => true,
         StmtKind::Break | StmtKind::Continue => loops == 0,
-        StmtKind::Return(value) => loops > 1 || (loops == 1 && value.is_none()),
         StmtKind::Block(body) => body.iter().any(|s| inside(s, loops)),
         StmtKind::If { then, els, .. } => {
             inside(then, loops) || els.as_deref().is_some_and(|s| inside(s, loops))
@@ -1176,7 +1232,7 @@ fn inside(s: &Stmt<'_>, loops: u8) -> bool {
         StmtKind::Foreach { body, .. } => {
             inside(body, loops.saturating_add(1)) || returns(body) > 1
         }
-        StmtKind::Expr(_) => false,
+        StmtKind::Expr(_) | StmtKind::Return(_) => false,
     }
 }
 
@@ -1296,7 +1352,7 @@ impl<'a> Body<'a, '_> {
                 let ret = reference(RETURN_RECORD);
 
                 match value {
-                    Some(e) if !self.loops.is_empty() => self.returns(e, line),
+                    _ if !self.loops.is_empty() => self.returns(value.as_ref(), line),
                     Some(e) => {
                         // The value gets its own slot, as a call argument.
                         let got = self.expr(e);
@@ -1422,20 +1478,33 @@ impl<'a> Body<'a, '_> {
     ///
     /// The value's records follow the `opBreak`, so they never run: the
     /// function returns whatever the value's slot last held, and the loop
-    /// running out returns it too, skipping what follows the loop. **Game**:
-    /// shipped `Phantom_Priestess_Assigned_To` and Majestic Majesty's
-    /// `defend_building_packet`.
-    fn returns(&mut self, value: &'a Expr<'a>, line: u16) {
+    /// running out returns it too, skipping what follows the loop.
+    /// **Compiler**: `Gplbcc.exe` on `fixtures/gpl/forms`. First seen in
+    /// Majestic Majesty and Phantoms Haunt.
+    ///
+    /// A bare `return` writes `opReturn` there instead. In a nested loop
+    /// either breaks only the innermost; its return follows that loop.
+    /// **Compiler**: `Gplbcc.exe` on `fixtures/gpl/returns`.
+    fn returns(&mut self, value: Option<&'a Expr<'a>>, line: u16) {
         let open = self.loops.last().expect("inside a loop").at;
         let mut stop = blank(Op::Break, "", NO_LINE);
         stop.head = open;
         self.push(stop);
 
-        let got = self.expr(value);
-        let got = reference(self.materialise(got, line));
+        let ret = reference(RETURN_RECORD);
+        let record = if let Some(e) = value {
+            let got = self.expr(e);
+            let got = reference(self.materialise(got, line));
 
-        let mut record = blank(Op::ReturnValue, "", line);
-        record.values = [reference(RETURN_RECORD), got];
+            let mut record = blank(Op::ReturnValue, "", line);
+            record.values = [ret, got];
+            record
+        } else {
+            let mut record = blank(Op::Return, "", line);
+            record.values[0] = ret;
+            record
+        };
+
         self.loops.last_mut().expect("inside a loop").ret = Some(record);
     }
 }
@@ -1459,6 +1528,69 @@ mod tests {
             .iter()
             .map(|(k, _)| k.as_ref())
             .collect()
+    }
+
+    /// `Gplbcc.exe` refuses a name no parameter or local declares, as a
+    /// value, a target or a callee: a script's function is called as
+    /// `$Name`, so a bare `ZqA(1)` names an undeclared variable.
+    #[test]
+    fn an_undeclared_identifier_is_refused() {
+        let src = "function ZqA() is integer\ndeclare\n\tinteger n;\nbegin\n\
+                   \tn = ZqA(1);\n\treturn n;\nend\n";
+        let err = compile_source(src, "t.gpl").expect_err("refused");
+
+        assert_eq!(err.to_string(), "t.gpl:5: identifier ZqA not declared");
+    }
+
+    /// A bare `return` inside a `foreach`, as `Gplbcc.exe` writes it: an
+    /// `opBreak` naming the loop, and an `opReturn` past the loop on the
+    /// `foreach` line, where the jump out lands. A nested loop's `return`
+    /// breaks only that loop.
+    ///
+    /// ```text
+    /// 10 opForeach            line 2
+    /// 11 opAdvance  -> 16
+    /// 12 opGreaterThan
+    /// 13 opIf       -> 15
+    /// 14 opBreak    (10)
+    /// 15 opRewind   -> 10
+    /// 16 opReturn             line 2
+    /// 17 opReturn             line 5
+    /// ```
+    #[test]
+    fn a_bare_return_inside_a_foreach_follows_the_loop() {
+        let src = "function ZqStop(list l)\ndeclare\n\tinteger n;\nbegin\n\
+                   \tforeach n in l do\n\t\tif (n > 2)\n\t\t\treturn;\n\treturn;\nend\n";
+        let parsed = crate::gpl::parse(src).script;
+        let out = script(&parsed, src, "t.gpl").expect("emits");
+        let records = &out[0].records;
+        let ops: Vec<_> = records[10..]
+            .iter()
+            .map(|r| (Op::from_code(r.opcode), r.head, r.line))
+            .collect();
+
+        assert_eq!(
+            ops,
+            [
+                (Some(Op::Foreach), 0, 5),
+                (Some(Op::Advance), 16, 5),
+                (Some(Op::GreaterThan), 0, 6),
+                (Some(Op::If), 15, 6),
+                (Some(Op::Break), 10, NO_LINE),
+                (Some(Op::Rewind), 10, 7),
+                (Some(Op::Return), 0, 5),
+                (Some(Op::Return), 0, 8),
+            ]
+        );
+    }
+
+    /// Names match case-insensitively, as the language does.
+    #[test]
+    fn a_declared_identifier_matches_in_any_case() {
+        let src = "function ZqA(integer Arg) is integer\ndeclare\n\tinteger n;\nbegin\n\
+                   \tN = ARG;\n\treturn n;\nend\n";
+
+        assert!(compile_source(src, "t.gpl").is_ok());
     }
 
     #[test]
@@ -1535,12 +1667,12 @@ mod tests {
     }
 
     /// A file's last prototype carries the line of its end: past a final
-    /// newline, the line after it (Monster Kingdom's `AIRoot9`).
+    /// newline, the line after it.
     #[test]
     fn a_last_prototype_takes_the_line_past_the_end() {
         for (src, line) in [
-            ("prototype P()\nbegin\nend", 3),
-            ("prototype P()\nbegin\nend\r\n", 4),
+            ("prototype P()\ndeclare\nbegin\nend", 4),
+            ("prototype P()\ndeclare\nbegin\nend\r\n", 5),
         ] {
             let parsed = crate::gpl::parse(src).script;
             let out = script(&parsed, src, "f.gpl").expect("emits");

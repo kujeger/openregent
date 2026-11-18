@@ -1,0 +1,13 @@
+<Majesty>
+	<Quest id="{5A515831-0031-0042-0000-000000000000}">
+		<Name>XQZ_COPY</Name>
+		<DisplayName lang="en_US">Copy of a Shipped Quest</DisplayName>
+		<DataConfiguration>
+			<Dataset base="Majesty">
+				<Load>
+					<Template>xqz_copy.q</Template>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Quest>
+</Majesty>

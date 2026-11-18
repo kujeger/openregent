@@ -434,16 +434,12 @@ fn a_scene_file_names_the_games_units() {
     assert_eq!(hp(&played(&Run::new(read, 0)).world, placed(1)), Some(9));
 }
 
-/// No code of the game is any shipped record's, in any chunk, in HD or a
-/// Workshop mod.
+/// No code of the game is any shipped record's, in any chunk, in HD.
 /// Its names may be: ones this short are common words.
 #[test]
 #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
 fn the_games_codes_are_no_retail_records() {
-    let paths: Vec<_> = [common::hd(), common::workshop()]
-        .iter()
-        .flat_map(|root| common::archives(root))
-        .collect();
+    let paths = common::archives(&common::hd());
     let library = Library::from_files(&paths).expect("the archives");
     let catalogue = library.catalogue().expect("a catalogue");
     let retail: std::collections::BTreeSet<FourCc> = catalogue

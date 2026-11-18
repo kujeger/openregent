@@ -61,7 +61,7 @@ pub fn test_cache() -> PathBuf {
 /// The freestyle quest, which holds the lands, under the install.
 pub const QUEST: &str = "QuestsMX/mx_Freestyle.q";
 
-/// Subscribed Steam Workshop items: the tests' corpus, else a user's.
+/// Subscribed Steam Workshop items, if not Steam's default folder.
 pub const WORKSHOP: &str = "MAJESTY_WORKSHOP";
 
 /// openregent's own mod folder under its XDG data directory.
@@ -356,8 +356,9 @@ impl Install {
         })
     }
 
-    /// From [`HD`], the SDK in the install, mods built in and in
-    /// [`WORKSHOP`]: the tests'.
+    /// From [`HD`], the SDK in the install, and the built-in mods: the
+    /// tests'. No Workshop folder: tests read made-up mods
+    /// (`testdata::fixture_install`).
     ///
     /// # Errors
     ///
@@ -370,10 +371,7 @@ impl Install {
         Ok(Install {
             hd,
             sdk,
-            mod_folders: crate::files::builtin::folder()
-                .into_iter()
-                .chain(path(WORKSHOP))
-                .collect(),
+            mod_folders: crate::files::builtin::folder().into_iter().collect(),
             goals: OnceLock::new(),
             library: Arc::default(),
         })

@@ -8,7 +8,8 @@ What guards openregent's behaviour. Test tiers and how to run them:
 | Unit tests, crafted fixtures | Formats, operators, the VM, the world's rules one at a time | `code` |
 | The test game (`regent_testgame`) | The real simulation on a small made-up game: facts after a seeded run; its one mod, Tough Walkers (`TOUGH_WALKERS`, a `mod.toml`), for tests of mods | `code` |
 | Quest recordings | Whole quests played as recorded, to the win | `install` |
-| Corpus tests | Every shipped and Workshop file reads; the compiler's output matches `Gplbcc.exe`'s | `install` |
+| Mod fixtures (`regent_core/tests/fixtures/`) | A mod's archives, GPL and manifests, made up: what only mods use | `code` |
+| Corpus tests | Every shipped file reads; the compiler's output matches `Gplbcc.exe`'s, on the SDK's projects and, run under `wine`, on the made-up ones | `install` |
 
 ## Quest recordings
 

@@ -1,0 +1,6 @@
+// A definition with no declare block, even an empty one.
+
+function ZqA(integer x) is integer
+begin
+	return x;
+end

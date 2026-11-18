@@ -1,0 +1,13 @@
+<Majesty>
+	<Quest id="{32305551-0A11-4B22-8000-000000000000}">
+		<Name>SECOND_AGAIN</Name>
+		<DisplayName lang="en_US">The Second Quest, Again</DisplayName>
+		<DataConfiguration>
+			<Dataset base="MajestyExpansion">
+				<Load>
+					<Template>example.q</Template>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Quest>
+</Majesty>

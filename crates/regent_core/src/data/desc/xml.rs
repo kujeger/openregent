@@ -35,8 +35,7 @@
 //! its set, in ascending id order (the set's `std::map`), whose name
 //! matches without case; else `default` gives 0; else the text's id
 //! ([`string_id`]). A record's own `ID` is read by [`string_id`]: four
-//! bytes a code, a number its value, anything else a CRC-32. 983 of the
-//! Workshop's descriptions carry such an id (`MBPortal`).
+//! bytes a code, a number its value, anything else a CRC-32.
 //!
 //! # What HD drops
 //!
@@ -205,7 +204,6 @@ const ACTION_INFO: [(&str, u32); 1] = [("NoTarget", 1)];
 const ACTION_FLAGS: [(&str, u32); 1] = [("IsSpell", 1)];
 
 /// An action's `SpellType`: values, though read as flags.
-/// The Workshop's `Support`, `Passive` and the rest are not in it.
 const SPELL_TYPE: [(&str, u32); 4] = [
     ("None", 0),
     ("Attack", 1),

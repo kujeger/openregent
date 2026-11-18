@@ -430,7 +430,7 @@ impl<'a> ScopeSection<'a> {
 
     /// Distinct names, case-insensitive: what section 1 counts (see
     /// [`symbol_count`]). Differs from [`ScopeSection::len`] only where a name
-    /// is defined twice, as in one Workshop mod.
+    /// is defined twice.
     pub fn distinct_names(&self) -> usize {
         self.definitions()
             .map(|d| d.name.to_lowercase())
@@ -955,13 +955,10 @@ mod tests {
 
     #[test]
     fn a_name_defined_twice_counts_once_as_a_symbol() {
-        // Majestic Majesty defines `StringInList` twice: the one file where
-        // the section 1 and section 2 counts disagree. Case-insensitive.
+        // A name defined twice: the section 1 and section 2 counts
+        // disagree. Case-insensitive.
         let section = ScopeSection {
-            functions: vec![
-                definition("StringInList", &[1]),
-                definition("stringinlist", &[2]),
-            ],
+            functions: vec![definition("ZqInList", &[1]), definition("zqinlist", &[2])],
             ..ScopeSection::default()
         };
 

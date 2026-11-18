@@ -24,8 +24,9 @@ pub const INTERFACE_PANEL: u16 = 1001;
 /// upward, and `Interface` is in neither executable. The engine hardcodes
 /// purpose-to-id; see `docs/formats/art.md`.
 ///
-/// The three roles come from a Workshop hero mod that clones a stock `IMAG`,
-/// held by `a_workshop_hero_uses_the_stock_interface_ids`.
+/// The three roles were first named by the Phantoms Haunt mod, whose hero
+/// clones a stock `IMAG`; a mod hero that does keeps these ids
+/// (`a_mod_hero_uses_the_stock_interface_ids`).
 pub const INTERFACE_ICON: u16 = 1002;
 
 /// What a set is for. The low 16 bits of its packed id.

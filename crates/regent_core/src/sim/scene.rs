@@ -35,7 +35,7 @@
 //! code = "AVL1"        # Warrior
 //! at = [60.5, 64]
 //! attributes = { HP = 20 }
-//! items = [11, "HealingPotions1"]   # INV:11, a mod's item by its id
+//! items = [11, "ZqTonic1"]          # INV:11, a mod's item by its id
 //! ```
 
 use std::collections::BTreeMap;
@@ -175,7 +175,7 @@ pub struct Placed {
 
 /// An item a placed unit carries, as a script's item argument reads
 /// (`sim::world::inventory`): a number under 256 the slot `INV:n`, a
-/// text its id ([`string_id`]), so a mod's `"HealingPotions1"`.
+/// text its id ([`string_id`]), so a mod's `"ZqTonic1"`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 pub enum Item {

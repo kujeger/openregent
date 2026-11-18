@@ -15,9 +15,9 @@
 //! Not here: finding an install's files, and joins over several records
 //! (a unit and its art), are [`crate::content`].
 //!
-//! Readers must also accept `.cam` archives from two Steam Workshop mods,
-//! written by a third-party tool (the HD SDK ships no packer). See
-//! `tests/mods.rs`.
+//! Readers must also accept a mod's `.cam` archives, written by a
+//! third-party tool (the HD SDK ships no packer). See
+//! `tests/mod_archives.rs`.
 //!
 //! ```no_run
 //! let bytes = std::fs::read("data/terrtype.cam")?;

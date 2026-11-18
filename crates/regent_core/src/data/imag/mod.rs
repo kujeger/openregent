@@ -38,8 +38,8 @@
 //! **Binary**: the slot readers imag slot v2,
 //! Imag slot v3, imag slot v4 and
 //! Imag slot v5, dispatched by version from
-//! Imag slot read. Walked this way, every version 3 to 5 slot of HD and
-//! the Workshop mods ends where the next begins, bar one mod slot.
+//! Imag slot read. Walked this way, every version 3 to 5 slot of HD ends
+//! where the next begins.
 //!
 //! # Beyond the published descriptions
 //!
@@ -57,7 +57,8 @@
 //! (−1 to −110), point-list bytes read as frames; [`FrameRef::Sentinel`] guards
 //! against that.
 //!
-//! Every record parses: 634 Gold, 653 HD, 35 Workshop mods.
+//! Every record parses: 634 Gold, 653 HD; a made-up mod's in each layout
+//! (`every_mod_imag_layout_decodes`).
 //!
 //! # Slots
 //!

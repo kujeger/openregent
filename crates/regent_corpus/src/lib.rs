@@ -1,11 +1,10 @@
 //! Locating the corpora the tests read.
 //!
-//! Two environment variables, both directories. Each may instead
-//! be set in `.env` ([`env`]):
+//! One environment variable, a directory. It may instead be set in
+//! `.env` ([`env`]):
 //!
 //! ```text
 //! MAJESTY_HD=/mnt/games/SteamLibrary/steamapps/common/Majesty HD
-//! MAJESTY_WORKSHOP=local/game/workshop
 //! ```
 //!
 //! Values may be `~/…`, absolute, or relative to the `.env` file's folder.
@@ -42,11 +41,6 @@ pub fn sdk() -> PathBuf {
     );
 
     sdk
-}
-
-/// Subscribed Steam Workshop mods.
-pub fn workshop() -> PathBuf {
-    dir("MAJESTY_WORKSHOP", ".")
 }
 
 /// Every file under `root` whose extension is one of `extensions`, sorted.

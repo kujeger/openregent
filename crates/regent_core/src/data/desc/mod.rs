@@ -166,7 +166,7 @@ fn float(body: &[u8], at: usize) -> Option<f32> {
 /// A four-character id field, or `None` if it is zero or uninitialised.
 ///
 /// Any other word is an id, printable or not: a mod's XML names records
-/// by CRC-32 ([`xml`], `MBPortal`), and the engine compares words.
+/// by CRC-32 ([`xml`]), and the engine compares words.
 fn id_field(body: &[u8], at: usize) -> Option<FourCc> {
     field(body, at).filter(|w| *w != 0).map(FourCc::from_word)
 }

@@ -1,0 +1,18 @@
+<Majesty>
+	<Description type="Unit" subType="Building" ID="ZQB1" Name="Vault">
+		<Engine>
+			<Info value="BlockGround"/>
+		</Engine>
+		<Game>
+			<MaxHP value="300"/>
+		</Game>
+	</Description>
+	<Description type="Unit" subType="Character" ID="ZQC2" Name="Pikeman">
+		<Engine>
+			<Info value="BlockGround"/>
+		</Engine>
+		<Game>
+			<MaxHP value="45"/>
+		</Game>
+	</Description>
+</Majesty>

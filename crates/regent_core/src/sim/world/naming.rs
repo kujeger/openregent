@@ -109,7 +109,7 @@ pub enum Given {
     Text {
         /// The message number, the string's id
         /// ([`crate::data::fourcc::string_id`]): a Text id names its
-        /// string, The Wild's `"REDINN"` "Hooligan's Haughty Hangout".
+        /// string.
         /// `None` for a rename.
         index: Option<i32>,
         text: String,

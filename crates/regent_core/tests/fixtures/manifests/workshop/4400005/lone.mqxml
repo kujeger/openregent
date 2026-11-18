@@ -1,0 +1,16 @@
+<Majesty>
+	<Quest id="{5A1C0D11-7E22-4B30-9F41-0A6B3C5D7E13}">
+		<Name>LONE_PEAK</Name>
+		<DisplayName lang="en_US">Lone Peak</DisplayName>
+		<Difficulty>Master</Difficulty>
+		<DataConfiguration>
+			<Dataset base="Majesty">
+				<Load>
+					<Descriptions>XML\peak.xml</Descriptions>
+					<Strings>XML\peak_text.xml</Strings>
+					<Template>lone.q</Template>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Quest>
+</Majesty>

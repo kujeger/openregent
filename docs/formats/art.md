@@ -71,13 +71,12 @@ A row is a sequence of segments; the gaps are the only transparency.
   ([Phantomstar721][tile-rle]). Read as a start column, every multi-run row
   shears.
 - `count` = low 11 bits of `count_flags`; bit 15 marks the row's last segment.
-  Not a byte: many version 3 runs exceed 255 (the Phantoms Haunt mod's `[u8 count][u8 flags]` with runs capped at 80
-  is wrong).
+  Not a byte: many version 3 runs exceed 255.
 - Index 0 is an ordinary colour.
 
 [tile-rle]: https://github.com/Phantomstar721/majesty-gold-hd-art-asset-extractor/blob/main/docs/TILE_V3_RLE_ROOT_CAUSE.md
 
-**Corpus**, over the version 3 tiles of HD and the Workshop mods:
+**Corpus**, over the version 3 tiles of HD:
 
 - Bit 0 of `0x08`: set 16-bit colour, clear 8-bit indices. It never disagrees
   with a working width and settles the tiles that parse either way, 10 in HD
@@ -86,7 +85,8 @@ A row is a sequence of segments; the gaps are the only transparency.
 - An empty run's `x_end` is meaningless. Some tiles end a row
   `[0xcdcd] [0x8000]` (MSVC's uninitialised-heap fill); do not range-check it.
 
-With both, every tile parses (`every_v3_tile_decodes`, `every_mod_tile_decodes`).
+With both, every tile parses (`every_v3_tile_decodes`; a made-up mod's,
+`every_mod_tile_decodes`).
 In HD `max(x_end) == width` on 28,733 of 29,304; 571 fall short (empty
 rightmost columns); none exceeds (`tile_width_bounds_every_run`).
 The indexed tiles' canvases are nearly their drawn boxes: the boxes hold
@@ -116,9 +116,7 @@ Specimen: `BBA1 Animal_Den`'s portrait, green noise under 565.
 
 ### Palette indices 247 to 254 are a control band
 
-**Corpus**: `247-250` darken, `251-254` lighten. The Phantoms Haunt mod's
-shadow note agrees on the darken half: 247 a transition seam, 248–250 three
-shadow bands, never mixed with ordinary colours in one run.
+**Corpus**: `247-250` darken, `251-254` lighten.
 
 Green tells the ramps apart: darken holds green at 0 with red and blue rising;
 lighten pins red and blue near full with green rising to white. `BVE1 Dryad`'s
@@ -418,7 +416,7 @@ be interface pictures of buildings, not sprites.
 
 ### Versions 1 and 2 are the same format, uncompressed
 
-**Corpus**, every version 1 and 2 tile (HD, Workshop mods):
+**Corpus**, every version 1 and 2 tile in HD:
 
 ```
 0x00 .. 0x19  the same header as version 3
@@ -484,14 +482,13 @@ slot, version 2
 ```
 
 **Binary**: one slot reader per version. Walked this way every version 3 to
-5 slot in HD and the Workshop mods ends where the next begins, bar one mod
-slot. The loader seeks to each slot by its offset, so seven version 2 slots
+5 slot in HD ends where the next begins. The loader seeks to each slot by its offset, so seven version 2 slots
 in HD `Data` carry slack bytes nothing reads
 (`a_slots_trailer_is_its_playback_and_effects`).
 
 **Corpus**: every record decodes — HD's 649, with 13,439 slots and 86,868
-frames (`every_imag_record_decodes_to_frames`), and the Workshop mods' (at
-least 35, `every_mod_imag_record_decodes`).
+frames (`every_imag_record_decodes_to_frames`), and a made-up mod's in each
+layout (`every_mod_imag_layout_decodes`).
 
 The overall shape is [Phantomstar721's][imag]. Three parts are needed
 beyond it:
@@ -688,11 +685,10 @@ the lowest the veteran guard's, retoned. A building's icon is another
 drawing, a symbol in a border (below 0.5).
 `a_characters_list_icon_is_its_portrait_shrunk`, `portrait::icon_source`.
 
-The roles come from a working mod, not the sizes. [Custom Guild — Phantom's
-Haunt][haunt] adds a hero to the retail game and names all three: 1000 portrait,
-1001 selected-unit panel art, 1002 small hero icon. Its `PHM1Phantom` clones the
-stock Priestess `IMAG`, art replaced, set ids unchanged.
-`a_workshop_hero_uses_the_stock_interface_ids`.
+The roles were first named by [Custom Guild: Phantoms Haunt][haunt]
+(Workshop `3769947406`), whose hero clones the stock Priestess `IMAG`. A mod
+hero that clones a stock `IMAG`, art replaced, keeps its set ids
+(`a_mod_hero_uses_the_stock_interface_ids`, on a made-up mod).
 
 [haunt]: https://github.com/Phantomstar721/majesty-gold-hd-custom-guild-phantoms-haunt
 
@@ -1153,11 +1149,6 @@ unless all its cells are free — see
 Top and bottom are first scaled by `32 / (32 sin(IsoCameraAngle))`: a cell is
 32 pixels across the screen, 26 deep.
 `a_slots_footprint_is_where_the_thing_stands`.
-
-The Phantoms Haunt mod writes the same field: to make a new building burn it
-writes `<hh>` at slot `+0x00` of sets `0x03000063`–`0x03000067`. Its reader
-also takes the slot table from set `+0x40`, frame count from slot `+0x04`'s
-high half, the tile from a frame pair's second word.
 
 `a_pose_offset_places_a_piece_and_die_means_two_things` in
 `crates/regent_core/tests/view.rs` uses Barbarian as control: every slot of

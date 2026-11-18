@@ -325,9 +325,23 @@ pub(crate) mod tests {
     /// The fixture's GUID: no real mod's.
     pub(crate) const GUID: &str = "{5EC0DE00-0000-4000-8000-000000000001}";
 
-    /// Improved Guards (Workshop `664340597`), its v2 guardhouse's GPL.
-    const ITEM: &str = "664340597";
-    const SOURCES: [&str; 2] = ["GPL/Guardhouse_v2.gpl", "GPL/GuardHouse_v2.dat"];
+    /// The fixture's sources: a prototype and a function, and one instance.
+    /// Made up; no game's names.
+    const SOURCES: [(&str, &str); 2] = [
+        (
+            "GPL/Zq_Watch.gpl",
+            "prototype ZqWatch()\ndeclare\n\tboolean alert;\nbegin\nend\n\n\
+             function ZqWatchCount(integer n) is integer\ndeclare\nbegin\n\
+             \treturn n + 1;\nend\n",
+        ),
+        (
+            "GPL/Zq_Watch.dat",
+            "[ZqWatchPost] {ZqWatch (alert False)} [end]\n",
+        ),
+    ];
+
+    /// Where the manifest says the image goes; not on disk.
+    const TARGET: &str = "Data/Zq_Watch.bcd";
 
     /// Each example mod (`examples/`) is found; one with sources compiles
     /// them, one with an inline patch carries it.
@@ -383,28 +397,25 @@ pub(crate) mod tests {
         );
     }
 
-    /// A mod folder in a scratch folder of its own: the guardhouse's
-    /// sources, a manifest naming a target not there; and a cache. The
-    /// scratch folder is kept while the others are used.
+    /// A mod folder in a scratch folder of its own: [`SOURCES`], a manifest
+    /// naming a target not there; and a cache. The scratch folder is kept
+    /// while the others are used.
     pub(crate) fn fixture(name: &str) -> (crate::testdata::Scratch, PathBuf, PathBuf) {
         let dir = crate::testdata::scratch(&format!("compiled-{name}"));
-        let item = crate::files::env::path(crate::files::env::WORKSHOP)
-            .expect("MAJESTY_WORKSHOP")
-            .join(ITEM);
         let mods = dir.join("mods");
 
         std::fs::create_dir_all(mods.join("GPL")).expect("made");
 
-        for source in SOURCES {
-            std::fs::copy(item.join(source), mods.join(source)).expect("copied");
+        for (path, text) in SOURCES {
+            std::fs::write(mods.join(path), text).expect("written");
         }
 
         let manifest = format!(
             "<Majesty><Mod id=\"{GUID}\"><Name>Sourced</Name><DataConfiguration>\
-             <Dataset base=\"Any\"><Load><GPL><Target>Data/GuardHouse_v2.bcd</Target>\
+             <Dataset base=\"Any\"><Load><GPL><Target>{TARGET}</Target>\
              <Source>{}</Source><Source>{}</Source></GPL></Load></Dataset>\
              </DataConfiguration></Mod></Majesty>",
-            SOURCES[0], SOURCES[1]
+            SOURCES[0].0, SOURCES[1].0
         );
 
         std::fs::write(mods.join("Sourced.mmxml"), manifest).expect("written");
@@ -452,7 +463,7 @@ pub(crate) mod tests {
     fn a_source_edit_recompiles() {
         let (_dir, mods, cache) = fixture("edited");
         let (first, _) = image(&scanned(&mods, &cache).1).expect("compiled");
-        let data = mods.join(SOURCES[1]);
+        let data = mods.join(SOURCES[1].0);
         let text = std::fs::read_to_string(&data).expect("read");
 
         std::fs::write(&data, text.replacen("False", "True", 1)).expect("written");
@@ -474,110 +485,15 @@ pub(crate) mod tests {
     fn a_compile_error_refuses_the_mod() {
         let (_dir, mods, cache) = fixture("broken");
 
-        std::fs::write(mods.join(SOURCES[0]), "\n\nfunction (").expect("written");
+        std::fs::write(mods.join(SOURCES[0].0), "\n\nfunction (").expect("written");
 
         let (library, builds) = scanned(&mods, &cache);
         let why = image(&builds).expect_err("refused");
 
-        assert!(why.starts_with("GPL/Guardhouse_v2.gpl:3:"), "{why}");
+        assert!(why.starts_with("GPL/Zq_Watch.gpl:3:"), "{why}");
         assert_eq!(
             library.find(guid()).expect("listed").load.programs[0].1,
-            "Data/GuardHouse_v2.bcd"
-        );
-    }
-
-    /// The source files an image records, by file name, lower case: the
-    /// author's spelling, often an absolute path on their machine.
-    fn recorded(image: &[u8]) -> BTreeMap<String, Vec<String>> {
-        let program = regent_core::data::bcd::Container::parse(image).expect("a program");
-        let sections = program.sections().expect("three sections");
-        let walked = regent_core::gpl::bcd::walk(sections.symbols.body).expect("walks");
-        let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
-
-        for text in walked
-            .iter()
-            .filter_map(|d| d.records.first())
-            .map(|r| r.text)
-        {
-            let named = out.entry(file_name(text)).or_default();
-
-            if !named.iter().any(|t| t == text) {
-                named.push(text.to_owned());
-            }
-        }
-
-        out
-    }
-
-    /// `path`'s last part, `\` or `/` between parts, lower case.
-    fn file_name(path: &str) -> String {
-        path.rsplit(['/', '\\'])
-            .next()
-            .unwrap_or(path)
-            .to_ascii_lowercase()
-    }
-
-    /// Every Workshop mod shipping both a `<GPL>`'s sources and its
-    /// `.bcd`, compiled from the manifest's list: byte for byte, once the
-    /// source paths are spelled as the image records them (debug text
-    /// only). Improved Guards (`664340597`) matches unaltered: its
-    /// `MakeGPL.ps1` hands `Gplbcc.exe` the manifest's spellings.
-    ///
-    /// The exceptions are not the compiler's:
-    /// - `1265189890` `Veteran_City_Guard`: the manifest omits the `.dat`
-    ///   its `.gplproj` lists.
-    /// - `1448403412`: `Snake_Pit_Spawn`'s one mark, as in the SDK's
-    ///   `MX_Data.bcd`.
-    #[test]
-    #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
-    fn workshop_sources_compile_to_their_bcd() {
-        let workshop =
-            crate::files::env::path(crate::files::env::WORKSHOP).expect("MAJESTY_WORKSHOP");
-        let library = mods::scan(std::slice::from_ref(&workshop));
-        let mut matched = 0;
-        let mut differed = Vec::new();
-
-        for m in &library.mods {
-            for g in &m.load.sourced {
-                let Some(target) = g
-                    .target
-                    .as_ref()
-                    .and_then(|(_, t)| regent_core::content::on_disk(&under(&m.dir, t)))
-                else {
-                    continue;
-                };
-                let theirs = std::fs::read(&target).expect("shipped");
-                let spelled = recorded(&theirs);
-                let mut project = project(&m.dir, &g.sources).expect("a project");
-
-                // Spelled as recorded, where one file has the name.
-                for s in &mut project.spelled {
-                    if let Some([one]) = spelled.get(&file_name(s)).map(Vec::as_slice) {
-                        s.clone_from(one);
-                    }
-                }
-
-                let shown = target
-                    .strip_prefix(&workshop)
-                    .expect("in the Workshop")
-                    .display()
-                    .to_string();
-
-                match emit::compile_listed(&project, &m.manifest) {
-                    Ok(ours) if ours == theirs => matched += 1,
-                    Ok(_) => differed.push(shown),
-                    Err(_) => differed.push(format!("{shown}: refused")),
-                }
-            }
-        }
-
-        assert!(matched >= 14, "{matched} matched");
-        assert_eq!(
-            differed,
-            [
-                "1265189890/Data/Veteran_City_Guard.bcd",
-                "1448403412/GPL/GPLinfo.bcd",
-            ]
+            TARGET
         );
     }
 }

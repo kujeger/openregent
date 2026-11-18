@@ -1,5 +1,5 @@
 //! GPL builtin registrations, against the SDK's documentation and the
-//! shipped and Workshop scripts.
+//! shipped scripts.
 
 mod common;
 
@@ -46,14 +46,9 @@ fn every_documented_builtin_but_one_is_registered() {
     assert_eq!(builtins::find("ReRandom"), None);
 }
 
-/// Calls in the shipped and Workshop corpora that pass an argument their
+/// Calls in the shipped corpus that pass an argument their
 /// builtin never reads. `CastSpell`'s is an empty string, in 63 calls.
-const PASS_MORE: [&str; 4] = [
-    "CastSpell",
-    "LocationOf",
-    "SetThreadInterval",
-    "TeleportToPoint",
-];
+const PASS_MORE: [&str; 1] = ["CastSpell"];
 
 /// Every corpus call passes the arguments its builtin requires; a few pass
 /// more than it reads: [`PASS_MORE`].
@@ -91,13 +86,11 @@ fn corpus_calls_pass_what_the_builtins_read() {
 }
 
 /// Per builtin, folded, how many calls pass each argument count: shipped
-/// quests and Workshop mods together.
+/// quests.
 fn call_counts() -> BTreeMap<String, BTreeMap<usize, usize>> {
     use regent_core::gpl::ast::ExprKind;
 
-    let sources = common::walk(&common::sdk().join("OriginalQuests"), &["gpl"])
-        .into_iter()
-        .chain(common::walk(&common::workshop(), &["gpl"]));
+    let sources = common::walk(&common::sdk().join("OriginalQuests"), &["gpl"]);
 
     let mut out: BTreeMap<String, BTreeMap<usize, usize>> = BTreeMap::new();
 

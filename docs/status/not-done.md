@@ -18,7 +18,7 @@ quest's outcome. Each item points to where the docs record it. Unanswered questi
 | A refused building's unit: made before the search, it takes a handle and an agent, then is deleted | [vm.md](../gpl/vm.md#placing-a-building) |
 | Playing a set updates a marked unit's sight mid-frame, changing its sight words and its place in lists 8–15; here only the frame's sight pass does (`World::sight_pass`) | [vm.md](../gpl/vm.md#world-builtins) |
 | `SpecifyIntent` with a string intent: `World::specify_intent` answers unknown | [vm.md](../gpl/vm.md#world-builtins) |
-| A `#Name` found by descriptor name, the third source the loader tries. Script constants and the attribute registry are read; `tests/load.rs` finds no shipped or Workshop image needing the third | [mods.md](../formats/mods.md#not-done) |
+| A `#Name` found by descriptor name, the third source the loader tries. Script constants and the attribute registry are read; `tests/load.rs` finds no shipped image needing the third | [mods.md](../formats/mods.md#not-done) |
 
 ## Particles
 
