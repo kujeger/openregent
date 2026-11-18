@@ -47,14 +47,14 @@ pub struct FunctionDef<'a> {
     pub params: Vec<Param<'a>>,
     /// The `is <type>` clause. Absent on 1,583 of 1,967 corpus functions.
     pub ret: Option<Type>,
-    /// Contents of the `declare` block. Optional per the grammar; present on
-    /// every corpus definition, empty in 641.
+    /// Contents of the `declare` block. `Gplbcc.exe` requires the block,
+    /// though its grammar marks it optional; empty in 641 corpus definitions.
     pub decls: Vec<Decl<'a>>,
-    /// The `declare` keyword, if present.
+    /// The `declare` keyword.
     ///
     /// A compiled body-boundary record carries the last declared name's line,
     /// or this line if nothing is declared.
-    pub declare_at: Option<Span>,
+    pub declare_at: Span,
     pub body: Vec<Stmt<'a>>,
     pub span: Span,
 }
@@ -68,7 +68,7 @@ pub struct PrototypeDef<'a> {
     pub params: Vec<Param<'a>>,
     pub decls: Vec<Decl<'a>>,
     /// The `declare` keyword itself; see [`FunctionDef::declare_at`].
-    pub declare_at: Option<Span>,
+    pub declare_at: Span,
     pub body: Vec<Stmt<'a>>,
     pub span: Span,
 }

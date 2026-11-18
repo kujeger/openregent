@@ -626,11 +626,11 @@ mod tests {
     }
 
     /// Victory calls, each a function of the script below.
-    const SOURCE: &str = "function Won(agent a)\nbegin\n\t$DeclareVictory(a);\nend\n\
-        function WonAt(integer p, coordinate c)\nbegin\n\t$DeclareVictory(p, c);\nend\n\
-        function WonBy(integer p, agent a)\nbegin\n\t$DeclareVictory(p, a);\nend\n\
-        function Lost(integer p)\nbegin\n\t$DeclareLoss(p);\nend\n\
-        function Moved(agent a, integer p)\nbegin\n\t$SetPalace(a, p);\nend\n";
+    const SOURCE: &str = "function Won(agent a)\ndeclare\nbegin\n\t$DeclareVictory(a);\nend\n\
+        function WonAt(integer p, coordinate c)\ndeclare\nbegin\n\t$DeclareVictory(p, c);\nend\n\
+        function WonBy(integer p, agent a)\ndeclare\nbegin\n\t$DeclareVictory(p, a);\nend\n\
+        function Lost(integer p)\ndeclare\nbegin\n\t$DeclareLoss(p);\nend\n\
+        function Moved(agent a, integer p)\ndeclare\nbegin\n\t$SetPalace(a, p);\nend\n";
 
     /// A palace at cell (10, 20), an outpost at (30, 40) and a hero at
     /// (5, 6), the crown's; agents 6, 4 and 9.

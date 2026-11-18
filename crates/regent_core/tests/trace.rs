@@ -111,8 +111,8 @@ impl Host for Dispatching {
 /// VM's own.
 #[test]
 fn a_dispatch_inside_a_builtin_prints_its_prologue() {
-    let source = "function Callback(integer n) is integer\nbegin\n\treturn n * 2;\nend\n\
-                  function Outer() is integer\nbegin\n\t$Halt();\n\treturn 3;\nend\n";
+    let source = "function Callback(integer n) is integer\ndeclare\nbegin\n\treturn n * 2;\nend\n\
+                  function Outer() is integer\ndeclare\nbegin\n\t$Halt();\n\treturn 3;\nend\n";
     let bytes = emit::compile_source(source, "test.gpl").expect("compiles");
     let program = Program::load(&[bytes]).expect("loads");
     let Some(MapEntry::Script(outer)) = program.entry("Outer") else {

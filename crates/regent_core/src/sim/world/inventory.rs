@@ -855,7 +855,7 @@ mod tests {
     /// the item would loop for ever.
     #[test]
     fn a_dying_heros_items_are_deleted_one_by_one() {
-        const SOURCE: &str = "function Give(agent a)\nbegin\n\
+        const SOURCE: &str = "function Give(agent a)\ndeclare\nbegin\n\
              \t$CreateNewInventoryItem(11, a);\n\t$CreateNewInventoryItem(5, a);\nend\n\
              function Drop(agent a) is integer\ndeclare\n\tinteger w;\n\tinteger n;\nbegin\n\
              \tw = -1;\n\twhile ($AgentHasInventoryItem(w, a)) do\n\t\tbegin\n\
@@ -892,11 +892,11 @@ mod tests {
     /// key names its transfer script's third argument.
     #[test]
     fn dorgo_takes_the_magic_ball() {
-        const SOURCE: &str = "function Take(agent ball, agent dorgo) is agent\nbegin\n\
+        const SOURCE: &str = "function Take(agent ball, agent dorgo) is agent\ndeclare\nbegin\n\
              \t$CreateNewInventoryItem(\"MagicBall\", ball);\n\
              \t$TransferInventoryItem(\"MagicBall\", ball, dorgo);\n\
              \treturn $FindInventoryItem(\"MagicBall\");\nend\n\
-             function Key() is integer\nbegin\n\
+             function Key() is integer\ndeclare\nbegin\n\
              \treturn $MakeInventoryAttribute(\"MagicBall\");\nend\n";
 
         let bytes = crate::gpl::emit::compile_source(SOURCE, "test.gpl").expect("compiles");

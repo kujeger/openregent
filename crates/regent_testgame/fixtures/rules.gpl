@@ -30,11 +30,13 @@ begin
 end
 
 function InitializeGpl()
+declare
 begin
     $CreateAgent("TestRoot", "TestRoot");
 end
 
 function think(agent me, function brain)
+declare
 begin
     me's "brain" = brain;
     $NewThread(me's "brain", #TickMs, me);
@@ -58,16 +60,19 @@ begin
 end
 
 function Palace_Pre_Birth(agent palace)
+declare
 begin
     $think(palace, $keep_brain);
 end
 
 // A recruit: its stats come from its descriptor, so nothing to roll.
 function Generate_Character_Attributes(agent unit)
+declare
 begin
 end
 
 function UnitDelete(integer unit)
+declare
 begin
 end
 
@@ -91,6 +96,7 @@ begin
 end
 
 function keep_brain(agent me)
+declare
 begin
     if ($GetPlayerData(me, "gold") >= #HoardGoal)
         $DeclareVictory(me);

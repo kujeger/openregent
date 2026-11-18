@@ -92,8 +92,8 @@ fn active_argument_is_visible_inside_a_builtin() {
     }
 
     let program = compiled(
-        "function damage(agent attacker, agent defender)\nbegin\n\t$Halt();\nend\n\
-         function Damage_Shield_Hit(agent ThisAgent)\nbegin\n\t$Halt();\nend\n",
+        "function damage(agent attacker, agent defender)\ndeclare\nbegin\n\t$Halt();\nend\n\
+         function Damage_Shield_Hit(agent ThisAgent)\ndeclare\nbegin\n\t$Halt();\nend\n",
     );
     let mut vm = Vm::new(&program, RELEASE);
     let mut host = Capture {
@@ -162,9 +162,9 @@ fn mixed_arithmetic_lands_in_the_slots_type() {
         "function Mix() is float\n\
          declare\n\tinteger i;\n\tfloat f;\n\
          begin\n\ti = 3 + 0.5;\n\tf = 0.5;\n\treturn i + f;\nend\n\
-         function Floor() is integer\nbegin\n\treturn -7 / 2;\nend\n\
-         function Same() is boolean\nbegin\n\treturn 2 == 2.0;\nend\n\
-         function Wrap() is integer\nbegin\n\treturn 3000000 + 0;\nend\n",
+         function Floor() is integer\ndeclare\nbegin\n\treturn -7 / 2;\nend\n\
+         function Same() is boolean\ndeclare\nbegin\n\treturn 2 == 2.0;\nend\n\
+         function Wrap() is integer\ndeclare\nbegin\n\treturn 3000000 + 0;\nend\n",
     );
     let mut vm = Vm::new(&program, RELEASE);
     let mut host = LogHost::default();
@@ -186,8 +186,8 @@ fn mixed_arithmetic_lands_in_the_slots_type() {
 #[test]
 fn lists_equal_prefixes_and_strings_ignore_case() {
     let program = compiled(
-        "function Prefix(list a, list b) is boolean\nbegin\n\treturn a == b;\nend\n\
-         function Gold() is boolean\nbegin\n\treturn \"Gold\" == \"GOLD\";\nend\n",
+        "function Prefix(list a, list b) is boolean\ndeclare\nbegin\n\treturn a == b;\nend\n\
+         function Gold() is boolean\ndeclare\nbegin\n\treturn \"Gold\" == \"GOLD\";\nend\n",
     );
     let mut vm = Vm::new(&program, RELEASE);
     let mut host = LogHost::default();
@@ -215,7 +215,7 @@ fn lists_equal_prefixes_and_strings_ignore_case() {
 #[test]
 fn reentry_clobbers_the_running_calls_parameter() {
     let program = compiled(
-        "function Clobber(integer n) is integer\nbegin\n\
+        "function Clobber(integer n) is integer\ndeclare\nbegin\n\
          \tif (n > 0)\n\t\t$Clobber(n - 1);\n\treturn n + 10;\nend\n",
     );
 
@@ -383,9 +383,9 @@ impl Host for Threaded {
 #[test]
 fn an_assignment_to_a_busy_thread_is_pending() {
     let program = compiled(
-        "function Walk() is integer\nbegin\n\treturn 1;\nend\n\
-         function Rest() is integer\nbegin\n\treturn 2;\nend\n\
-         function Swap(agent a) is boolean\nbegin\n\
+        "function Walk() is integer\ndeclare\nbegin\n\treturn 1;\nend\n\
+         function Rest() is integer\ndeclare\nbegin\n\treturn 2;\nend\n\
+         function Swap(agent a) is boolean\ndeclare\nbegin\n\
          \ta's \"script\" = $LookupFunction(\"Rest\");\n\
          \treturn a's \"script\" == $LookupFunction(\"Rest\");\nend\n",
     );
@@ -422,9 +422,9 @@ fn an_assignment_to_a_busy_thread_is_pending() {
 #[test]
 fn a_throwing_assignment_keeps_the_pending_function() {
     let program = compiled(
-        "function Walk() is integer\nbegin\n\treturn 1;\nend\n\
-         function Rest() is integer\nbegin\n\treturn 2;\nend\n\
-         function Swap(agent a) is boolean\nbegin\n\
+        "function Walk() is integer\ndeclare\nbegin\n\treturn 1;\nend\n\
+         function Rest() is integer\ndeclare\nbegin\n\treturn 2;\nend\n\
+         function Swap(agent a) is boolean\ndeclare\nbegin\n\
          \ta's \"script\" = $LookupFunction(\"Rest\");\n\
          \ta's \"script\" = 5;\n\
          \treturn true;\nend\n",
@@ -454,8 +454,8 @@ fn a_throwing_assignment_keeps_the_pending_function() {
 /// order: another program refuses it, even one of the same shape.
 #[test]
 fn a_save_refuses_another_program() {
-    let walk = compiled("function Walk() is integer\nbegin\n\treturn 1;\nend\n");
-    let rest = compiled("function Rest() is integer\nbegin\n\treturn 1;\nend\n");
+    let walk = compiled("function Walk() is integer\ndeclare\nbegin\n\treturn 1;\nend\n");
+    let rest = compiled("function Rest() is integer\ndeclare\nbegin\n\treturn 1;\nend\n");
     let saved = Vm::new(&walk, RELEASE).saved();
 
     assert!(Vm::new(&walk, RELEASE).restore(saved.clone()).is_ok());
@@ -467,7 +467,7 @@ fn a_save_refuses_another_program() {
 /// a handle or a top slot past the objects.
 #[test]
 fn a_save_of_another_shape_is_refused() {
-    let walk = compiled("function Walk() is integer\nbegin\n\treturn 1;\nend\n");
+    let walk = compiled("function Walk() is integer\ndeclare\nbegin\n\treturn 1;\nend\n");
     let mut vm = Vm::new(&walk, RELEASE);
 
     call(&mut vm, &mut LogHost::default(), "Walk", &[]);
@@ -531,7 +531,7 @@ fn a_reset_string_keeps_its_text() {
 #[test]
 fn a_temporary_keeps_the_type_of_its_first_run() {
     let program = compiled(
-        "function First(list l) is integer\nbegin\n\treturn $ListMember(l, 1) + 1;\nend\n",
+        "function First(list l) is integer\ndeclare\nbegin\n\treturn $ListMember(l, 1) + 1;\nend\n",
     );
     let mut vm = Vm::new(&program, RELEASE);
     let mut host = LogHost::default();
@@ -638,8 +638,8 @@ fn return_inside_a_loop_ends_the_function() {
 #[test]
 fn an_if_on_an_empty_slot_throws() {
     let program = compiled(
-        "function Nothing()\nbegin\nend\n\
-         function Test() is integer\nbegin\n\tif ($Nothing() == 5)\n\t\treturn 1;\n\treturn 2;\nend\n",
+        "function Nothing()\ndeclare\nbegin\nend\n\
+         function Test() is integer\ndeclare\nbegin\n\tif ($Nothing() == 5)\n\t\treturn 1;\n\treturn 2;\nend\n",
     );
     let mut host = LogHost::default();
 
@@ -688,11 +688,11 @@ fn a_float_never_becomes_a_string() {
 #[test]
 fn debug_checks_argument_counts_and_types() {
     let program = compiled(
-        "function Takes(integer a) is integer\nbegin\n\treturn a;\nend\n\
-         function None() is integer\nbegin\n\treturn 7;\nend\n\
-         function Extra() is integer\nbegin\n\treturn $Takes(1, 2);\nend\n\
-         function Mistyped() is integer\nbegin\n\treturn $Takes(2.5);\nend\n\
-         function ToNone() is integer\nbegin\n\treturn $None(1);\nend\n",
+        "function Takes(integer a) is integer\ndeclare\nbegin\n\treturn a;\nend\n\
+         function None() is integer\ndeclare\nbegin\n\treturn 7;\nend\n\
+         function Extra() is integer\ndeclare\nbegin\n\treturn $Takes(1, 2);\nend\n\
+         function Mistyped() is integer\ndeclare\nbegin\n\treturn $Takes(2.5);\nend\n\
+         function ToNone() is integer\ndeclare\nbegin\n\treturn $None(1);\nend\n",
     );
     let mut host = LogHost::default();
 
@@ -727,8 +727,8 @@ fn debug_checks_argument_counts_and_types() {
 #[test]
 fn too_few_arguments_read_past_the_vector() {
     let program = compiled(
-        "function Takes(integer a) is integer\nbegin\n\treturn a;\nend\n\
-         function Short() is integer\nbegin\n\treturn $Takes();\nend\n",
+        "function Takes(integer a) is integer\ndeclare\nbegin\n\treturn a;\nend\n\
+         function Short() is integer\ndeclare\nbegin\n\treturn $Takes();\nend\n",
     );
     let def = definition(&program, "Short");
 
@@ -748,7 +748,8 @@ fn too_few_arguments_read_past_the_vector() {
 /// return type has no class; run, it is not callable.
 #[test]
 fn a_handle_past_the_definitions_crashes() {
-    let program = compiled("function Via(function f) is integer\nbegin\n\treturn (f)();\nend\n");
+    let program =
+        compiled("function Via(function f) is integer\ndeclare\nbegin\n\treturn (f)();\nend\n");
     let past = u32::try_from(program.definitions().len()).expect("few definitions");
     let mut vm = Vm::new(&program, RELEASE);
     let via = definition(&program, "Via");
@@ -774,8 +775,8 @@ fn a_handle_past_the_definitions_crashes() {
 fn calling_a_constant_through_a_function_value_crashes() {
     let program = compiled(
         "expression #K 5\n\
-         function Five() is integer\nbegin\n\treturn 5;\nend\n\
-         function Via(function f) is integer\nbegin\n\treturn (f)();\nend\n",
+         function Five() is integer\ndeclare\nbegin\n\treturn 5;\nend\n\
+         function Via(function f) is integer\ndeclare\nbegin\n\treturn (f)();\nend\n",
     );
     let via = definition(&program, "Via");
     let mut vm = Vm::new(&program, RELEASE);
@@ -845,8 +846,8 @@ fn an_integer_divide_by_half_traps() {
 #[test]
 fn a_script_error_reports_the_call_sequence() {
     let program = compiled(
-        "function Inner(integer n) is integer\nbegin\n\treturn n / 0;\nend\n\
-         function Outer() is integer\nbegin\n\treturn $Inner(5);\nend\n",
+        "function Inner(integer n) is integer\ndeclare\nbegin\n\treturn n / 0;\nend\n\
+         function Outer() is integer\ndeclare\nbegin\n\treturn $Inner(5);\nend\n",
     );
     let mut vm = Vm::new(&program, RELEASE);
     let mut host = LogHost::default();
@@ -863,7 +864,7 @@ fn a_script_error_reports_the_call_sequence() {
     assert_eq!(
         run.report.as_deref(),
         Some(
-            "Script error:\n Call Sequence was:\r\n$Outer( 0 )\r\n    $Inner( 0, 5 ) - line 3 : Divide by zero error.."
+            "Script error:\n Call Sequence was:\r\n$Outer( 0 )\r\n    $Inner( 0, 5 ) - line 4 : Divide by zero error.."
         )
     );
 }
@@ -875,7 +876,7 @@ fn an_unending_run_names_its_stack() {
     let program = compiled(
         "function Spin() is integer\ndeclare\n\tinteger i;\nbegin\n\
          \twhile (i < 1) do\n\t\tbegin\n\t\t\ti = 0;\n\t\tend\n\treturn i;\nend\n\
-         function Outer() is integer\nbegin\n\treturn $Spin();\nend\n",
+         function Outer() is integer\ndeclare\nbegin\n\treturn $Spin();\nend\n",
     );
     let mut vm = Vm::new(&program, RELEASE);
     let mut host = LogHost::default();
@@ -889,8 +890,8 @@ fn an_unending_run_names_its_stack() {
     assert_eq!(crash, Some(Crash::Unending));
     assert_eq!(stack.len(), 2, "{stack:?}");
     assert_eq!(stack[0].0, "Spin");
-    assert!(matches!(stack[0].1, 5..=7), "{stack:?}");
-    assert_eq!(stack[1], ("Outer", 13));
+    assert!(matches!(stack[0].1, 6..=8), "{stack:?}");
+    assert_eq!(stack[1], ("Outer", 14));
 }
 
 /// The trace prints each executed record: a tab per call on the depth
@@ -898,7 +899,8 @@ fn an_unending_run_names_its_stack() {
 /// token and the operands' text.
 #[test]
 fn the_trace_prints_the_engines_line() {
-    let program = compiled("function Add(integer a) is integer\nbegin\n\treturn a + 1;\nend\n");
+    let program =
+        compiled("function Add(integer a) is integer\ndeclare\nbegin\n\treturn a + 1;\nend\n");
     let lines = Shared::new(Vec::new());
     let sink = lines.clone();
     let mut vm = Vm::new(&program, RELEASE);
@@ -919,7 +921,7 @@ fn the_trace_prints_the_engines_line() {
         "one line per executed record"
     );
     assert!(
-        lines.contains(&"\t$Add(), L#3: op: +, lhs: 4, rhs: 1, result: 5".to_owned()),
+        lines.contains(&"\t$Add(), L#4: op: +, lhs: 4, rhs: 1, result: 5".to_owned()),
         "{lines:#?}"
     );
 }
@@ -930,7 +932,7 @@ fn the_trace_prints_the_engines_line() {
 /// untyped threads (`Tower_Birth`, `GplKickoff`).
 #[test]
 fn a_dispatch_returns_into_an_integer_slot() {
-    let program = compiled("function Plain()\nbegin\nend\n");
+    let program = compiled("function Plain()\ndeclare\nbegin\nend\n");
     let def = definition(&program, "Plain");
 
     for (catcher, text, result) in [
@@ -963,8 +965,8 @@ fn a_dispatch_returns_into_an_integer_slot() {
 #[test]
 fn the_trace_indents_the_runs_own_function_once() {
     let program = compiled(
-        "function Inner(integer n) is integer\nbegin\n\treturn n + 1;\nend\n\
-         function Outer() is integer\nbegin\n\treturn $Inner(4);\nend\n",
+        "function Inner(integer n) is integer\ndeclare\nbegin\n\treturn n + 1;\nend\n\
+         function Outer() is integer\ndeclare\nbegin\n\treturn $Inner(4);\nend\n",
     );
     let lines = Shared::new(Vec::new());
     let sink = lines.clone();
@@ -979,13 +981,13 @@ fn the_trace_indents_the_runs_own_function_once() {
     let lines = lines.borrow();
 
     assert!(
-        lines.contains(&"\t\t$Inner(), L#3: op: +, lhs: 4, rhs: 1, result: 5".to_owned()),
+        lines.contains(&"\t\t$Inner(), L#4: op: +, lhs: 4, rhs: 1, result: 5".to_owned()),
         "{lines:#?}"
     );
     assert!(
         lines
             .iter()
-            .any(|l| l.starts_with("\t$Outer(), L#7: op: call,")),
+            .any(|l| l.starts_with("\t$Outer(), L#9: op: call,")),
         "{lines:#?}"
     );
 }
@@ -1073,15 +1075,15 @@ fn a_dispatch_traces_as_the_engine_logged_it() {
 #[test]
 fn the_native_builtins_compute_what_the_binary_does() {
     let program = compiled(
-        "function Root(float x) is float\nbegin\n\treturn $Sqrt(x);\nend\n\
-         function Far(coordinate a, coordinate b) is integer\nbegin\n\treturn $DistanceBetweenCoords(a, b);\nend\n\
-         function Both(list a, list b) is list\nbegin\n\treturn $AddLists(a, b);\nend\n\
-         function Wrap(list a, integer b) is list\nbegin\n\treturn $Concatenate(a, b);\nend\n\
-         function Drop(list a, integer n) is list\nbegin\n\t$RemoveListMember(a, n);\n\treturn a;\nend\n\
-         function Draw(integer n) is integer\nbegin\n\treturn $RandomNumber(n);\nend\n\
-         function Valid() is boolean\nbegin\n\treturn $ValidFunction($LookupFunction(\"Root\"));\nend\n\
-         function Nobody() is agent\nbegin\n\treturn $NullAgent();\nend\n\
-         function Say(integer mark) is integer\nbegin\n\t$DebugOut(mark, \"at\", 1.5);\n\treturn 0;\nend\n",
+        "function Root(float x) is float\ndeclare\nbegin\n\treturn $Sqrt(x);\nend\n\
+         function Far(coordinate a, coordinate b) is integer\ndeclare\nbegin\n\treturn $DistanceBetweenCoords(a, b);\nend\n\
+         function Both(list a, list b) is list\ndeclare\nbegin\n\treturn $AddLists(a, b);\nend\n\
+         function Wrap(list a, integer b) is list\ndeclare\nbegin\n\treturn $Concatenate(a, b);\nend\n\
+         function Drop(list a, integer n) is list\ndeclare\nbegin\n\t$RemoveListMember(a, n);\n\treturn a;\nend\n\
+         function Draw(integer n) is integer\ndeclare\nbegin\n\treturn $RandomNumber(n);\nend\n\
+         function Valid() is boolean\ndeclare\nbegin\n\treturn $ValidFunction($LookupFunction(\"Root\"));\nend\n\
+         function Nobody() is agent\ndeclare\nbegin\n\treturn $NullAgent();\nend\n\
+         function Say(integer mark) is integer\ndeclare\nbegin\n\t$DebugOut(mark, \"at\", 1.5);\n\treturn 0;\nend\n",
     );
     let mut vm = Vm::new(&program, RELEASE);
     let mut host = LogHost::default();
@@ -1190,7 +1192,7 @@ fn the_native_builtins_compute_what_the_binary_does() {
 #[test]
 fn distance_between_coords_wraps_the_sum() {
     let program = compiled(
-        "function Far(coordinate a, coordinate b) is integer\nbegin\n\treturn $DistanceBetweenCoords(a, b);\nend\n",
+        "function Far(coordinate a, coordinate b) is integer\ndeclare\nbegin\n\treturn $DistanceBetweenCoords(a, b);\nend\n",
     );
     let mut vm = Vm::new(&program, RELEASE);
     let mut host = LogHost::default();
@@ -1248,9 +1250,9 @@ impl Host for Dispatching {
 #[test]
 fn a_builtin_can_dispatch_a_script_at_once() {
     let program = compiled(
-        "function Callback(integer n) is integer\nbegin\n\treturn n / 0;\nend\n\
-         function Fine(integer n) is integer\nbegin\n\treturn n * 2;\nend\n\
-         function Outer() is integer\nbegin\n\t$Halt();\n\treturn 3;\nend\n",
+        "function Callback(integer n) is integer\ndeclare\nbegin\n\treturn n / 0;\nend\n\
+         function Fine(integer n) is integer\ndeclare\nbegin\n\treturn n * 2;\nend\n\
+         function Outer() is integer\ndeclare\nbegin\n\t$Halt();\n\treturn 3;\nend\n",
     );
     let mut vm = Vm::new(&program, RELEASE);
 

@@ -326,17 +326,20 @@ mod tests {
 
     const SCRIPTS: &str = r#"
 Function Spawn (agent ThisAgent)
+Declare
 Begin
 	$SpawnUnit (ThisAgent, ThisAgent's "Spawn_Type");
 End
 
 Function Fall (agent ThisAgent)
+Declare
 Begin
 	$SpawnUnit (ThisAgent, ThisAgent's "Special_Spawn_Type");
 	$SpawnUnit (ThisAgent, "Ghost");
 End
 
 Function Pack (agent ThisAgent)
+Declare
 Begin
 	$SpawnUnit (ThisAgent, "Wolf");
 End
@@ -355,11 +358,13 @@ Begin
 End
 
 Function Tower_One (agent ThisAgent)
+Declare
 Begin
 	$SpawnUnit (ThisAgent, "Imp");
 End
 
 Function Tower_Two (agent ThisAgent)
+Declare
 Begin
 	$SpawnUnit (ThisAgent, "Fiend");
 End

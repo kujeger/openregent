@@ -329,25 +329,21 @@ impl<'a> Parser<'a> {
         Ok(params)
     }
 
-    /// The `declare` block. Optional per the grammar; present on every corpus
-    /// definition, empty in 641.
+    /// The `declare` block. Required: `Gplbcc.exe` refuses a definition
+    /// without one ("missing DECLARE"), though its grammar marks it optional.
+    /// Empty in 641 corpus definitions.
     ///
     /// Also returns the keyword's span: with nothing declared, the compiled
     /// body-boundary record carries its line. See `gpl::emit::prologue`.
-    fn declaration_block(&mut self) -> Rule<(Vec<Decl<'a>>, Option<Span>)> {
-        let at = self.span();
-
-        if !self.eat_kw(Keyword::Declare) {
-            return Ok((Vec::new(), None));
-        }
-
+    fn declaration_block(&mut self) -> Rule<(Vec<Decl<'a>>, Span)> {
+        let at = self.expect_kw(Keyword::Declare, "before `begin`")?;
         let mut decls = Vec::new();
 
         while self.peek().is_some_and(is_type_keyword) {
             decls.push(self.compound_declaration()?);
         }
 
-        Ok((decls, Some(at)))
+        Ok((decls, at))
     }
 
     /// `type name ( ',' name )* ';'`
@@ -1181,6 +1177,24 @@ mod tests {
         let p = parse("function F()\ndeclare\nbegin\n x = !a;\nend");
 
         assert!(!p.is_ok());
+    }
+
+    /// `Gplbcc.exe` refuses a definition with no `declare`: `line 2:
+    /// syntax error at "begin" missing DECLARE`, function and prototype alike.
+    #[test]
+    fn a_definition_needs_its_declare() {
+        for src in [
+            "function F() is integer\nbegin\nend",
+            "prototype P(integer a)\nbegin\nend",
+        ] {
+            let p = parse(src);
+
+            assert!(
+                p.errors.iter().any(|e| e.message.contains("declare")),
+                "{src}: {:?}",
+                p.errors
+            );
+        }
     }
 
     #[test]

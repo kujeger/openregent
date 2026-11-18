@@ -552,9 +552,9 @@ fn prologue_in<'a>(
         }
     }
 
-    let boundary = f.declare_at.as_ref().map(|at| text.line(at.start));
+    let boundary = text.line(f.declare_at.start);
 
-    out.push(blank(Op::Body, "", last.or(boundary).unwrap_or(line)));
+    out.push(blank(Op::Body, "", last.unwrap_or(boundary)));
     out
 }
 
@@ -1617,8 +1617,8 @@ mod tests {
     #[test]
     fn a_last_prototype_takes_the_line_past_the_end() {
         for (src, line) in [
-            ("prototype P()\nbegin\nend", 3),
-            ("prototype P()\nbegin\nend\r\n", 4),
+            ("prototype P()\ndeclare\nbegin\nend", 4),
+            ("prototype P()\ndeclare\nbegin\nend\r\n", 5),
         ] {
             let parsed = crate::gpl::parse(src).script;
             let out = script(&parsed, src, "f.gpl").expect("emits");
