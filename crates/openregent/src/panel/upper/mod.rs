@@ -210,12 +210,9 @@ impl Chosen {
             .filter(|_| has_bar)
             .map(|(now, most)| Health::of(now, most));
 
-        let panel = unit.as_ref().and_then(|u| {
-            u.desc
-                .character()
-                .and_then(|c| c.dialog_id())
-                .or_else(|| u.desc.building()?.dialog_id())
-        });
+        let panel = unit
+            .as_ref()
+            .and_then(|u| details::panel_of(&u.desc, piece));
         // A hero's own rule: `APb5` once dismissed.
         let panel = match &details {
             Some(Details::Hero(h)) => Some(h.panel),

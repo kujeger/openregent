@@ -1010,6 +1010,36 @@ fn omitted_effects_have_rows() {
     }
 }
 
+/// A cultist turned bear keeps the hero panel its `ChangeUnitType`
+/// kept in `APU:5`; a bear of its own has the monster panel.
+#[test]
+fn a_bear_that_was_a_cultist_keeps_the_hero_panel() {
+    let library = common::library();
+    let catalogue = catalogue_of(library);
+    let bear = Unit::descriptor(&catalogue, FourCc(*b"BVF1"))
+        .expect("the record")
+        .expect("it parses");
+    let cultist = world::Piece {
+        code: FourCc(*b"BVF1"),
+        attributes: [(
+            world::retype::DIALOG_KEPT.packed(),
+            details::HERO_PANEL.word().cast_signed(),
+        )]
+        .into_iter()
+        .collect(),
+        ..world::Piece::default()
+    };
+
+    assert_eq!(
+        details::panel_of(&bear, Some(&cultist)),
+        Some(details::HERO_PANEL)
+    );
+    assert_eq!(
+        details::panel_of(&bear, Some(&world::Piece::default())),
+        Some(details::MONSTER_PANEL)
+    );
+}
+
 /// A coffer reads as `GMTX` 76 or 77; an empty tower's says nothing.
 #[test]
 fn a_coffer_says_what_it_holds() {

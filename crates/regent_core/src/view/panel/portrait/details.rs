@@ -329,7 +329,7 @@ impl Details {
     pub fn of(catalogue: &Catalogue<'_>, world: &World, agent: u32, local: u32) -> Option<Details> {
         let piece = world.piece(agent)?;
         let unit = Unit::descriptor(catalogue, piece.code)?.ok()?;
-        let dialog = dialog(&unit)?;
+        let dialog = panel_of(&unit, Some(piece))?;
         match dialog {
             HERO_PANEL => Some(Details::Hero(Hero::of(
                 catalogue,
@@ -501,8 +501,7 @@ impl Hero {
 /// dismissed, or not `local`'s and its type (`APU:6`, else its own)
 /// `CanUse` `HumanPlayer`; else [`HERO_PANEL`].
 ///
-/// Not modelled: `APU:5`, a retyped unit's kept `DialogID`, which the
-/// player's own pieces take first.
+/// A retyped unit's kept `DialogID` ([`panel_of`]) is taken before this.
 fn panel(
     catalogue: &Catalogue<'_>,
     unit: &desc::Unit<'_>,
@@ -834,6 +833,22 @@ fn with_action<T>(
     let part = Part::parse(catalogue.record(b"DACT", at)?.data).ok()?;
 
     Action::parse(&part).ok().map(|a| f(&a))
+}
+
+/// The panel of `piece` (none: not yet known), of descriptor `unit`, unless another
+/// player's ([`Foreign`]): a retyped unit's kept `DialogID`, `APU:5`,
+/// else its descriptor's. So a cultist turned bear, or a hero who drank
+/// the Shapeshift Potion, keeps the hero panel with the new portrait.
+///
+/// **Binary**: the selection's panel takes `APU:5` first, for the
+/// local player's units and for any whose original type is not the
+/// human player's.
+#[must_use]
+pub fn panel_of(unit: &desc::Unit<'_>, piece: Option<&Piece>) -> Option<FourCc> {
+    match piece.map_or(0, |p| read(p, world::retype::DIALOG_KEPT, 0)) {
+        0 => dialog(unit),
+        kept => Some(FourCc::from_word(kept.cast_unsigned())),
+    }
 }
 
 /// The unit's panel: its descriptor's `DialogID`.

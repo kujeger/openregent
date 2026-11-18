@@ -95,6 +95,14 @@ Key 6 is a control's id, the number a controller asks for; key 13 is the
 ids the stats window's controller pushes (8011, 8005, 8006, 8010) are key-6
 values on the panels it drives.
 
+**Binary**: a unit's panel, unless another player's (below), is its
+`APU:5`, the `DialogID` `ChangeUnitType` kept, when set; else its
+descriptor's. So a cultist turned Red_Bear (`Change_Shape_Begin`), or a
+hero turned Dryad, Medusa or Minotaur (`Shapeshift_Potion_Effect`),
+keeps `AP20`, not the new type's `AP97`; the portrait is the new type's
+(**Game**). `details::panel_of`,
+`a_bear_that_was_a_cultist_keeps_the_hero_panel`.
+
 `AP20` is the hero panel, 202×245 at (0, 182):
 
 | Control | At | Holds |
