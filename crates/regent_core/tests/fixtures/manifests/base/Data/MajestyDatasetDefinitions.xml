@@ -1,0 +1,12 @@
+<Majesty>
+	<DataConfiguration name="Majesty">
+		<Dataset>
+			<Load>
+				<CAM>base.cam</CAM>
+				<GPL>base.bcd</GPL>
+				<Constants>chart.rgs</Constants>
+				<Strings>InterfaceStrings.xml</Strings>
+			</Load>
+		</Dataset>
+	</DataConfiguration>
+</Majesty>

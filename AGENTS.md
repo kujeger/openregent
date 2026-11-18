@@ -59,7 +59,8 @@ Infrastructure, such as running without an install, needs no toggle.
 Put the number in the library with a doc comment and a test that checks it
 against the file it came from — `regent_core::data::settings` is the pattern. A
 constant read from an executable gets no test against it: tests never read
-`.exe` files. A finding nothing uses goes in its document, not in dead code.
+`.exe` files. They may run `Gplbcc.exe` as a black box (`gplbcc_diff.rs`,
+under `wine` off Windows), feeding it made-up projects. A finding nothing uses goes in its document, not in dead code.
 
 Do not treat the markdown documents or commit messages as a diary.
 They are technical documents: what the original does, and how openregent

@@ -1,0 +1,11 @@
+// A do ... while loop.
+
+function ZqA(integer x) is integer
+declare
+	integer n;
+begin
+	do
+		n++;
+	while (n < x);
+	return n;
+end

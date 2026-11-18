@@ -1,0 +1,11 @@
+// A break outside a foreach: it names its loop, and a while is none.
+
+function ZqA(integer x) is integer
+declare
+	integer n;
+begin
+	while (n < x) do
+		if (n > 1)
+			break;
+	return 0;
+end

@@ -1,0 +1,74 @@
+<!-- The made-up mod's descriptions (tests/fixtures/archives/mod.rs). Invented. -->
+<Majesty>
+  <!-- A guild only this file defines: the mod's BDEP names it. -->
+  <Description type="Unit" subType="Building" ID="ZMG1" Name="Crypt">
+    <Engine>
+      <CanUse value="HumanPlayer"/>
+    </Engine>
+    <Game>
+      <Cost value="700"/>
+      <MaxHP value="250"/>
+      <Flags value="IsGuild"/>
+      <Produces>
+        <Unit ID="Shade"/>
+      </Produces>
+    </Game>
+  </Description>
+
+  <!-- Its hero: the base Sentry's set ids, the mod's own pictures. -->
+  <Description type="Unit" subType="Character" ID="ZMH1" Name="Shade">
+    <Engine>
+      <CanUse value="HumanPlayer"/>
+      <ImageIDBase value="ZMA4"/>
+    </Engine>
+    <Game>
+      <MaxHP value="28"/>
+      <Strength value="8"/>
+      <Attack value="35"/>
+    </Game>
+  </Description>
+
+  <!-- A base unit replaced whole: no SightRange here, so zero. -->
+  <Description type="Unit" subType="Character" ID="ZBS1" Name="Sentry">
+    <Engine>
+      <CanUse value="HumanPlayer"/>
+      <ImageIDBase value="ZBA1"/>
+    </Engine>
+    <Game>
+      <MaxHP value="24"/>
+      <Strength value="11"/>
+      <Attack value="40"/>
+    </Game>
+  </Description>
+
+  <!-- A base building upgrading, by name, to one defined further down. -->
+  <Description type="Unit" subType="Building" ID="ZBT1" Name="Post">
+    <Engine>
+      <CanUse value="HumanPlayer"/>
+    </Engine>
+    <Game>
+      <Cost value="60"/>
+      <MaxHP value="90"/>
+      <UpgradeTo value="Post2"/>
+    </Game>
+  </Description>
+
+  <Description type="Unit" subType="Building" ID="ZMT2" Name="Post2">
+    <Engine>
+      <CanUse value="HumanPlayer"/>
+    </Engine>
+    <Game>
+      <MaxHP value="140"/>
+      <UpgradeFrom value="Post"/>
+    </Game>
+  </Description>
+
+  <!-- A sound: one phase, playing the mod's own WAVE. -->
+  <Description type="Sound" subType="Standard" ID="ZMS1" Name="ShadeSound">
+    <Engine>
+      <Phase ID="ZMP1">
+        <Wave value="ZMW1"/>
+      </Phase>
+    </Engine>
+  </Description>
+</Majesty>

@@ -1,0 +1,9 @@
+// A bare call: a script's function is $ZqA, so ZqA is an undeclared name.
+
+function ZqA(integer x) is integer
+declare
+	integer n;
+begin
+	n = ZqA(1);
+	return n;
+end

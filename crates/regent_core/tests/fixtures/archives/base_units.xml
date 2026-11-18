@@ -1,0 +1,50 @@
+<!-- The made-up base game's units (tests/fixtures/archives/mod.rs). Invented. -->
+<Majesty>
+  <Description type="Unit" subType="Building" ID="ZBP1" Name="Hall1">
+    <Game>
+      <MaxHP value="300"/>
+      <UpgradeTo value="Hall2"/>
+    </Game>
+  </Description>
+
+  <Description type="Unit" subType="Building" ID="ZBP2" Name="Hall2">
+    <Game>
+      <MaxHP value="400"/>
+      <UpgradeFrom value="Hall1"/>
+    </Game>
+  </Description>
+
+  <Description type="Unit" subType="Building" ID="ZBG1" Name="Lodge">
+    <Engine>
+      <CanUse value="HumanPlayer"/>
+    </Engine>
+    <Game>
+      <Cost value="150"/>
+      <MaxHP value="120"/>
+      <Flags value="IsGuild"/>
+    </Game>
+  </Description>
+
+  <Description type="Unit" subType="Building" ID="ZBT1" Name="Post">
+    <Engine>
+      <CanUse value="HumanPlayer"/>
+    </Engine>
+    <Game>
+      <Cost value="60"/>
+      <MaxHP value="90"/>
+    </Game>
+  </Description>
+
+  <Description type="Unit" subType="Character" ID="ZBS1" Name="Sentry">
+    <Engine>
+      <CanUse value="HumanPlayer"/>
+      <ImageIDBase value="ZBA1"/>
+    </Engine>
+    <Game>
+      <MaxHP value="16"/>
+      <SightRange value="7"/>
+      <Strength value="9"/>
+      <Attack value="30"/>
+    </Game>
+  </Description>
+</Majesty>

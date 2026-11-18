@@ -1,0 +1,12 @@
+<Majesty>
+	<Quest id="{5A1C0D11-7E22-4B30-9F41-0A6B3C5D7E12}">
+		<Name>TRAIL_RUN</Name>
+		<DataConfiguration>
+			<Dataset base="Majesty">
+				<Load>
+					<Template>trail.q</Template>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Quest>
+</Majesty>

@@ -1,0 +1,30 @@
+<Majesty>
+	<Description type="Unit" subType="Building" ID="ZQA1" Name="Hall">
+		<Engine>
+			<Info value="BlockGround"/>
+		</Engine>
+		<Game>
+			<Cost value="100"/>
+			<MaxHP value="100"/>
+			<SightRange value="5"/>
+		</Game>
+	</Description>
+	<Description type="Unit" subType="Character" ID="ZQC1" Name="Scout">
+		<Engine>
+			<Info value="BlockGround"/>
+		</Engine>
+		<Game>
+			<MaxHP value="20"/>
+			<SightRange value="7"/>
+		</Game>
+	</Description>
+	<Description type="Unit" subType="Character" ID="ZQC2" Name="Pikeman">
+		<Engine>
+			<Info value="BlockGround"/>
+		</Engine>
+		<Game>
+			<MaxHP value="30"/>
+			<SightRange value="6"/>
+		</Game>
+	</Description>
+</Majesty>

@@ -1,0 +1,53 @@
+// Forms the shipped scripts never use: break, continue, a return inside a
+// foreach, computed and chained attribute names, `mod` as a name, and a
+// negative constant.
+
+expression #ZQ_NEG -2
+
+function ZqSum(list l) is integer
+declare
+	integer n;
+	integer total;
+begin
+	foreach n in l do
+	begin
+		if (n == 3)
+			continue;
+		if (n == 7)
+			break;
+		total = total + n;
+	end
+	return total;
+end
+
+function ZqHas(list l) is boolean
+declare
+	integer n;
+begin
+	foreach n in l do
+		if (n > #ZQ_NEG)
+			return True;
+	return False;
+end
+
+function ZqCalc(list l) is integer
+declare
+	integer n;
+begin
+	foreach n in l do
+		if (n > 1)
+			return $ZqSum(l);
+	return 0;
+end
+
+function ZqReach(agent who, integer tier, string key) is integer
+declare
+	agent mod;
+	integer total;
+begin
+	mod = who's "ZqHome";
+	total = mod's key;
+	total = total + mod's ("ZqTier" + tier);
+	total = total + who's "ZqHome"'s "ZqGold";
+	return total;
+end

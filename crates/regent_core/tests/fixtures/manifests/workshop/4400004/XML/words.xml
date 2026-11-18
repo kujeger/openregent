@@ -1,0 +1,6 @@
+<Majesty>
+	<Language id="en_US">
+		<Text id="IDTXT_QUEST_WIN_MESSAGE">[fcolor:00ff00]Peak taken[/color], and the hall stands.</Text>
+		<Text id="IDTXT_QUEST_LOSS_MESSAGE">The hall is dark. [bcolor:202020]Nothing answers.[/color]</Text>
+	</Language>
+</Majesty>

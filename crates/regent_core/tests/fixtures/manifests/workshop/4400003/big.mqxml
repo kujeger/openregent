@@ -1,0 +1,17 @@
+<Majesty>
+	<Quest id="{5A1C0D11-7E22-4B30-9F41-0A6B3C5D7E11}">
+		<Name>BIG_TRAIL</Name>
+		<DisplayName lang="en_US">Big Trail</DisplayName>
+		<DataConfiguration>
+			<Dataset base="Majesty">
+				<Load>
+					<GPL>
+						<Target>Data\big.bcd</Target>
+						<Source>Source\big.gpl</Source>
+					</GPL>
+					<Template>big.q</Template>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Quest>
+</Majesty>

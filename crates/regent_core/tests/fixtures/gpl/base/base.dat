@@ -1,0 +1,15 @@
+[ZqTower]
+{ZqKeep
+	(label ZqTowerText)
+	(open True)
+	(gold 25)
+}
+[end]
+
+[zqbarn]
+{ZqKeep
+	(Gold 5)
+	(gold 7)
+	(label ZqBarnText)
+}
+[end]

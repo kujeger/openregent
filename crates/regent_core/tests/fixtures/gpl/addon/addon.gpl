@@ -1,0 +1,18 @@
+// An add-on over base.gpl: it redefines ZqGold, calls ZqTax and a builtin,
+// holds ZqTax as a value, and names #ZQ_TEXT_ID, which no script defines.
+
+function ZqGold() is integer
+declare
+begin
+	return #ZQ_GOLD + 10;
+end
+
+function ZqPay(integer gold) is integer
+declare
+	function f;
+	string label;
+begin
+	f = $ZqTax;
+	label = #ZQ_TEXT_ID;
+	return $ZqTax(gold) + $ZqGold() + $RandomNumber(gold);
+end

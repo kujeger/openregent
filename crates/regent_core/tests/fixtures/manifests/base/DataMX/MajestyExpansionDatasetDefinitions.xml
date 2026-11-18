@@ -1,0 +1,14 @@
+<Majesty>
+	<DataConfiguration name="MajestyExpansion">
+		<Dataset base="Majesty">
+			<Load>
+				<CAM>mx.cam</CAM>
+				<GPL>mx.bcd</GPL>
+				<Constants>mx.rgs</Constants>
+			</Load>
+			<Unload>
+				<Constants>$(MajestyDataPath)/chart.rgs</Constants>
+			</Unload>
+		</Dataset>
+	</DataConfiguration>
+</Majesty>

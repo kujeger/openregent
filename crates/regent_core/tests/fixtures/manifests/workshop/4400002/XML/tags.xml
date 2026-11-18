@@ -1,0 +1,9 @@
+<Majesty>
+	<Language id="en_US">
+		<Text id="ZQ_TAG_NEST">[color:ff0000]red [color:00ff00]green[/color] red again[/color] plain</Text>
+		<Text id="ZQ_TAG_EQUALS">[color=7070ff]blue[/color] and [fcolor:light_red]rose[/fcolor]</Text>
+		<Text id="ZQ_TAG_UNCLOSED">[color:00ffff]cyan to the end</Text>
+		<Text id="ZQ_TAG_NOBRACKET">before [color:ff00ff after</Text>
+		<Text id="ZQ_TAG_CASE">[COLOR:FF8800]orange[/COLOR] [BColor:101010]shade[/bcolor]</Text>
+	</Language>
+</Majesty>

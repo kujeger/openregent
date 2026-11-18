@@ -1,0 +1,39 @@
+<Majesty>
+	<Mod id="{5A1C0D11-7E22-4B30-9F41-0A6B3C5D7E02}">
+		<Name>EchoHall</Name>
+		<DataConfiguration>
+			<Dataset base="Any">
+				<Load>
+					<Descriptions>XML\echo.xml</Descriptions>
+					<Strings>XML\echo_text.xml</Strings>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+		<DisplayName lang="en_US">Echo Hall</DisplayName>
+	</Mod>
+	<Mod id="{5A1C0D11-7E22-4B30-9F41-0A6B3C5D7E03}">
+		<Name>DeepKeep</Name>
+		<DisplayName lang="en_US">Deep Keep</DisplayName>
+		<DataConfiguration>
+			<Dataset base="MajestyExpansion">
+				<Load>
+					<GPL>
+						<Target>Data\deep.bcd</Target>
+					</GPL>
+					<Descriptions>XML/deep.xml</Descriptions>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+	<Mod id="{5A1C0D11-7E22-4B30-9F41-0A6B3C5D7E04}">
+		<Name>OldWays</Name>
+		<DisplayName lang="en_US">Old Ways</DisplayName>
+		<DataConfiguration>
+			<Dataset base="Majesty">
+				<Load>
+					<GPL>Data/old.bcd</GPL>
+				</Load>
+			</Dataset>
+		</DataConfiguration>
+	</Mod>
+</Majesty>

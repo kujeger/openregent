@@ -132,6 +132,10 @@ name = "game_files"
 required-features = ["install"]
 
 [[test]]
+name = "gplbcc_diff"
+required-features = ["install"]
+
+[[test]]
 name = "hotkey"
 required-features = ["install"]
 
