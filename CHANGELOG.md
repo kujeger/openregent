@@ -4,7 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [0.6.0] - 2026-11-20
+
+### Added
+
+- WASD-style scrolling, as a setting. Enabling it will make WASD button scroll like the arrow keys, but will override conflicting upgrade hotkeys
+
+### Fixed
+
+- Play sound effects when a peasant (or other) builds a building
+- Play sound effect when opening a treasure chest
 
 ## [0.5.0] - 2026-11-18
 

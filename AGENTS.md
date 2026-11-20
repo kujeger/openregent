@@ -69,3 +69,5 @@ made-up fixture now holds it. A finding nothing uses goes in its document, not i
 Do not treat the markdown documents or commit messages as a diary.
 They are technical documents: what the original does, and how openregent
 does it. Not how a fact was found.
+
+Never directly edit CHANGELOG.md or README.md . You may suggest changes, but never edit directly.
