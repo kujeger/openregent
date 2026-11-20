@@ -14,7 +14,7 @@
 //! two tabs (`menu::settings::Tab`), by topic: `[enhancements]` on its own,
 //! under a preset list ([`Draft::pick`]); the rest on the other.
 //! Its control comes from its value: a bool a check box; a number its
-//! plus and minus buttons and a value dragged, in its [`RANGES`] range;
+//! plus and minus buttons and a value dragged, in its range;
 //! a string a list of the names the settings take, when they refuse any
 //! other (an enum), else a text field. Its name and text are its
 //! section's `#[setting(…)]` (`config::Described`).
@@ -25,7 +25,7 @@ use bevy::prelude::Resource;
 use bevy_egui::egui;
 use toml::{Table, Value};
 
-use crate::files::config::{self, Preset, RANGES, Settings};
+use crate::files::config::{self, Preset, Settings};
 use crate::files::setting::{Meta, Part, Setting, Visit};
 use crate::menu::Art;
 use crate::menu::settings::{self as page, Look, Tab};
@@ -384,12 +384,9 @@ fn kind(table: &Table, section: &str, key: &str, value: &Value) -> Kind {
     }
 }
 
-/// `key`'s range, from [`RANGES`].
+/// `key`'s range.
 fn range(section: &str, key: &str) -> Option<RangeInclusive<f64>> {
-    RANGES
-        .iter()
-        .find(|(s, k, _)| *s == section && *k == key)
-        .map(|(_, _, r)| f64::from(*r.start())..=f64::from(*r.end()))
+    meta(section, key).and_then(|m| m.range.clone())
 }
 
 /// An enum key's names, from serde's refusal of one it lacks: "unknown

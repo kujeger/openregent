@@ -4,7 +4,7 @@
 //!  $XDG_CONFIG_HOME/openregent/config.toml   (~/.config/... by default)
 //!    absent  ──> the defaults and commented optional examples, written
 //!    present ──> read key by key: a missing key, or one whose value
-//!                will not read or is out of [`RANGES`], takes its
+//!                will not read or is out of its range, takes its
 //!                default (the latter warned of); unknown keys and
 //!                sections are ignored
 //!    saved   ──> a value written only where it differs from the file's
@@ -22,7 +22,7 @@
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 
-use crate::files::setting::choices;
+use crate::files::setting::{Meta, Part, Setting, Visit, VisitMut, choices, in_range};
 use bevy::log::warn;
 use bevy::prelude::Resource;
 use regent_core::gpl::runtime;
@@ -127,12 +127,6 @@ impl WindowMode {
         }
     }
 }
-
-/// [`Ui::scroll_speed`]'s range: `ScrollSpeedLow` to `High`
-/// ([`pan::SPEEDS`]).
-#[allow(clippy::cast_precision_loss, reason = "32 and 64")]
-pub const SCROLL_SPEEDS: RangeInclusive<f32> =
-    *pan::SPEEDS.start() as f32..=*pan::SPEEDS.end() as f32;
 
 impl Ui {
     /// [`Ui::scroll_speed`] held to its range.
@@ -662,18 +656,6 @@ pub const SUN_ELEVATIONS: RangeInclusive<f32> = 10.0..=89.0;
 /// [`Enhancements::sun_size`]'s range: degrees.
 pub const SUN_SIZES: RangeInclusive<f32> = 0.0..=8.0;
 
-/// The numbers held to a range: section, key, range. Out of it in the
-/// file, a key takes its default.
-pub const RANGES: [(&str, &str, RangeInclusive<f32>); 7] = [
-    ("ui", "scroll_speed", SCROLL_SPEEDS),
-    ("audio", "effects", LOUDNESS),
-    ("audio", "music", LOUDNESS),
-    ("enhancements", "wind_amplitude", WIND_REACHES),
-    ("enhancements", "sun_direction", SUN_DIRECTIONS),
-    ("enhancements", "sun_elevation", SUN_ELEVATIONS),
-    ("enhancements", "sun_size", SUN_SIZES),
-];
-
 /// Where the settings live; `None` with no config directory.
 pub fn path() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join(crate::files::env::OWN).join(FILE))
@@ -836,7 +818,7 @@ fn read(path: &Path) -> Result<Settings, String> {
 }
 
 /// `text` read key by key over the defaults: a key whose value will not
-/// read, or is out of its [`RANGES`] range, keeps its default, warned
+/// read as its type, or is out of its range, keeps its default, warned
 /// of; keys and sections the settings lack are ignored.
 ///
 /// ```text
@@ -847,69 +829,45 @@ fn read(path: &Path) -> Result<Settings, String> {
 /// ```
 fn lenient(text: &str) -> Result<Settings, String> {
     let file: Table = toml::from_str(text).map_err(|e: toml::de::Error| e.to_string())?;
-    let defaults = Table::try_from(Settings::default()).map_err(|e| e.to_string())?;
 
     // A known section that is no table: its keys all take their default.
-    for section in defaults.keys() {
-        if file.get(section).is_some_and(|v| !v.is_table()) {
-            warn!("settings: [{section}] is not a table; its defaults used");
+    for part in Settings::parts() {
+        if file.get(part.name).is_some_and(|v| !v.is_table()) {
+            warn!(
+                "settings: [{}] is not a table; its defaults used",
+                part.name
+            );
         }
     }
 
-    let keys: Vec<(String, String)> = defaults
-        .iter()
-        .filter_map(|(section, keys)| keys.as_table().map(|keys| (section, keys)))
-        .flat_map(|(section, keys)| keys.keys().map(move |key| (section.clone(), key.clone())))
-        .collect();
+    let mut settings = Settings::default();
 
-    // Each key tried alone over those read so far: one bad value spoils
-    // no other.
-    let table = keys.iter().fold(defaults, |table, (section, key)| {
-        match file.get(section).and_then(|keys| keys.get(key)) {
-            Some(value) => tried(table, section, key, value),
-            None => table,
+    settings.visit_mut(&mut Load(&file));
+    Ok(settings)
+}
+
+/// Each key a file holds read over its setting: one bad value spoils no
+/// other.
+struct Load<'a>(&'a Table);
+
+impl VisitMut for Load<'_> {
+    fn field<T: Setting>(&mut self, part: &'static Part, meta: &'static Meta, value: &mut T) {
+        let held = self
+            .0
+            .get(part.name)
+            .and_then(Value::as_table)
+            .and_then(|keys| keys.get(meta.key));
+
+        if let Some(held) = held {
+            match held.clone().try_into::<T>() {
+                Ok(read) if in_range(meta, &read) => *value = read,
+                _ => warn!(
+                    "settings: [{}] {} = {held} is not valid; its default used",
+                    part.name, meta.key
+                ),
+            }
         }
-    });
-
-    table.try_into().map_err(|e: toml::de::Error| e.to_string())
-}
-
-/// `table` with `section`'s `key` set to `value`, if the settings read it
-/// and it is in its range; else `table` as it was, warned of.
-fn tried(table: Table, section: &str, key: &str, value: &Value) -> Table {
-    let mut tried = table.clone();
-
-    if let Some(Value::Table(keys)) = tried.get_mut(section) {
-        keys.insert(key.to_owned(), value.clone());
     }
-
-    let read = in_range(section, key, value) && tried.clone().try_into::<Settings>().is_ok();
-
-    if read {
-        tried
-    } else {
-        warn!("settings: [{section}] {key} = {value} is not valid; its default used");
-        table
-    }
-}
-
-/// Whether `value` is in `section`'s `key`'s [`RANGES`] range; true for
-/// a key with none, or a value no number (its type is checked apart).
-fn in_range(section: &str, key: &str, value: &Value) -> bool {
-    let number = match value {
-        Value::Float(x) => Some(*x),
-        #[allow(clippy::cast_precision_loss, reason = "a setting's size")]
-        Value::Integer(x) => Some(*x as f64),
-        _ => None,
-    };
-
-    RANGES
-        .iter()
-        .find(|(s, k, _)| *s == section && *k == key)
-        .zip(number)
-        .is_none_or(|((_, _, range), x)| {
-            (f64::from(*range.start())..=f64::from(*range.end())).contains(&x)
-        })
 }
 
 fn write(path: &Path, settings: &Settings) -> Result<(), String> {
@@ -932,42 +890,65 @@ fn write(path: &Path, settings: &Settings) -> Result<(), String> {
 /// changed from the default it took. Text that does not parse is
 /// replaced whole.
 fn merged(old: &str, settings: &Settings) -> Result<String, String> {
-    let new: toml_edit::DocumentMut = toml::to_string(settings)
-        .map_err(|e| e.to_string())?
-        .parse()
-        .map_err(|e: toml_edit::TomlError| e.to_string())?;
     let mut doc: toml_edit::DocumentMut = old.parse().unwrap_or_default();
+    let now = Written::of(settings)?;
+    let was = Written::of(&lenient(old).unwrap_or_default())?;
 
-    // The values as read, and as they are now, to compare key by key.
-    let was = Table::try_from(lenient(old).unwrap_or_default()).map_err(|e| e.to_string())?;
-    let now = Table::try_from(settings).map_err(|e| e.to_string())?;
-    let same = |section: &str, key: &str| {
-        let value = |t: &Table| t.get(section).and_then(|keys| keys.get(key)).cloned();
-
-        value(&was) == value(&now)
-    };
-
-    for (name, item) in new.iter() {
-        let section = doc.entry(name).or_insert_with(toml_edit::table);
+    for ((part, meta, value), (_, _, before)) in now.iter().zip(&was) {
+        let section = doc.entry(part.name).or_insert_with(toml_edit::table);
 
         if !section.is_table_like() {
             *section = toml_edit::table();
         }
 
-        let pairs = item.as_table_like().into_iter().flat_map(|t| t.iter());
-
         if let Some(section) = section.as_table_like_mut() {
-            for (key, item) in pairs {
-                let there = section.get(key).is_some_and(|i| !i.is_none());
+            let there = section.get(meta.key).is_some_and(|i| !i.is_none());
+            let same = value.to_string() == before.to_string();
 
-                if !(there && same(name, key)) {
-                    kept(section.entry(key).or_insert(toml_edit::Item::None), item);
-                }
+            if !(there && same) {
+                let item = section.entry(meta.key).or_insert(toml_edit::Item::None);
+
+                kept(item, &toml_edit::Item::Value(value.clone()));
             }
         }
     }
 
     Ok(doc.to_string())
+}
+
+/// Each setting's value as the file writes it, in the file's order.
+#[derive(Default)]
+struct Written {
+    values: Vec<(&'static Part, &'static Meta, toml_edit::Value)>,
+    error: Option<String>,
+}
+
+impl Written {
+    /// `settings`' values, or why one will not write.
+    fn of(
+        settings: &Settings,
+    ) -> Result<Vec<(&'static Part, &'static Meta, toml_edit::Value)>, String> {
+        let mut written = Written::default();
+
+        settings.visit(&mut written);
+        written.error.map_or(Ok(written.values), Err)
+    }
+}
+
+impl Visit for Written {
+    fn field<T: Setting>(&mut self, part: &'static Part, meta: &'static Meta, value: &T) {
+        // toml's own text for the value, as a whole file writes it.
+        let mut text = String::new();
+        let value = value
+            .serialize(toml::ser::ValueSerializer::new(&mut text))
+            .map_err(|e| e.to_string())
+            .and_then(|text| text.parse::<toml_edit::Value>().map_err(|e| e.to_string()));
+
+        match value {
+            Ok(value) => self.values.push((part, meta, value)),
+            Err(e) => self.error = Some(format!("[{}] {}: {e}", part.name, meta.key)),
+        }
+    }
 }
 
 /// `old` given `new`'s value, keeping `old`'s comments and spacing.

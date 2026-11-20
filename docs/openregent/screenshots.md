@@ -816,7 +816,7 @@ settings editor, whose text comes from the keys' doc comments
 
 - Read key by key (`config::lenient`): an unknown key or section is
   ignored (`an_unknown_key_or_section_is_ignored_and_kept_by_a_save`); a
-  value of the wrong type, out of `config::RANGES`, or an enum name no
+  value of the wrong type, out of its `#[setting(range)]`, or an enum name no
   longer taken gives that key its default and a warning
   (`an_invalid_value_takes_its_default_alone`,
   `a_value_out_of_range_takes_its_default`). A file that is not TOML is an
