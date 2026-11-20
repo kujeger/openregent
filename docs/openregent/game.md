@@ -232,7 +232,8 @@ bar's slots joined (`settings::BANDS`).
   there).
 - SETTINGS groups its keys under GAME, SOUND, DISPLAY (`window`) and
   INTERFACE; each key's group is its `#[setting(group)]`, else its
-  section's (`each_tab_lists_its_rows_in_order`).
+  section's (`each_tab_lists_its_rows_in_order`). Within a group, keys
+  sort by their shown names.
 - ENHANCEMENTS opens with the preset list (Modern, Classic, Custom), then
   keys under DISPLAY, GAME and INTERFACE, then the Experimental row (the
   `gate = Switch` key): `MX18`'s + or - folds its keys (`gate =

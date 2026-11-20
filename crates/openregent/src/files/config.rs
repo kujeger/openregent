@@ -61,40 +61,42 @@ pub struct Settings {
 #[derive(Clone, Debug, PartialEq, Section)]
 #[section(group = Interface)]
 pub struct Ui {
-    #[setting(about = "Which units show a hit point bar on the map.")]
+    #[setting(
+        name = "Hit point bars",
+        about = "Which units show a hit point bar on the map: all, only hurt ones, or none."
+    )]
     pub bars: HpBars,
     /// `heroes` is this game's.
-    #[setting(
-        about = "Whose names show under them on the map: `on` every unit the original names, `heroes` heroes alone (this game's), `off` none."
-    )]
+    #[setting(name = "Unit names", about = "Whose names show under them on the map.")]
     pub names: Names,
-    #[setting(about = "The main menu's art.")]
+    #[setting(
+        name = "Main menu picture",
+        about = "The main menu's picture: the original game's room, or the Northern Expansion's snowy one."
+    )]
     pub main_menu: MainMenu,
     /// The original's `ShowIntro`, and its `-nointro`.
-    #[setting(
-        about = "The start-up videos, MV02 and MV04: `on` as the original's `ShowIntro`, `off` as its `-nointro`."
-    )]
+    #[setting(name = "Intro videos", about = "Play the opening videos at start-up.")]
     pub intro: Intro,
     /// The original's `ScrollSpeed`.
     #[setting(
-        about = "The view's scroll in pixels: an arrow key's step, and the window edge's (20 times that a second, at full ramp). The original's `ScrollSpeed`, 32 to 64.",
+        about = "How far the map scrolls, in pixels, for each press of an arrow key. At the window's edge it scrolls 20 times that a second at full speed.",
         default = pan::SCROLL_SPEED,
         range = pan::SPEEDS
     )]
     pub scroll_speed: i32,
     /// The original's `Windowed` switch.
     #[setting(
-        about = "`windowed` (default), or `full_screen`: borderless, the screen's size; `exclusive`: the screen's video mode taken, `full_screen` where the system offers none (Wayland). Alt+Enter flips windowed and full screen. The original's `Windowed` switch.",
+        about = "Windowed, or full screen. Full screen fills the screen without changing its mode. Exclusive full screen changes the screen's mode; where the system does not allow that (Wayland), it works as full screen. Alt+Enter switches between windowed and full screen.",
         group = Display
     )]
     pub window: WindowMode,
     #[setting(
-        about = "The text's typeface: `inknut`, Inknut Antiqua, a stand-in for the original's bitmap fonts; `egui`, egui's own (Ubuntu Light)."
+        about = "The typeface of the text. Inknut Antiqua looks like the original game's lettering; Ubuntu Light is plainer."
     )]
     pub font: Typeface,
     /// This game's.
     #[setting(
-        about = "A LAN game's player list in the map's top right: `off` none, `players` each player's colour and name, `details` also its round trip and the lockstep delay in force. This game's."
+        about = "In a LAN game, a list of the players in the map's top right corner. With timing, it also shows how long messages take to each player and back, and the delay in use."
     )]
     pub player_list: PlayerList,
     /// This game's; W, A, S and D by place on the keyboard.
@@ -218,11 +220,13 @@ pub const LOUDNESS: RangeInclusive<f32> = 0.0..=1.0;
 #[derive(Clone, Debug, PartialEq, Section)]
 #[section(group = Sound)]
 pub struct Audio {
-    #[setting(about = "Sound effects and voices.", default = 1.0, range = LOUDNESS)]
+    #[setting(name = "Effects volume",
+        about = "How loud sound effects and voices are, from 0 (silent) to 1 (full).", default = 1.0, range = LOUDNESS)]
     pub effects: f32,
-    #[setting(about = "Music.", default = 1.0, range = LOUDNESS)]
+    #[setting(name = "Music volume",
+        about = "How loud the music is, from 0 (silent) to 1 (full).", default = 1.0, range = LOUDNESS)]
     pub music: f32,
-    #[setting(about = "Silences both, keeping their levels.")]
+    #[setting(name = "Mute", about = "Silence all sound. The volumes are kept.")]
     pub muted: bool,
 }
 
@@ -252,12 +256,13 @@ impl Audio {
 pub struct Game {
     /// The original offers 5, 10 and 20 days and keeps one.
     #[setting(
-        about = "Save the game every 1, 5 (default) or 10 game days, keeping the last 10 autosaves; `off` never. The original offers 5, 10 and 20 days and keeps one."
+        about = "How often the game saves itself, in game days. The last 10 autosaves are kept. The original game saves every 5, 10 or 20 days and keeps one."
     )]
     pub autosave: Autosave,
     /// The original's options slider (`runtime::PACES`).
     #[setting(
-        about = "Game speed, the original's options slider: `1` slowest, `5` the engine's (default), `9` fastest (`runtime::PACES`). Each game starts at it; `<` and `>` step it. A LAN game runs at `5`, and neither changes it there."
+        name = "Game speed",
+        about = "How fast the game runs, as on the original's options slider: 1 is slowest, 5 normal, 9 fastest. Each game starts at this speed; the < and > keys change it. Network games always run at 5."
     )]
     pub speed: SpeedSlider,
 }
@@ -353,32 +358,33 @@ impl Autosave {
     }
 }
 
-// Each enum's choices on the settings page, in its order there.
+// Each enum's choices on the settings page, in its order there, and
+// their labels.
 choices! {
-    HpBars { Always => "always", Damaged => "damaged", Never => "never" }
-    Names { Off => "off", On => "on", Heroes => "heroes" }
-    MainMenu { Base => "base", Expansion => "expansion" }
-    Intro { On => "on", Off => "off" }
-    WindowMode { Windowed => "windowed", FullScreen => "full_screen", Exclusive => "exclusive" }
-    Typeface { Inknut => "inknut", Egui => "egui" }
-    PlayerList { Off => "off", Players => "players", Details => "details" }
-    Autosave { Off => "off", Day => "1", FiveDays => "5", TenDays => "10" }
+    HpBars { Always => "Always", Damaged => "When hurt", Never => "Never" }
+    Names { Off => "Off", On => "All units", Heroes => "Heroes only" }
+    MainMenu { Base => "Majesty", Expansion => "Northern Expansion" }
+    Intro { On => "On", Off => "Off" }
+    WindowMode { Windowed => "Windowed", FullScreen => "Full screen", Exclusive => "Exclusive full screen" }
+    Typeface { Inknut => "Inknut Antiqua", Egui => "Ubuntu Light" }
+    PlayerList { Off => "Off", Players => "Players", Details => "Players and timing" }
+    Autosave { Off => "Off", Day => "Every day", FiveDays => "Every 5 days", TenDays => "Every 10 days" }
     SpeedSlider {
-        S1 => "1", S2 => "2", S3 => "3", S4 => "4", S5 => "5",
-        S6 => "6", S7 => "7", S8 => "8", S9 => "9",
+        S1 => "1 (slowest)", S2 => "2", S3 => "3", S4 => "4", S5 => "5 (normal)",
+        S6 => "6", S7 => "7", S8 => "8", S9 => "9 (fastest)",
     }
-    Upscale { None => "none", Xbrz => "xbrz" }
+    Upscale { None => "Off", Xbrz => "xBRZ" }
     ViewUpscale {
-        Nearest => "nearest",
-        Sharp => "sharp",
-        Fsr => "fsr",
-        SharpSprite => "sharp-sprite",
-        FsrSprite => "fsr-sprite",
+        Nearest => "Off",
+        Sharp => "Sharp",
+        Fsr => "FSR",
+        SharpSprite => "Sharp, per sprite",
+        FsrSprite => "FSR, per sprite",
     }
-    VideoUpscale { Linear => "linear", Fsr => "fsr" }
-    Shadows { Blend => "blend", Soft => "soft" }
-    Rings { Art => "art", Native => "native", Modern => "modern" }
-    Cast { Painted => "painted", Models => "models" }
+    VideoUpscale { Linear => "Smooth", Fsr => "FSR" }
+    Shadows { Blend => "Stacked", Soft => "Soft" }
+    Rings { Art => "Original art", Native => "Drawn", Modern => "Modern" }
+    Cast { Painted => "Painted", Models => "From models" }
 }
 
 /// Departures from the original (`docs/openregent/enhancements.md`). The
@@ -392,7 +398,7 @@ choices! {
 #[section(presets)]
 pub struct Enhancements {
     #[setting(
-        about = "Keys 1, 2 and 3 set the game speed to 1×, 2× and 4×.",
+        about = "Keys 1, 2 and 3 set the game speed to normal, double and four times.",
         group = Game,
         default = true,
         classic = false
@@ -400,48 +406,52 @@ pub struct Enhancements {
     pub speed_keys: bool,
     /// L lifts the fog; O draws the casting models in place of their sprites.
     #[setting(
-        about = "Debug helpers: L lifts the fog, O shows the models of buildings casting from one in place of their sprites.",
+        about = "Testing keys: L lifts the fog of war; O shows the 3D models that cast shadows in place of their buildings.",
         show = Hidden,
         kept
     )]
     pub debug_keys: bool,
     #[setting(
-        about = "The wheel zooms smoothly, not between the original's two levels; the gold amounts show at every zoom; a middle click or 0 goes back to 1:1.",
+        about = "The mouse wheel zooms in small steps, not only between the original's two levels. Gold amounts show at every zoom. A middle click or 0 goes back to normal size.",
         group = Interface,
         default = true,
         classic = false
     )]
     pub smooth_zoom: bool,
     #[setting(
-        about = "Pieces slide between game frames, not jump a frame at a time.",
+        about = "Units move smoothly between the game's steps, instead of jumping from one to the next.",
         group = Display,
         default = true,
         classic = false
     )]
     pub smooth_position: bool,
     #[setting(
-        about = "While aiming a spell limited to a Wizards Guild's range, the range shows on the map too, not only on the minimap.",
+        name = "Spell range on the map",
+        about = "When you aim a spell that only works near a Wizards Guild, its range shows on the map too, not only on the minimap.",
         group = Game,
         default = true,
         classic = false
     )]
     pub show_wizards_guild_spell_range: bool,
     #[setting(
-        about = "The menus' and panels' pictures upscaled with xBRZ, not filtered: sharper edges in a large window. Text and the map are untouched.",
+        name = "Interface upscaling",
+        about = "Sharpen the pictures of the menus and panels in a large window. Text and the map do not change.",
         group = Display,
         default = Upscale::Xbrz,
         classic = Upscale::None
     )]
     pub ui_upscale: Upscale,
     #[setting(
-        about = "The game view drawn at the art grid and scaled into the map: `nearest` sampled nearest, `sharp` sharp-bilinear (default), `fsr` AMD FSR 1. Or at the screen's pixels, each sprite smoothed: `sharp-sprite` sharp-bilinear, `fsr-sprite` that and FSR 1's RCAS.",
+        name = "Map upscaling",
+        about = "How the map is enlarged to the window. Off repeats pixels. Sharp and FSR enlarge the whole picture. The per-sprite choices smooth each sprite at the screen's own resolution.",
         group = Display,
         default = ViewUpscale::Sharp,
         classic = ViewUpscale::Nearest
     )]
     pub view_upscale: ViewUpscale,
     #[setting(
-        about = "Videos shown larger than they are: `linear`, egui's filter, or `fsr`, AMD FSR 1 (default).",
+        name = "Video upscaling",
+        about = "How videos are enlarged: smooth filtering, or AMD FSR for sharper edges.",
         group = Display,
         default = VideoUpscale::Fsr,
         classic = VideoUpscale::Linear
@@ -450,42 +460,46 @@ pub struct Enhancements {
     /// Classic's `blend` stacks in draw order, as the original's: shadows
     /// have no off.
     #[setting(
-        about = "Shadows: `soft` (default), no stacking, one strength, hue kept; `blend`, a multiply as each draws, stacking as the original's.",
+        about = "Soft: where shadows overlap, they do not get darker. Stacked: overlapping shadows darken each other, as in the original game.",
         group = Display,
         default = Shadows::Soft,
         classic = Shadows::Blend
     )]
     pub shadows: Shadows,
     #[setting(
-        about = "Each game message about a unit shows its portrait; a click selects the unit while it exists and centres the view on it or its last place.",
+        about = "Game messages about a unit show its portrait. Click it to select the unit and move the view to it, or to where it was last.",
         group = Interface,
         default = true,
         classic = false
     )]
     pub message_links: bool,
     #[setting(
-        about = "With a Temple to Krolm built, its Rage of Krolm is a button on the spell bar too, darkened as it runs out.",
+        name = "Rage of Krolm on the spell bar",
+        about = "With a Temple to Krolm built, Rage of Krolm also has a button on the spell bar. The button darkens as the rage runs out.",
         group = Interface,
         default = true,
         classic = false
     )]
     pub rage_on_spell_bar: bool,
     #[setting(
-        about = "Selection rings: `art`, the game's pictures; `native` (default), drawn as shapes of the same size, place and look, smooth at any zoom; `modern`, a thin line with a soft glow inside it.",
+        name = "Selection rings",
+        about = "How selection rings look. Original art uses the game's pictures. Drawn looks the same but stays smooth at any zoom. Modern is a thin line with a soft glow.",
         group = Display,
         default = Rings::Modern,
         classic = Rings::Art
     )]
     pub rings: Rings,
     #[setting(
-        about = "The hover ring takes a thin line in its piece's side colour, its hit point bar's: sides tell apart on unhurt units too.",
+        name = "Side colour on hover",
+        about = "The ring under the unit you point at shows its side's colour, so you can tell sides apart even when no one is hurt.",
         group = Display,
         default = true,
         classic = false
     )]
     pub side_ring: bool,
     #[setting(
-        about = "A held arrow key scrolls smoothly, ramping up as the window's edge does, not a step each time the key repeats.",
+        name = "Smooth arrow keys",
+        about = "Holding an arrow key scrolls smoothly and speeds up, like scrolling at the window's edge, instead of jumping each time the key repeats.",
         group = Interface,
         default = true,
         classic = false
@@ -494,42 +508,44 @@ pub struct Enhancements {
     /// The switch of the `gate = Experimental` keys: off, each plays as
     /// if off, its value kept.
     #[setting(
-        about = "The experimental keys (`EXPERIMENTAL_KEYS`) take effect: off, each plays as if off, its value kept.",
+        about = "Turn on the experimental settings below. While this is off, they have no effect but keep their values.",
         gate = Switch,
         classic = false
     )]
     pub experimental: bool,
     /// `regent_draw::wind`.
     #[setting(
-        about = "Experimental: trees sway in a west wind (`regent_draw::wind`).",
+        about = "Trees sway in a wind from the west.",
         gate = Experimental
     )]
     pub wind: bool,
     /// Art pixels a tree `regent_draw::wind::Trees::reference` tall leans
     /// at most.
     #[setting(
-        about = "Art pixels the top of a tree `regent_draw::wind::Trees::reference` tall leans at most, in `WIND_REACHES`.",
+        name = "Wind strength",
+        about = "How far the tops of trees lean, in pixels of the game's art.",
         gate = Experimental,
         default = 2.0,
         range = WIND_REACHES
     )]
     pub wind_amplitude: f32,
     #[setting(
-        about = "Experimental: the buildings' shadows, `painted` (default) into their pictures, or cast by `models` of the buildings that have one from one sun, on hills and other things too. Under soft shadows.",
+        name = "Building shadows",
+        about = "Painted into the buildings' pictures, or cast from 3D models of the buildings by a single sun, onto hills and other things too. Only with soft shadows.",
         gate = Experimental,
         default = Cast::Painted
     )]
     pub cast: Cast,
     /// Degrees from screen right toward the viewer.
     #[setting(
-        about = "The models' sun: degrees from screen right toward the viewer, in `SUN_DIRECTIONS`. Shadows fall the other way.",
+        about = "Where the sun is, in degrees from the right of the screen towards you. Shadows fall the other way.",
         gate = Experimental,
         default = 29.0,
         range = SUN_DIRECTIONS
     )]
     pub sun_direction: f32,
     #[setting(
-        about = "The models' sun: degrees above the ground, in `SUN_ELEVATIONS`.",
+        about = "How high the sun is, in degrees above the ground.",
         gate = Experimental,
         default = 50.0,
         range = SUN_ELEVATIONS
@@ -537,7 +553,7 @@ pub struct Enhancements {
     pub sun_elevation: f32,
     /// Degrees; 0, a shadow as sharp all along.
     #[setting(
-        about = "The models' sun: its apparent size, degrees, in `SUN_SIZES`. A shadow is sharp where its building stands and softer farther off; 0, as sharp all along.",
+        about = "How large the sun looks, in degrees. A larger sun makes a shadow softer the further it falls from its building; 0 keeps shadows sharp.",
         gate = Experimental,
         default = regent_draw::sun::cast::SIZE,
         range = SUN_SIZES
@@ -545,7 +561,7 @@ pub struct Enhancements {
     pub sun_size: f32,
     /// For sprites with their painted self-shade removed.
     #[setting(
-        about = "Experimental: under `cast = \"models\"`, a model building takes its own model's shadow too. For sprites with their painted self-shade removed; the stock ones darken twice.",
+        about = "With shadows from models, each building also shades itself. Meant for pictures without painted shading: the original pictures get darker twice.",
         gate = Experimental
     )]
     pub self_shadows: bool,

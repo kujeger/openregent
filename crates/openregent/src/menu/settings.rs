@@ -1440,8 +1440,8 @@ mod tests {
         let draft = Draft::new(&Settings::default());
 
         assert_eq!(hint(key(&draft, "music")), "Default: 1 (0 to 1)");
-        assert_eq!(hint(key(&draft, "bars")), "Default: damaged");
-        assert_eq!(hint(key(&draft, "speed_keys")), "Default: on");
+        assert_eq!(hint(key(&draft, "bars")), "Default: When hurt");
+        assert_eq!(hint(key(&draft, "speed_keys")), "Default: On");
     }
 
     /// What `tab` lists, `fold` as given, row by row.
@@ -1476,13 +1476,13 @@ mod tests {
                 "heading display",
                 "key ui.window",
                 "heading interface",
-                "key ui.bars",
                 "key ui.font",
+                "key ui.bars",
                 "key ui.intro",
                 "key ui.main_menu",
-                "key ui.names",
                 "key ui.player_list",
                 "key ui.scroll_speed",
+                "key ui.names",
                 "key ui.wasd_scroll",
             ]
         );
@@ -1495,16 +1495,16 @@ mod tests {
             [
                 "preset",
                 "heading display",
+                "key enhancements.ui_upscale",
+                "key enhancements.view_upscale",
                 "key enhancements.rings",
                 "key enhancements.shadows",
                 "key enhancements.side_ring",
                 "key enhancements.smooth_position",
-                "key enhancements.ui_upscale",
                 "key enhancements.video_upscale",
-                "key enhancements.view_upscale",
                 "heading game",
-                "key enhancements.show_wizards_guild_spell_range",
                 "key enhancements.speed_keys",
+                "key enhancements.show_wizards_guild_spell_range",
                 "heading interface",
                 "key enhancements.message_links",
                 "key enhancements.rage_on_spell_bar",
@@ -1528,6 +1528,94 @@ mod tests {
         );
     }
 
+    /// Each key, its hint and its choices.
+    const HINTS: [(&str, &str, &str); 36] = [
+        (
+            "game.autosave",
+            "Default: Every 5 days",
+            "Off,Every day,Every 5 days,Every 10 days",
+        ),
+        (
+            "enhancements.cast",
+            "Default: Painted",
+            "Painted,From models",
+        ),
+        ("enhancements.debug_keys", "Default: Off", ""),
+        ("audio.effects", "Default: 1 (0 to 1)", ""),
+        ("enhancements.experimental", "Default: Off", ""),
+        (
+            "ui.font",
+            "Default: Inknut Antiqua",
+            "Inknut Antiqua,Ubuntu Light",
+        ),
+        (
+            "game.speed",
+            "Default: 5 (normal)",
+            "1 (slowest),2,3,4,5 (normal),6,7,8,9 (fastest)",
+        ),
+        ("ui.bars", "Default: When hurt", "Always,When hurt,Never"),
+        ("enhancements.ui_upscale", "Default: xBRZ", "Off,xBRZ"),
+        ("ui.intro", "Default: On", "On,Off"),
+        (
+            "ui.main_menu",
+            "Default: Majesty",
+            "Majesty,Northern Expansion",
+        ),
+        (
+            "enhancements.view_upscale",
+            "Default: Sharp",
+            "Off,Sharp,FSR,Sharp, per sprite,FSR, per sprite",
+        ),
+        ("enhancements.message_links", "Default: On", ""),
+        ("audio.music", "Default: 1 (0 to 1)", ""),
+        ("audio.muted", "Default: Off", ""),
+        (
+            "ui.player_list",
+            "Default: Players and timing",
+            "Off,Players,Players and timing",
+        ),
+        ("enhancements.rage_on_spell_bar", "Default: On", ""),
+        ("ui.scroll_speed", "Default: 32 (32 to 64)", ""),
+        (
+            "enhancements.rings",
+            "Default: Modern",
+            "Original art,Drawn,Modern",
+        ),
+        ("enhancements.self_shadows", "Default: Off", ""),
+        ("enhancements.shadows", "Default: Soft", "Stacked,Soft"),
+        ("enhancements.side_ring", "Default: On", ""),
+        ("enhancements.smooth_arrows", "Default: On", ""),
+        ("enhancements.smooth_position", "Default: On", ""),
+        ("enhancements.smooth_zoom", "Default: On", ""),
+        ("enhancements.speed_keys", "Default: On", ""),
+        (
+            "enhancements.show_wizards_guild_spell_range",
+            "Default: On",
+            "",
+        ),
+        (
+            "enhancements.sun_direction",
+            "Default: 29 (-180 to 180)",
+            "",
+        ),
+        ("enhancements.sun_elevation", "Default: 50 (10 to 89)", ""),
+        ("enhancements.sun_size", "Default: 3 (0 to 8)", ""),
+        (
+            "ui.names",
+            "Default: All units",
+            "Off,All units,Heroes only",
+        ),
+        ("enhancements.video_upscale", "Default: FSR", "Smooth,FSR"),
+        ("ui.wasd_scroll", "Default: Off", ""),
+        ("enhancements.wind", "Default: Off", ""),
+        ("enhancements.wind_amplitude", "Default: 2 (0 to 4)", ""),
+        (
+            "ui.window",
+            "Default: Windowed",
+            "Windowed,Full screen,Exclusive full screen",
+        ),
+    ];
+
     /// Each key's hint, and its choices where it has a list.
     #[test]
     fn each_key_shows_its_hint_and_choices() {
@@ -1544,64 +1632,10 @@ mod tests {
                 (format!("{}.{}", k.part.name, k.meta.key), hint(k), choices)
             })
             .collect();
-        let expected = [
-            ("audio.effects", "Default: 1 (0 to 1)", ""),
-            ("audio.music", "Default: 1 (0 to 1)", ""),
-            ("audio.muted", "Default: off", ""),
-            ("enhancements.cast", "Default: painted", "painted,models"),
-            ("enhancements.debug_keys", "Default: off", ""),
-            ("enhancements.experimental", "Default: off", ""),
-            ("enhancements.message_links", "Default: on", ""),
-            ("enhancements.rage_on_spell_bar", "Default: on", ""),
-            ("enhancements.rings", "Default: modern", "art,native,modern"),
-            ("enhancements.self_shadows", "Default: off", ""),
-            ("enhancements.shadows", "Default: soft", "blend,soft"),
-            (
-                "enhancements.show_wizards_guild_spell_range",
-                "Default: on",
-                "",
-            ),
-            ("enhancements.side_ring", "Default: on", ""),
-            ("enhancements.smooth_arrows", "Default: on", ""),
-            ("enhancements.smooth_position", "Default: on", ""),
-            ("enhancements.smooth_zoom", "Default: on", ""),
-            ("enhancements.speed_keys", "Default: on", ""),
-            (
-                "enhancements.sun_direction",
-                "Default: 29 (-180 to 180)",
-                "",
-            ),
-            ("enhancements.sun_elevation", "Default: 50 (10 to 89)", ""),
-            ("enhancements.sun_size", "Default: 3 (0 to 8)", ""),
-            ("enhancements.ui_upscale", "Default: xbrz", "none,xbrz"),
-            ("enhancements.video_upscale", "Default: fsr", "linear,fsr"),
-            (
-                "enhancements.view_upscale",
-                "Default: sharp",
-                "nearest,sharp,fsr,sharp-sprite,fsr-sprite",
-            ),
-            ("enhancements.wind", "Default: off", ""),
-            ("enhancements.wind_amplitude", "Default: 2 (0 to 4)", ""),
-            ("game.autosave", "Default: 5", "off,1,5,10"),
-            ("game.speed", "Default: 5", "1,2,3,4,5,6,7,8,9"),
-            ("ui.bars", "Default: damaged", "always,damaged,never"),
-            ("ui.font", "Default: inknut", "inknut,egui"),
-            ("ui.intro", "Default: on", "on,off"),
-            ("ui.main_menu", "Default: base", "base,expansion"),
-            ("ui.names", "Default: on", "off,on,heroes"),
-            ("ui.player_list", "Default: details", "off,players,details"),
-            ("ui.scroll_speed", "Default: 32 (32 to 64)", ""),
-            ("ui.wasd_scroll", "Default: off", ""),
-            (
-                "ui.window",
-                "Default: windowed",
-                "windowed,full_screen,exclusive",
-            ),
-        ];
 
         assert_eq!(
             shown,
-            expected.map(|(k, h, c)| (k.to_owned(), h.to_owned(), c.to_owned()))
+            HINTS.map(|(k, h, c)| (k.to_owned(), h.to_owned(), c.to_owned()))
         );
     }
 

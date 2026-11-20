@@ -103,13 +103,13 @@ pub enum Now {
 }
 
 impl Now {
-    /// As the page shows it: a bool on or off, a number to two places
+    /// As the page shows it: a bool On or Off, a number to two places
     /// its trailing zeros cut, a choice its label.
     #[must_use]
     pub fn shown(&self) -> String {
         match *self {
-            Now::Check(true) => "on".to_owned(),
-            Now::Check(false) => "off".to_owned(),
+            Now::Check(true) => "On".to_owned(),
+            Now::Check(false) => "Off".to_owned(),
             Now::Number(x, Whole::Integer) => format!("{x:.0}"),
             Now::Number(x, Whole::Fraction) => number(x),
             Now::Choice(at, labels) => labels.get(at).copied().unwrap_or_default().to_owned(),
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn a_value_shows_as_the_page_shows_it() {
-        assert_eq!(Now::Check(true).shown(), "on");
+        assert_eq!(Now::Check(true).shown(), "On");
         assert_eq!(Now::Number(32.0, Whole::Integer).shown(), "32");
         assert_eq!(Now::Number(0.5, Whole::Fraction).shown(), "0.5");
         assert_eq!(Now::Number(29.0, Whole::Fraction).shown(), "29");

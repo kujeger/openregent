@@ -33,7 +33,7 @@ pub struct Draft {
     /// As opened: Cancel's.
     opened: Settings,
     now: Settings,
-    /// Every key, sorted by section, then key.
+    /// Every key, sorted by its shown name.
     keys: Vec<Key>,
     /// Why the settings did not save.
     error: Option<String>,
@@ -48,7 +48,7 @@ impl Draft {
 
         now.visit_mut(&mut Clamp);
         now.visit(&mut keys);
-        keys.0.sort_by_key(|k| (k.part.name, k.meta.key));
+        keys.0.sort_by_key(|k| k.meta.name);
 
         Draft {
             opened: settings.clone(),
@@ -58,7 +58,7 @@ impl Draft {
         }
     }
 
-    /// The keys, sorted by section, then key.
+    /// The keys, sorted by their shown names.
     #[must_use]
     pub fn keys(&self) -> &[Key] {
         &self.keys
@@ -336,7 +336,7 @@ mod tests {
             draft
                 .value(key(&draft, "enhancements", "rings"))
                 .map(|n| n.shown()),
-            Some("art".to_owned())
+            Some("Original art".to_owned())
         );
 
         draft.set(key(&draft, "enhancements", "speed_keys"), Now::Check(true));
@@ -371,7 +371,7 @@ mod tests {
 
         assert_eq!(
             draft.value(bars),
-            Some(Now::Choice(1, &["always", "damaged", "never"]))
+            Some(Now::Choice(1, &["Always", "When hurt", "Never"]))
         );
 
         draft.set(bars, Now::Choice(2, &[]));
@@ -407,12 +407,13 @@ mod tests {
             (k.meta.name, k.meta.about)
         };
 
-        assert_eq!(
-            text("ui", "bars"),
-            ("Bars", "Which units show a hit point bar on the map.")
-        );
+        assert_eq!(text("ui", "bars").0, "Hit point bars");
         assert_eq!(text("ui", "wasd_scroll").0, "WASD scroll");
-        assert_eq!(text("audio", "music"), ("Music", "Music."));
+        assert_eq!(text("ui", "font").0, "Font");
+        assert_eq!(
+            text("audio", "muted"),
+            ("Mute", "Silence all sound. The volumes are kept.")
+        );
     }
 
     /// The HD install's path is the file's but never edited here: a bad
