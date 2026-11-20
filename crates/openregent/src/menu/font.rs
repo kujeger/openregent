@@ -1,5 +1,5 @@
 //! Text drawn by egui at the window's own pixel size, in its
-//! proportional font (`typeface`: Inknut Antiqua or egui's own). The original's
+//! proportional font (`typeface`: Inknut Antiqua). The original's
 //! `IMAG` fonts give only a size and a line pitch, so a text takes about
 //! the room it took.
 //!
@@ -555,7 +555,7 @@ mod tests {
 
     /// `run` given a context with egui's fonts loaded.
     fn with_fonts<T>(run: impl FnOnce(&egui::Context) -> T) -> T {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let mut out = None;
         let mut run = Some(run);
 
@@ -694,7 +694,7 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp, reason = "half points, exact in f32")]
     fn the_size_scales_with_the_page_in_half_points() {
-        let font = Font::of(10.0 * typeface::EGUI.sample, 15.0);
+        let font = Font::of(10.0 * typeface::INKNUT.sample, 15.0);
 
         assert_eq!(font.points(1.0), 10.0);
         assert_eq!(font.points(1.415), 14.0);

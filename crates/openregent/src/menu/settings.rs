@@ -10,7 +10,7 @@
 //!  │ Bars          [damaged    v]  #│   a row a key, under its group
 //!  │ Scroll speed       [+][-][32] #│
 //!  │                               v│
-//!  │ [[ui] bars           ] (RESET) │   the key the doc is of
+//!  │ [Hit point bars      ] (RESET) │   the setting the doc is of
 //!  │ [Which units show a hit point ]│   the doc, its default, or a refusal
 //!  │   [(SAVE)(DEFAULTS)(CANCEL)]   │
 //!  └────────────────────────────────┘
@@ -45,15 +45,16 @@ use regent_core::data::fourcc::FourCc;
 use regent_core::data::smnu;
 use regent_core::view::menu::colour::Inks;
 use regent_core::view::menu::{self, Layout, ShownControl, State, Tick, tree};
-use toml::Value;
 
 use super::Art;
 use super::art::{Pack, Pic, Store};
 use super::fit::{self, Fit};
-use super::paint::{self, Able, Align, Canvas, Inset};
+use super::paint::{self, Able, Align, Canvas};
 use super::setup::{self, Listed, boxed, ground, line, list, on_top};
-use crate::files::config::{EXPERIMENTAL_KEYS, EXPERIMENTAL_SWITCH, Preset};
-use crate::ui::editor::{self, Draft, Field, Kind, Press};
+use crate::files::config::Preset;
+pub use crate::files::setting::Tab;
+use crate::files::setting::{Gate, Group, Key, Now, Show, number};
+use crate::ui::editor::{Draft, Press};
 use regent_draw::art as service;
 
 /// The title, in place of "Build Tree Editor": the main menu button's
@@ -75,7 +76,7 @@ const ROW: i32 = 25;
 const PRESET: &str = "Preset";
 const PRESET_DOC: &str = "Sets the enhancements at once. Modern: the recommended set. \
     Classic: as the original game. Custom: anything changed by hand. \
-    Experimental keys and their switch stay out of Modern and Classic.";
+    Modern and Classic turn the experimental settings off, but keep their values.";
 
 /// How far in from the list's left a key's name starts, as the Build
 /// Tree Editor's names.
@@ -97,10 +98,15 @@ const BAR_GAP: i32 = 9;
 const RIGHT: i32 = 20;
 
 /// The doc box: under the list by this, its lines this many, its text
-/// this far in; its bottom the body's, over the frame's bottom bar.
+/// this far in from each edge; its bottom the body's, over the frame's
+/// bottom bar.
 const DOC_GAP: i32 = 6;
 const DOC_LINES: f32 = 5.0;
-const DOC_PAD: f32 = 4.0;
+const DOC_PAD: i32 = 6;
+
+/// The doc's text this much larger than the chat box's font: some 1.5
+/// points at its size.
+const DOC_SIZE: f32 = 1.15;
 const BODY_BOTTOM: i32 = 530;
 
 /// A tab's picture is cut to its width with end caps this wide, so its
@@ -176,23 +182,6 @@ const COMBO: i32 = menu::setup::LAND;
 /// Room for this many keys in a row control's id ([`own_id`]).
 const ROW_IDS: i32 = 1000;
 
-/// The sections and key the keys are grouped by.
-const AUDIO: &str = "audio";
-const UI: &str = "ui";
-const WINDOW: &str = "window";
-const ENHANCEMENTS: &str = "enhancements";
-const DEBUG_KEYS: &str = "debug_keys";
-
-/// A tab of the page.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
-pub enum Tab {
-    /// Every section but `[enhancements]`.
-    #[default]
-    Settings,
-    /// `[enhancements]`.
-    Enhancements,
-}
-
 impl Tab {
     /// The tabs, left to right.
     const ALL: [Tab; 2] = [Tab::Settings, Tab::Enhancements];
@@ -204,35 +193,19 @@ impl Tab {
             Tab::Enhancements => "ENHANCEMENTS",
         }
     }
-
-    /// A section's tab. A section it does not know, the settings': a new
-    /// key still shows.
-    fn of(section: &str) -> Tab {
-        if section == ENHANCEMENTS {
-            Tab::Enhancements
-        } else {
-            Tab::Settings
-        }
-    }
-}
-
-/// A topic of a tab, its heading in the list.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Group {
-    Display,
-    Game,
-    Interface,
-    Sound,
-    /// [`EXPERIMENTAL_KEYS`], behind their fold.
-    Experimental,
 }
 
 impl Group {
-    /// The settings tab's groups, top to bottom.
-    const SETTINGS: [Group; 4] = [Group::Game, Group::Sound, Group::Display, Group::Interface];
-
-    /// The enhancements tab's under a heading, top to bottom.
-    const HEADED: [Group; 3] = [Group::Display, Group::Game, Group::Interface];
+    /// Its place on `tab`, top first. Every group has one on each tab, so
+    /// a key in any group shows.
+    const fn rank(self, tab: Tab) -> u8 {
+        match (tab, self) {
+            (Tab::Settings, Group::Game) | (Tab::Enhancements, Group::Display) => 0,
+            (Tab::Settings, Group::Sound) | (Tab::Enhancements, Group::Game) => 1,
+            (Tab::Settings, Group::Display) | (Tab::Enhancements, Group::Interface) => 2,
+            (Tab::Settings, Group::Interface) | (Tab::Enhancements, Group::Sound) => 3,
+        }
+    }
 
     /// Its heading's text.
     const fn label(self) -> &'static str {
@@ -241,52 +214,9 @@ impl Group {
             Group::Game => "game",
             Group::Interface => "interface",
             Group::Sound => "sound",
-            Group::Experimental => "experimental",
-        }
-    }
-
-    /// `section`'s `key`'s group on the settings tab. A section it does not
-    /// know, the game's: a new key still shows.
-    fn setting(section: &str, key: &str) -> Group {
-        match (section, key) {
-            (UI, WINDOW) => Group::Display,
-            (UI, _) => Group::Interface,
-            (AUDIO, _) => Group::Sound,
-            _ => Group::Game,
-        }
-    }
-
-    /// Enhancement `key`'s group. A key not listed, the game's: a new key
-    /// still shows.
-    fn of(key: &str) -> Group {
-        if EXPERIMENTAL_KEYS.contains(&key) {
-            Group::Experimental
-        } else {
-            GROUPED
-                .iter()
-                .find(|(k, _)| *k == key)
-                .map_or(Group::Game, |(_, group)| *group)
         }
     }
 }
-
-/// The enhancements by topic; [`EXPERIMENTAL_KEYS`] apart.
-const GROUPED: [(&str, Group); 14] = [
-    ("view_upscale", Group::Display),
-    ("video_upscale", Group::Display),
-    ("ui_upscale", Group::Display),
-    ("shadows", Group::Display),
-    ("rings", Group::Display),
-    ("side_ring", Group::Display),
-    ("smooth_position", Group::Display),
-    ("speed_keys", Group::Game),
-    ("show_wizards_guild_spell_range", Group::Game),
-    ("smooth_zoom", Group::Interface),
-    ("smooth_arrows", Group::Interface),
-    ("wasd_scroll", Group::Interface),
-    ("message_links", Group::Interface),
-    ("rage_on_spell_bar", Group::Interface),
-];
 
 /// Whether the experimental keys' rows show.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -301,7 +231,7 @@ enum Fold {
 enum Opened {
     /// The preset row's.
     Preset,
-    /// A key's, by its place in the fields.
+    /// A key's, by its place in the keys.
     Key(usize),
 }
 
@@ -342,38 +272,44 @@ impl Look {
 
 /// A row of the list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Row<'a> {
-    /// A section's name.
-    Heading(&'a str),
-    /// A key, by its place in the fields.
+enum Row {
+    /// A group's name.
+    Heading(&'static str),
+    /// A key, by its place in the keys.
     Key(usize),
     /// The preset list.
     Preset,
-    /// The experimental switch, by its place in the fields, and its fold.
+    /// The experimental switch, by its place in the keys, and its fold.
     Fold(usize),
 }
 
-/// The rows of `fields` on `tab`, each key under its group's heading; the
-/// enhancements as [`grouped`] lists them.
-fn rows(fields: &[Field], tab: Tab, fold: Fold) -> Vec<Row<'_>> {
-    let keys: Vec<usize> = (0..fields.len())
-        .filter(|&i| fields[i].key != DEBUG_KEYS && Tab::of(&fields[i].section) == tab)
+/// The rows of `keys` on `tab`, each key under its group's heading; the
+/// enhancements as [`grouped`] lists them. Hidden keys are not listed.
+fn rows(keys: &[Key], tab: Tab, fold: Fold) -> Vec<Row> {
+    let listed: Vec<usize> = (0..keys.len())
+        .filter(|&i| keys[i].meta.show == Show::Page && keys[i].part.tab == tab)
         .collect();
 
     match tab {
-        Tab::Enhancements => grouped(fields, &keys, fold),
-        Tab::Settings => settings(fields, &keys),
+        Tab::Enhancements => grouped(keys, &listed, fold),
+        Tab::Settings => headed(keys, &listed, tab),
     }
 }
 
-/// The settings tab's rows: each group under its heading.
-fn settings<'a>(fields: &'a [Field], keys: &[usize]) -> Vec<Row<'a>> {
-    Group::SETTINGS
+/// `listed`'s keys, each group under its heading, the groups in `tab`'s
+/// order; a group with no key has no heading.
+fn headed(keys: &[Key], listed: &[usize], tab: Tab) -> Vec<Row> {
+    let mut groups: Vec<Group> = listed.iter().filter_map(|&i| keys[i].meta.group).collect();
+
+    groups.sort_by_key(|g| g.rank(tab));
+    groups.dedup();
+
+    groups
         .into_iter()
         .flat_map(|group| {
-            let of = keys
+            let of = listed
                 .iter()
-                .filter(move |i| Group::setting(&fields[**i].section, &fields[**i].key) == group)
+                .filter(move |i| keys[**i].meta.group == Some(group))
                 .map(|&i| Row::Key(i));
 
             std::iter::once(Row::Heading(group.label())).chain(of)
@@ -383,21 +319,16 @@ fn settings<'a>(fields: &'a [Field], keys: &[usize]) -> Vec<Row<'a>> {
 
 /// The enhancements' rows: the preset, each topic under its heading, the
 /// experimental switch, its keys while `fold` is open.
-fn grouped<'a>(fields: &'a [Field], keys: &[usize], fold: Fold) -> Vec<Row<'a>> {
-    let switch = |i: &usize| fields[*i].key == EXPERIMENTAL_SWITCH;
-    let of = |group: Group| {
-        keys.iter()
-            .filter(move |i| !switch(i) && Group::of(&fields[**i].key) == group)
-            .map(|&i| Row::Key(i))
-    };
-    let headed = Group::HEADED
-        .into_iter()
-        .flat_map(|group| std::iter::once(Row::Heading(group.label())).chain(of(group)));
-    let experimental = of(Group::Experimental).filter(|_| fold == Fold::Open);
+fn grouped(keys: &[Key], listed: &[usize], fold: Fold) -> Vec<Row> {
+    let gated = |gate: Gate| listed.iter().filter(move |i| keys[**i].meta.gate == gate);
+    let always: Vec<usize> = gated(Gate::Always).copied().collect();
+    let experimental = gated(Gate::Experimental)
+        .filter(|_| fold == Fold::Open)
+        .map(|&i| Row::Key(i));
 
     std::iter::once(Row::Preset)
-        .chain(headed)
-        .chain(keys.iter().find(|i| switch(i)).map(|&i| Row::Fold(i)))
+        .chain(headed(keys, &always, Tab::Enhancements))
+        .chain(gated(Gate::Switch).next().map(|&i| Row::Fold(i)))
         .chain(experimental)
         .collect()
 }
@@ -465,7 +396,7 @@ impl Sheet {
             ..button
         });
         #[allow(clippy::cast_possible_truncation, reason = "a box's pixels")]
-        let doc_height = (DOC_LINES * pitch + 2.0 * DOC_PAD).ceil() as i32;
+        let doc_height = (DOC_LINES * pitch * DOC_SIZE).ceil() as i32 + 2 * DOC_PAD;
         // Under the rows: the key's name row, then the doc, a gap each.
         let named = DOC_GAP + button.height;
         let rows = (BODY_BOTTOM - DOC_GAP - doc_height - named - under - list_at.y) / ROW;
@@ -535,13 +466,13 @@ impl Sheet {
     }
 }
 
-/// The widths of `fields`' names and choices, the title and the pieces,
+/// The widths of `draft`'s names and choices, the title and the pieces,
 /// as `layout`'s fonts in `ink` set them.
 fn widths(
     ctx: &egui::Context,
     ink: &Store,
     (layout, combo): (&Layout, Option<&ShownControl>),
-    fields: &[Field],
+    draft: &Draft,
 ) -> Widths {
     let font = |record: Option<FourCc>| record.and_then(|r| ink.font(r));
     #[allow(clippy::cast_possible_truncation, reason = "a text's pixels")]
@@ -561,14 +492,19 @@ fn widths(
     };
     let names = widest(
         layout.control(tree::LIST).and_then(|c| c.font),
-        &mut fields.iter().map(|f| named(&f.key)),
+        &mut draft.keys().iter().map(|k| k.meta.name.to_owned()),
     );
     let choices = widest(
         combo.and_then(|c| c.font),
-        &mut fields.iter().flat_map(|f| match &f.kind {
-            Kind::Choice(names) => names.clone(),
-            _ => Vec::new(),
-        }),
+        &mut draft
+            .keys()
+            .iter()
+            .filter_map(|&k| match draft.value(k) {
+                Some(Now::Choice(_, labels)) => Some(labels),
+                _ => None,
+            })
+            .flatten()
+            .map(|label| (*label).to_owned()),
     );
 
     Widths {
@@ -606,9 +542,8 @@ pub fn page(
             .and_then(|c| c.font)
             .and_then(|f| art.ink.font(f))
             .map_or(0.0, |f| f.pitch);
-        let fields = draft.fields().to_vec();
         let sheet = Sheet::of(
-            widths(ctx, &art.ink, (layout, combo), &fields),
+            widths(ctx, &art.ink, (layout, combo), draft),
             (button, list_at, box_at),
             pitch,
         );
@@ -648,7 +583,7 @@ fn drawn(
     (layout, combo, sheet): (&Layout, Option<&ShownControl>, &Sheet),
     (draft, look): (&mut Draft, &mut Look),
 ) -> Option<Press> {
-    let fields = draft.fields().to_vec();
+    let keys = draft.keys().to_vec();
     let at = |id: i32, rect: smnu::Rect| {
         layout.control(id).map(|c| ShownControl {
             rect: Some(rect),
@@ -678,7 +613,7 @@ fn drawn(
         boxed(canvas, &c, Some(TITLE));
     }
 
-    let pressed = foot(canvas, (layout, sheet), able(draft.error().is_none()));
+    let pressed = foot(canvas, (layout, sheet));
 
     // A tab pressed while no list is open turns to it.
     if let Some(tab) = tabs(canvas, (layout, sheet), look.tab)
@@ -687,7 +622,7 @@ fn drawn(
         look.turn(tab);
     }
 
-    let rows = rows(&fields, look.tab, look.fold);
+    let rows = rows(&keys, look.tab, look.fold);
     #[allow(clippy::cast_precision_loss, reason = "a list's rows")]
     let most = rows.len().saturating_sub(sheet.rows()) as f32;
 
@@ -708,28 +643,28 @@ fn drawn(
         canvas,
         (layout, combo, sheet),
         (draft, look),
-        (&fields, &rows),
+        (&keys, &rows),
     );
-    doc(canvas, (layout, sheet), draft, (&fields, &rows, look));
+    doc(canvas, (layout, sheet), draft, (&keys, &rows, look));
 
     // The open list over everything, the page under it taking no press.
     let bar = layout.control(menu::ids::SCROLL_BAR).and_then(|b| b.art);
 
     if let (Some((at, first)), Some(combo)) = (look.open, combo) {
-        let field = match at {
+        let key = match at {
             Opened::Preset => None,
-            Opened::Key(i) => fields.get(i),
+            Opened::Key(i) => keys.get(i).copied(),
         };
-        let names: Vec<String> = match field.map(|f| &f.kind) {
-            None => Preset::ALL.map(|p| p.label().to_owned()).to_vec(),
-            Some(Kind::Choice(names)) => names.clone(),
-            Some(_) => Vec::new(),
+        let (names, picked): (Vec<String>, Option<usize>) = match key.map(|k| draft.value(k)) {
+            None => (
+                Preset::ALL.map(|p| p.label().to_owned()).to_vec(),
+                Preset::ALL.iter().position(|p| *p == draft.preset()),
+            ),
+            Some(Some(Now::Choice(at, labels))) => {
+                (labels.iter().map(|l| (*l).to_owned()).collect(), Some(at))
+            }
+            Some(_) => (Vec::new(), None),
         };
-        let now = match field {
-            None => draft.preset().map(|p| p.label().to_owned()),
-            Some(f) => draft.value(&f.section, &f.key).map(editor::shown),
-        };
-        let picked = names.iter().position(|n| Some(n) == now.as_ref());
         let c = ShownControl {
             rect: row_of(sheet, &rows, at, look).map(|top| combo_rect(sheet, combo, top)),
             ..combo.clone()
@@ -744,16 +679,13 @@ fn drawn(
             Listed::Open => Some((at, first)),
             Listed::Closed => None,
             Listed::Picked(n) => {
-                match (field, names.get(n)) {
-                    (None, _) => {
+                match key {
+                    None => {
                         if let Some(&preset) = Preset::ALL.get(n) {
                             draft.pick(preset);
                         }
                     }
-                    (Some(f), Some(name)) => {
-                        draft.set(&f.section, &f.key, Value::String(name.clone()));
-                    }
-                    (Some(_), None) => {}
+                    Some(k) => draft.set(k, Now::Choice(n, &[])),
                 }
 
                 None
@@ -764,9 +696,9 @@ fn drawn(
     pressed
 }
 
-/// The bottom bar's SAVE, DEFAULTS and CANCEL on SET ALL's picture, SAVE
-/// enabled while the settings `read`; the one pressed.
-fn foot(canvas: &mut Canvas<'_>, (layout, sheet): (&Layout, &Sheet), read: Able) -> Option<Press> {
+/// The bottom bar's SAVE, DEFAULTS and CANCEL on SET ALL's picture; the
+/// one pressed.
+fn foot(canvas: &mut Canvas<'_>, (layout, sheet): (&Layout, &Sheet)) -> Option<Press> {
     let buttons = [
         (Press::Save, SAVE),
         (Press::Defaults, DEFAULTS),
@@ -783,15 +715,7 @@ fn foot(canvas: &mut Canvas<'_>, (layout, sheet): (&Layout, &Sheet), read: Able)
             ..set_all.clone()
         };
 
-        if canvas.button(
-            Pack::Expansion,
-            &c,
-            if press == Press::Save {
-                read
-            } else {
-                Able::Enabled
-            },
-        ) {
+        if canvas.button(Pack::Expansion, &c, Able::Enabled) {
             pressed = Some(press);
         }
     }
@@ -936,7 +860,7 @@ fn listed(
     canvas: &mut Canvas<'_>,
     (layout, combo, sheet): (&Layout, Option<&ShownControl>, &Sheet),
     (draft, look): (&mut Draft, &mut Look),
-    (fields, rows): (&[Field], &[Row<'_>]),
+    (keys, rows): (&[Key], &[Row]),
 ) {
     let (Some(list), Some(heading)) =
         (layout.control(tree::LIST), layout.control(tree::NAME_LABEL))
@@ -976,7 +900,7 @@ fn listed(
                 preset_row(canvas, (combo, list, sheet, top), (draft, look));
             }
             Row::Key(i) | Row::Fold(i) => {
-                let field = &fields[i];
+                let key = keys[i];
                 let folds = matches!(*row, Row::Fold(_));
 
                 // Every other key a shade darker, its box's width, so a
@@ -1000,12 +924,7 @@ fn listed(
                     look.doc_scroll = 0.0;
                 }
 
-                let left = control(
-                    canvas,
-                    (layout, combo, sheet, top),
-                    (draft, look),
-                    (field, i),
-                );
+                let left = control(canvas, (layout, combo, sheet, top), (draft, look), (key, i));
                 let indent = if folds {
                     fold_button(canvas, layout, sheet, (top, i), look);
                     NAME_INDENT + PLUS_STEP
@@ -1025,7 +944,7 @@ fn listed(
                 line(
                     canvas,
                     &name,
-                    (&named(&field.key), paint::pick(list, State::Normal)),
+                    (key.meta.name, paint::pick(list, State::Normal)),
                 );
             }
         }
@@ -1055,7 +974,7 @@ fn preset_row(
         look.doc_scroll = 0.0;
     }
 
-    let now = draft.preset().map_or(Preset::Custom.label(), Preset::label);
+    let now = draft.preset().label();
     let name = ShownControl {
         rect: Some(smnu::Rect {
             x: sheet.list.x + NAME_INDENT,
@@ -1119,25 +1038,25 @@ fn fold_button(
     }
 }
 
-/// Whether `field` can be edited: not an experimental key with their
+/// Whether `key` can be edited: not an experimental key with their
 /// switch off.
-fn live(draft: &Draft, field: &Field) -> Able {
-    let off = draft.value(ENHANCEMENTS, EXPERIMENTAL_SWITCH) == Some(&Value::Boolean(false));
+fn live(draft: &Draft, key: Key) -> Able {
+    let off = !draft.settings().enhancements.experimental;
 
-    able(!(off && Group::of(&field.key) == Group::Experimental && field.section == ENHANCEMENTS))
+    able(!(off && key.meta.gate == Gate::Experimental))
 }
 
-/// `field`'s control in the row at `top`, by its kind, at the list's
+/// `key`'s control in the row at `top`, by its kind, at the list's
 /// right: the left of what it drew.
 fn control(
     canvas: &mut Canvas<'_>,
     (layout, combo, sheet, top): (&Layout, Option<&ShownControl>, &Sheet, i32),
     (draft, look): (&mut Draft, &mut Look),
-    (field, i): (&Field, usize),
+    (key, i): (Key, usize),
 ) -> Option<i32> {
-    let value = draft.value(&field.section, &field.key)?.clone();
+    let value = draft.value(key)?;
     let right = sheet.right();
-    let live = live(draft, field);
+    let live = live(draft, key);
     let on = live == Able::Enabled;
     // Control `id` of `MX18`'s first row, its right `from_right` left of
     // the controls' right.
@@ -1158,26 +1077,22 @@ fn control(
     let minus = || in_row(tree::MINUS, count_wide + PLUS_STEP - 16);
     let plus = || in_row(tree::PLUS, count_wide + 2 * PLUS_STEP - 16);
 
-    match (&field.kind, &value) {
-        (Kind::Check, Value::Boolean(on)) => {
+    match value {
+        Now::Check(ticked) => {
             let c = in_row(tree::BOX, 0)?;
-            let tick = if *on { Tick::Checked } else { Tick::Clear };
+            let tick = if ticked { Tick::Checked } else { Tick::Clear };
 
             if canvas.ticked(Pack::Expansion, &c, (live, tick)) {
-                draft.set(&field.section, &field.key, Value::Boolean(!on));
+                draft.set(key, Now::Check(!ticked));
             }
 
             c.rect.map(|r| r.x)
         }
-        (Kind::Number(range), _) => {
+        Now::Number(x, whole) => {
             let (plus, minus, count) = (plus()?, minus()?, count()?);
-            let x = editor::number(&value)?;
-            let step = range
-                .as_ref()
-                .map_or(1.0, |r| (r.end() - r.start()) / STEPS);
-            let (low, high) = range
-                .as_ref()
-                .map_or((f64::MIN, f64::MAX), |r| (*r.start(), *r.end()));
+            let range = key.meta.range.as_ref();
+            let step = range.map_or(1.0, |r| (r.end() - r.start()) / STEPS);
+            let (low, high) = range.map_or((f64::MIN, f64::MAX), |r| (*r.start(), *r.end()));
             let mut to = None;
 
             if canvas.button(Pack::Expansion, &plus, able(on && x < high)) {
@@ -1189,19 +1104,19 @@ fn control(
             }
 
             ground(canvas, &count);
-            line(canvas, &count, (&editor::shown(&value), VALUE));
+            line(canvas, &count, (&value.shown(), VALUE));
 
             if on {
-                to = to.or_else(|| dragged(canvas, &count, (x, range.as_ref()), look));
+                to = to.or_else(|| dragged(canvas, &count, (x, range), look));
             }
 
             if let Some(to) = to {
-                draft.set_number(&field.section, &field.key, to);
+                draft.set(key, Now::Number(to, whole));
             }
 
             plus.rect.map(|r| r.x)
         }
-        (Kind::Choice(names), Value::String(now)) => {
+        Now::Choice(at, _) => {
             let c = ShownControl {
                 rect: Some(combo_rect(sheet, combo?, top)),
                 id: Some(own_id(COMBO, i)),
@@ -1209,31 +1124,13 @@ fn control(
             };
 
             // Opened at the pick, as the setup page's lists.
-            if setup::combo(canvas, &c, (now, live)) && look.open.is_none() {
+            if setup::combo(canvas, &c, (&value.shown(), live)) && look.open.is_none() {
                 #[allow(clippy::cast_precision_loss, reason = "a list's rows")]
-                let at = names.iter().position(|n| n == now).unwrap_or_default() as f32;
+                let at = at as f32;
 
                 look.open = Some((Opened::Key(i), at));
             }
 
-            c.rect.map(|r| r.x)
-        }
-        (Kind::Text, Value::String(now)) => {
-            let c = wide(&plus()?, count()?);
-            let mut text = now.clone();
-
-            ground(canvas, &c);
-
-            if typed(canvas, &c, &mut text) {
-                draft.set(&field.section, &field.key, Value::String(text));
-            }
-
-            c.rect.map(|r| r.x)
-        }
-        _ => {
-            let c = wide(&plus()?, count()?);
-
-            line(canvas, &c, (&editor::shown(&value), VALUE));
             c.rect.map(|r| r.x)
         }
     }
@@ -1278,19 +1175,6 @@ fn dragged(
         .flatten()
 }
 
-/// The text typed in box `c`, in its font; whether it changed.
-fn typed(canvas: &mut Canvas<'_>, c: &ShownControl, text: &mut String) -> bool {
-    let response = c.rect.and_then(|r| {
-        canvas.typed(
-            (fit::rect(r), c.font, VALUE),
-            (text, usize::MAX, egui::Align::Min),
-            (("settings text", c.id), Inset::Edges),
-        )
-    });
-
-    response.is_some_and(|r| r.changed())
-}
-
 /// The shown key's name in the top row, as "SAVE AS:" sits, and RESET,
 /// as SET ALL; its doc and default in the doc box (the list box's look,
 /// `MX18`'s chat box's text), or why the settings will not read or save.
@@ -1298,7 +1182,7 @@ fn doc(
     canvas: &mut Canvas<'_>,
     (layout, sheet): (&Layout, &Sheet),
     draft: &mut Draft,
-    (fields, rows, look): (&[Field], &[Row<'_>], &mut Look),
+    (keys, rows, look): (&[Key], &[Row], &mut Look),
 ) {
     let at = |id: i32, rect: smnu::Rect| {
         layout.control(id).map(|c| ShownControl {
@@ -1313,10 +1197,10 @@ fn doc(
             boxed(canvas, &c, Some(PRESET));
         }
 
-        if let Some(c) = at(tree::CHAT_BOX, sheet.doc) {
+        if let Some(c) = at(tree::CHAT_BOX, padded(sheet.doc)) {
             canvas.text_box(
                 (Pack::Expansion, &c, None),
-                (PRESET_DOC, Align::Left, 1.0),
+                (PRESET_DOC, Align::Left, DOC_SIZE),
                 &mut look.doc_scroll,
             );
         }
@@ -1324,34 +1208,30 @@ fn doc(
         return;
     }
 
-    let Some(field) = shown(rows, look).and_then(|i| fields.get(i)) else {
+    let Some(key) = shown(rows, look).and_then(|i| keys.get(i).copied()) else {
         return;
     };
 
     if let Some(c) = at(tree::NAME_LABEL, sheet.heading) {
-        boxed(
-            canvas,
-            &c,
-            Some(&format!("[{}] {}", field.section, field.key)),
-        );
+        boxed(canvas, &c, Some(key.meta.name));
     }
 
-    let default = draft.default_of(&field.section, &field.key).cloned();
+    let default = Draft::default_of(key);
     let reset = at(tree::SET_ALL, sheet.reset).map(|c| ShownControl {
         text: Some(RESET.to_owned()),
         ..c
     });
 
     if let (Some(c), Some(default)) = (reset, default) {
-        let differs = draft.value(&field.section, &field.key) != Some(&default);
+        let differs = draft.value(key) != Some(default);
 
         if canvas.button(Pack::Expansion, &c, able(differs)) {
-            draft.set(&field.section, &field.key, default);
+            draft.set(key, default);
         }
     }
 
     // The chat box's text, inside the doc's box.
-    let Some(c) = at(tree::CHAT_BOX, sheet.doc) else {
+    let Some(c) = at(tree::CHAT_BOX, padded(sheet.doc)) else {
         return;
     };
 
@@ -1359,30 +1239,25 @@ fn doc(
         let first = ShownControl {
             rect: Some(smnu::Rect {
                 height: ROW,
-                ..sheet.doc
+                ..padded(sheet.doc)
             }),
             ..c.clone()
         };
 
         line(canvas, &first, (error, REFUSED));
     } else {
-        let doc = if field.doc.is_empty() {
-            draft.heading(&field.section)
-        } else {
-            &field.doc
-        };
-        let text = format!("{doc}\n{}", hint(draft, field));
+        let text = format!("{}\n{}", key.meta.about, hint(key));
 
         canvas.text_box(
             (Pack::Expansion, &c, None),
-            (&text, Align::Left, 1.0),
+            (&text, Align::Left, DOC_SIZE),
             &mut look.doc_scroll,
         );
     }
 }
 
 /// The key whose doc shows: the last hovered, else the tab's first.
-fn shown(rows: &[Row<'_>], look: &Look) -> Option<usize> {
+fn shown(rows: &[Row], look: &Look) -> Option<usize> {
     look.shown.or_else(|| {
         rows.iter().find_map(|r| match r {
             Row::Key(i) | Row::Fold(i) => Some(*i),
@@ -1391,42 +1266,35 @@ fn shown(rows: &[Row<'_>], look: &Look) -> Option<usize> {
     })
 }
 
-/// `field`'s default, and its range: "Default: 1 (0 to 1)".
-fn hint(draft: &Draft, field: &Field) -> String {
-    let default = draft
-        .default_of(&field.section, &field.key)
-        .map_or_default(editor::shown);
-    let range = match &field.kind {
-        Kind::Number(Some(r)) => {
-            let shown = |x: f64| editor::shown(&Value::Float(x));
-
-            format!(" ({} to {})", shown(*r.start()), shown(*r.end()))
-        }
-        _ => String::new(),
-    };
+/// `key`'s default, and its range: "Default: 1 (0 to 1)".
+fn hint(key: Key) -> String {
+    let default = Draft::default_of(key).map_or_default(|d| d.shown());
+    let range = key.meta.range.as_ref().map_or_else(String::new, |r| {
+        format!(" ({} to {})", number(*r.start()), number(*r.end()))
+    });
 
     format!("Default: {default}{range}")
 }
 
+/// `rect` shrunk by [`DOC_PAD`] each side: the doc's text inside its box.
+const fn padded(rect: smnu::Rect) -> smnu::Rect {
+    smnu::Rect {
+        x: rect.x + DOC_PAD,
+        y: rect.y + DOC_PAD,
+        width: rect.width - 2 * DOC_PAD,
+        height: rect.height - 2 * DOC_PAD,
+    }
+}
+
 /// Whether row `n` is shaded: every other key under a section's name or
 /// the fold, the first not, so the bands start again under each.
-fn shaded(rows: &[Row<'_>], n: usize) -> bool {
+fn shaded(rows: &[Row], n: usize) -> bool {
     let heading = rows[..n]
         .iter()
         .rposition(|r| matches!(r, Row::Heading(_) | Row::Fold(_)))
         .unwrap_or_default();
 
     (n - heading).is_multiple_of(2)
-}
-
-/// A key as a row names it: `scroll_speed` is "Scroll speed".
-fn named(key: &str) -> String {
-    let spaced = key.replace('_', " ");
-    let mut chars = spaced.chars();
-
-    chars.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(chars).collect()
-    })
 }
 
 /// Control `id` as key `i`'s row draws it: an id of its own, so egui
@@ -1438,18 +1306,6 @@ fn own_id(id: i32, i: usize) -> i32 {
 /// Enabled when `on`.
 const fn able(on: bool) -> Able {
     if on { Able::Enabled } else { Able::Disabled }
-}
-
-/// From `left`'s left to `right`'s right, `right` otherwise.
-fn wide(left: &ShownControl, right: ShownControl) -> ShownControl {
-    let rect = left.rect.zip(right.rect).map(|(l, r)| smnu::Rect {
-        x: l.x,
-        y: r.y,
-        width: r.x + r.width - l.x,
-        height: r.height,
-    });
-
-    ShownControl { rect, ..right }
 }
 
 /// The combo box in the row at `top`: as wide as the longest choice
@@ -1466,7 +1322,7 @@ fn combo_rect(sheet: &Sheet, combo: &ShownControl, top: i32) -> smnu::Rect {
 }
 
 /// The top of list `at`'s row, as scrolled.
-fn row_of(sheet: &Sheet, rows: &[Row<'_>], at: Opened, look: &Look) -> Option<i32> {
+fn row_of(sheet: &Sheet, rows: &[Row], at: Opened, look: &Look) -> Option<i32> {
     #[allow(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
@@ -1488,7 +1344,7 @@ mod tests {
     use super::*;
     use crate::files::config::Settings;
 
-    fn headings<'a>(rows: &[Row<'a>]) -> Vec<&'a str> {
+    fn headings(rows: &[Row]) -> Vec<&'static str> {
         rows.iter()
             .filter_map(|r| match r {
                 Row::Heading(s) => Some(*s),
@@ -1497,105 +1353,50 @@ mod tests {
             .collect()
     }
 
-    /// The settings tab's keys under their groups, each group once.
-    #[test]
-    fn the_settings_are_grouped() {
-        let draft = Draft::new(&Settings::default());
-        let fields = draft.fields();
-        let rows = rows(fields, Tab::Settings, Fold::Shut);
-        let group_of = |key: &str| {
-            let heading = rows
-                .iter()
-                .position(|r| matches!(r, Row::Key(i) if fields[*i].key == key))
-                .and_then(|at| {
-                    rows[..at].iter().rev().find_map(|r| match r {
-                        Row::Heading(s) => Some(*s),
-                        _ => None,
-                    })
-                });
-
-            heading.expect("the key")
-        };
-
-        assert_eq!(headings(&rows), ["game", "sound", "display", "interface"]);
-        assert_eq!(group_of("autosave"), "game");
-        assert_eq!(group_of("music"), "sound");
-        assert_eq!(group_of(WINDOW), "display");
-        assert_eq!(group_of("bars"), "interface");
+    fn key(draft: &Draft, name: &str) -> Key {
+        *draft
+            .keys()
+            .iter()
+            .find(|k| k.meta.key == name)
+            .expect("the key")
     }
 
     /// Every heading on the settings tab has a key under it.
     #[test]
     fn no_settings_group_is_empty() {
         let draft = Draft::new(&Settings::default());
-        let rows = rows(draft.fields(), Tab::Settings, Fold::Shut);
+        let rows = rows(draft.keys(), Tab::Settings, Fold::Shut);
 
         assert!(matches!(rows.last(), Some(Row::Key(_))));
         assert!(
             rows.windows(2)
                 .all(|w| !matches!(w, [Row::Heading(_), Row::Heading(_)]))
         );
-    }
-
-    /// The tab starts with the preset; every enhancement but the debug
-    /// keys is listed by topic, and the fold hides its keys alone.
-    #[test]
-    fn the_enhancements_are_grouped_under_the_preset() {
-        let draft = Draft::new(&Settings::default());
-        let fields = draft.fields();
-        let shut = rows(fields, Tab::Enhancements, Fold::Shut);
-        let open = rows(fields, Tab::Enhancements, Fold::Open);
-
-        assert_eq!(shut.first(), Some(&Row::Preset));
-        assert_eq!(headings(&shut), ["display", "game", "interface"]);
-        assert_eq!(open.len(), shut.len() + EXPERIMENTAL_KEYS.len());
-
-        // Below the fold: its keys, in the file's order.
-        assert!(matches!(shut.last(), Some(Row::Fold(_))));
-        assert!(open[shut.len()..].iter().all(|r| match r {
-            Row::Key(i) => EXPERIMENTAL_KEYS.contains(&fields[*i].key.as_str()),
-            _ => false,
-        }));
-    }
-
-    /// Each key [`GROUPED`] lists is a setting, as is each experimental.
-    #[test]
-    fn every_grouped_key_is_a_setting() {
-        let draft = Draft::new(&Settings::default());
-        let keys = GROUPED
-            .iter()
-            .map(|(k, _)| *k)
-            .chain(EXPERIMENTAL_KEYS)
-            .chain([EXPERIMENTAL_SWITCH]);
-
-        for key in keys {
-            assert!(draft.value(ENHANCEMENTS, key).is_some(), "{key}");
-        }
+        assert_eq!(headings(&rows), ["game", "sound", "display", "interface"]);
     }
 
     /// The experimental keys are editable only with their switch on.
     #[test]
     fn the_switch_decides_whether_its_keys_are_live() {
         let mut draft = Draft::new(&Settings::default());
-        let fields = draft.fields().to_vec();
-        let field = |key: &str| fields.iter().find(|f| f.key == key).expect("the key");
 
-        assert_eq!(live(&draft, field("cast")), Able::Disabled);
-        assert_eq!(live(&draft, field("rings")), Able::Enabled);
+        assert_eq!(live(&draft, key(&draft, "cast")), Able::Disabled);
+        assert_eq!(live(&draft, key(&draft, "rings")), Able::Enabled);
 
-        draft.set(ENHANCEMENTS, EXPERIMENTAL_SWITCH, Value::Boolean(true));
+        draft.set(key(&draft, "experimental"), Now::Check(true));
 
-        assert_eq!(live(&draft, field("cast")), Able::Enabled);
+        assert_eq!(live(&draft, key(&draft, "cast")), Able::Enabled);
     }
 
-    /// Every visible key appears once; debug keys stay in the file only.
+    /// Every key the page lists appears once; hidden ones (the debug
+    /// keys) stay in the file only.
     #[test]
     fn every_key_shows_on_exactly_one_tab() {
         let draft = Draft::new(&Settings::default());
-        let fields = draft.fields();
+        let keys = draft.keys();
         let mut listed: Vec<usize> = Tab::ALL
             .iter()
-            .flat_map(|&tab| rows(fields, tab, Fold::Open))
+            .flat_map(|&tab| rows(keys, tab, Fold::Open))
             .filter_map(|r| match r {
                 Row::Key(i) | Row::Fold(i) => Some(i),
                 Row::Heading(_) | Row::Preset => None,
@@ -1606,33 +1407,11 @@ mod tests {
 
         assert_eq!(
             listed,
-            (0..fields.len())
-                .filter(|&i| fields[i].key != DEBUG_KEYS)
+            (0..keys.len())
+                .filter(|&i| keys[i].meta.show == Show::Page)
                 .collect::<Vec<_>>()
         );
-    }
-
-    #[test]
-    fn debug_keys_stays_out_of_the_settings_page() {
-        let draft = Draft::new(&Settings::default());
-        let fields = draft.fields();
-
-        assert!(fields.iter().any(|f| f.key == DEBUG_KEYS));
-        assert!(Tab::ALL.iter().all(|&tab| {
-            rows(fields, tab, Fold::Open)
-                .iter()
-                .all(|row| !matches!(row, Row::Key(i) if fields[*i].key == DEBUG_KEYS))
-        }));
-    }
-
-    /// `[enhancements]` has its tab; any other section, known or not, the
-    /// settings'.
-    #[test]
-    fn a_section_chooses_its_tab() {
-        assert_eq!(Tab::of(AUDIO), Tab::Settings);
-        assert_eq!(Tab::of(UI), Tab::Settings);
-        assert_eq!(Tab::of("video"), Tab::Settings);
-        assert_eq!(Tab::of(ENHANCEMENTS), Tab::Enhancements);
+        assert_eq!(key(&draft, "debug_keys").meta.show, Show::Hidden);
     }
 
     /// The shading starts again under each section's name: its first key
@@ -1642,7 +1421,7 @@ mod tests {
         let draft = Draft::new(&Settings::default());
 
         for tab in Tab::ALL {
-            let rows = rows(draft.fields(), tab, Fold::Open);
+            let rows = rows(draft.keys(), tab, Fold::Open);
 
             for n in 1..rows.len() {
                 match (rows[n - 1], rows[n]) {
@@ -1657,26 +1436,201 @@ mod tests {
     }
 
     #[test]
-    fn a_key_is_named_in_words() {
-        assert_eq!(named("scroll_speed"), "Scroll speed");
-        assert_eq!(named("bars"), "Bars");
-    }
-
-    #[test]
     fn the_hint_gives_the_default_and_range() {
         let draft = Draft::new(&Settings::default());
-        let field = |key: &str| {
-            draft
-                .fields()
-                .iter()
-                .find(|f| f.key == key)
-                .cloned()
-                .expect("the key")
-        };
 
-        assert_eq!(hint(&draft, &field("music")), "Default: 1 (0 to 1)");
-        assert_eq!(hint(&draft, &field("bars")), "Default: damaged");
-        assert_eq!(hint(&draft, &field("speed_keys")), "Default: on");
+        assert_eq!(hint(key(&draft, "music")), "Default: 1 (0 to 1)");
+        assert_eq!(hint(key(&draft, "bars")), "Default: When hurt");
+        assert_eq!(hint(key(&draft, "speed_keys")), "Default: On");
+    }
+
+    /// What `tab` lists, `fold` as given, row by row.
+    fn listed_rows(tab: Tab, fold: Fold) -> Vec<String> {
+        let draft = Draft::new(&Settings::default());
+        let f = draft.keys();
+
+        rows(f, tab, fold)
+            .into_iter()
+            .map(|r| match r {
+                Row::Heading(h) => format!("heading {h}"),
+                Row::Preset => "preset".to_owned(),
+                Row::Key(i) => format!("key {}.{}", f[i].part.name, f[i].meta.key),
+                Row::Fold(i) => format!("fold {}.{}", f[i].part.name, f[i].meta.key),
+            })
+            .collect()
+    }
+
+    /// Each tab's rows, in order.
+    #[test]
+    fn each_tab_lists_its_rows_in_order() {
+        assert_eq!(
+            listed_rows(Tab::Settings, Fold::Shut),
+            [
+                "heading game",
+                "key game.autosave",
+                "key game.speed",
+                "heading sound",
+                "key audio.effects",
+                "key audio.music",
+                "key audio.muted",
+                "heading display",
+                "key ui.window",
+                "heading interface",
+                "key ui.bars",
+                "key ui.intro",
+                "key ui.main_menu",
+                "key ui.player_list",
+                "key ui.scroll_speed",
+                "key ui.names",
+                "key ui.wasd_scroll",
+            ]
+        );
+
+        let shut = listed_rows(Tab::Enhancements, Fold::Shut);
+        let open = listed_rows(Tab::Enhancements, Fold::Open);
+
+        assert_eq!(
+            shut,
+            [
+                "preset",
+                "heading display",
+                "key enhancements.ui_upscale",
+                "key enhancements.view_upscale",
+                "key enhancements.rings",
+                "key enhancements.shadows",
+                "key enhancements.side_ring",
+                "key enhancements.smooth_position",
+                "key enhancements.video_upscale",
+                "heading game",
+                "key enhancements.speed_keys",
+                "key enhancements.show_wizards_guild_spell_range",
+                "heading interface",
+                "key enhancements.message_links",
+                "key enhancements.rage_on_spell_bar",
+                "key enhancements.smooth_arrows",
+                "key enhancements.smooth_zoom",
+                "fold enhancements.experimental",
+            ]
+        );
+        assert_eq!(open[..shut.len()], shut);
+        assert_eq!(
+            open[shut.len()..],
+            [
+                "key enhancements.cast",
+                "key enhancements.self_shadows",
+                "key enhancements.sun_direction",
+                "key enhancements.sun_elevation",
+                "key enhancements.sun_size",
+                "key enhancements.wind",
+                "key enhancements.wind_amplitude",
+            ]
+        );
+    }
+
+    /// Each key, its hint and its choices.
+    const HINTS: [(&str, &str, &str); 35] = [
+        (
+            "game.autosave",
+            "Default: Every 5 days",
+            "Off,Every day,Every 5 days,Every 10 days",
+        ),
+        (
+            "enhancements.cast",
+            "Default: Painted",
+            "Painted,From models",
+        ),
+        ("enhancements.debug_keys", "Default: Off", ""),
+        ("audio.effects", "Default: 1 (0 to 1)", ""),
+        ("enhancements.experimental", "Default: Off", ""),
+        (
+            "game.speed",
+            "Default: 5 (normal)",
+            "1 (slowest),2,3,4,5 (normal),6,7,8,9 (fastest)",
+        ),
+        ("ui.bars", "Default: When hurt", "Always,When hurt,Never"),
+        ("enhancements.ui_upscale", "Default: xBRZ", "Off,xBRZ"),
+        ("ui.intro", "Default: On", "On,Off"),
+        (
+            "ui.main_menu",
+            "Default: Majesty",
+            "Majesty,Northern Expansion",
+        ),
+        (
+            "enhancements.view_upscale",
+            "Default: Sharp",
+            "Off,Sharp,FSR,Sharp, per sprite,FSR, per sprite",
+        ),
+        ("enhancements.message_links", "Default: On", ""),
+        ("audio.music", "Default: 1 (0 to 1)", ""),
+        ("audio.muted", "Default: Off", ""),
+        (
+            "ui.player_list",
+            "Default: Players and timing",
+            "Off,Players,Players and timing",
+        ),
+        ("enhancements.rage_on_spell_bar", "Default: On", ""),
+        ("ui.scroll_speed", "Default: 32 (32 to 64)", ""),
+        (
+            "enhancements.rings",
+            "Default: Modern",
+            "Original art,Drawn,Modern",
+        ),
+        ("enhancements.self_shadows", "Default: Off", ""),
+        ("enhancements.shadows", "Default: Soft", "Stacked,Soft"),
+        ("enhancements.side_ring", "Default: On", ""),
+        ("enhancements.smooth_arrows", "Default: On", ""),
+        ("enhancements.smooth_position", "Default: On", ""),
+        ("enhancements.smooth_zoom", "Default: On", ""),
+        ("enhancements.speed_keys", "Default: On", ""),
+        (
+            "enhancements.show_wizards_guild_spell_range",
+            "Default: On",
+            "",
+        ),
+        (
+            "enhancements.sun_direction",
+            "Default: 29 (-180 to 180)",
+            "",
+        ),
+        ("enhancements.sun_elevation", "Default: 50 (10 to 89)", ""),
+        ("enhancements.sun_size", "Default: 3 (0 to 8)", ""),
+        (
+            "ui.names",
+            "Default: All units",
+            "Off,All units,Heroes only",
+        ),
+        ("enhancements.video_upscale", "Default: FSR", "Smooth,FSR"),
+        ("ui.wasd_scroll", "Default: Off", ""),
+        ("enhancements.wind", "Default: Off", ""),
+        ("enhancements.wind_amplitude", "Default: 2 (0 to 4)", ""),
+        (
+            "ui.window",
+            "Default: Windowed",
+            "Windowed,Full screen,Exclusive full screen",
+        ),
+    ];
+
+    /// Each key's hint, and its choices where it has a list.
+    #[test]
+    fn each_key_shows_its_hint_and_choices() {
+        let draft = Draft::new(&Settings::default());
+        let shown: Vec<(String, String, String)> = draft
+            .keys()
+            .iter()
+            .map(|&k| {
+                let choices = match draft.value(k) {
+                    Some(Now::Choice(_, labels)) => labels.join(","),
+                    _ => String::new(),
+                };
+
+                (format!("{}.{}", k.part.name, k.meta.key), hint(k), choices)
+            })
+            .collect();
+
+        assert_eq!(
+            shown,
+            HINTS.map(|(k, h, c)| (k.to_owned(), h.to_owned(), c.to_owned()))
+        );
     }
 
     /// `MX18`'s SET ALL and list.
@@ -1777,7 +1731,7 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp, reason = "the list scrolls whole rows")]
     fn the_wheel_scrolls_the_list_in_a_game() {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let mut look = Look::default();
 
         // A pass to lay the page out, as the game's last frame did.

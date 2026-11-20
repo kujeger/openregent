@@ -810,13 +810,13 @@ Mini view 1 (`tracking`;
 
 `$XDG_CONFIG_HOME/openregent/config.toml`, written with the defaults when
 absent (`config`). Every key, its default and its range are in the
-settings editor, whose text comes from the keys' doc comments
-(`the_docs_come_from_the_doc_comments`). Sections: `[ui]`, `[audio]`,
+settings editor, whose names and text come from the keys'
+`#[setting(…)]` (`regent_derive`, `the_rows_take_their_settings_text`). Sections: `[ui]`, `[audio]`,
 `[game]`, `[enhancements]`, `[paths]`.
 
 - Read key by key (`config::lenient`): an unknown key or section is
   ignored (`an_unknown_key_or_section_is_ignored_and_kept_by_a_save`); a
-  value of the wrong type, out of `config::RANGES`, or an enum name no
+  value of the wrong type, out of its `#[setting(range)]`, or an enum name no
   longer taken gives that key its default and a warning
   (`an_invalid_value_takes_its_default_alone`,
   `a_value_out_of_range_takes_its_default`). A file that is not TOML is an

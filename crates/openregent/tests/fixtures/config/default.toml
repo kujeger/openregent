@@ -1,0 +1,42 @@
+[ui]
+bars = "damaged"
+names = "on"
+main_menu = "base"
+intro = "on"
+scroll_speed = 32
+window = "windowed"
+player_list = "details"
+wasd_scroll = false
+
+[audio]
+effects = 1.0
+music = 1.0
+muted = false
+
+[game]
+autosave = "5"
+speed = "5"
+
+[enhancements]
+speed_keys = true
+debug_keys = false
+smooth_zoom = true
+smooth_position = true
+show_wizards_guild_spell_range = true
+ui_upscale = "xbrz"
+view_upscale = "sharp"
+video_upscale = "fsr"
+shadows = "soft"
+message_links = true
+rage_on_spell_bar = true
+rings = "modern"
+side_ring = true
+smooth_arrows = true
+experimental = false
+wind = false
+wind_amplitude = 2.0
+cast = "painted"
+sun_direction = 29.0
+sun_elevation = 50.0
+sun_size = 3.0
+self_shadows = false

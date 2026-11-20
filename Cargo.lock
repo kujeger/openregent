@@ -5460,6 +5460,7 @@ dependencies = [
  "png",
  "regent_core",
  "regent_corpus",
+ "regent_derive",
  "regent_draw",
  "regent_testgame",
  "ron",
@@ -6096,6 +6097,15 @@ version = "0.6.0"
 dependencies = [
  "dotenvy",
  "regent_core",
+]
+
+[[package]]
+name = "regent_derive"
+version = "0.6.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

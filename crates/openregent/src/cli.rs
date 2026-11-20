@@ -244,9 +244,6 @@ pub(crate) struct Mode {
     /// With --screenshot: `[enhancements] self_shadows` for the capture
     #[arg(long, value_name = "BOOL", requires = "screenshot")]
     pub(crate) self_shadows: Option<bool>,
-    /// With --screenshot: `[ui] font` for the capture
-    #[arg(long, value_enum, requires = "screenshot")]
-    pub(crate) font: Option<config::Typeface>,
     /// With --screenshot: `[enhancements] rings` for the capture
     #[arg(long, value_enum, requires = "screenshot")]
     pub(crate) rings: Option<config::Rings>,

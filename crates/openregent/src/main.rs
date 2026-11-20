@@ -346,7 +346,6 @@ fn menus(
         .self_shadows
         .unwrap_or(settings.enhancements.self_shadows);
     settings.enhancements.rings = cli.mode.rings.unwrap_or(settings.enhancements.rings);
-    settings.ui.font = cli.mode.font.unwrap_or(settings.ui.font);
     settings.enhancements.side_ring = cli
         .mode
         .side_ring

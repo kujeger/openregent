@@ -866,7 +866,7 @@ mod tests {
         modifiers: Modifiers,
         mut draw: impl FnMut(&mut Canvas<'_>) -> bool,
     ) -> bool {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let catalogue: &'static Catalogue<'static> =
             Box::leak(Box::new(Catalogue::build(&[]).expect("an empty catalogue")));
         let mut ink = Ink::default();
@@ -1050,7 +1050,7 @@ mod tests {
             scale,
             origin: pos2(0.0, 182.0 * scale),
         };
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let mut ink = Ink::default();
         let mut art = regent_draw::art::Art::default();
 

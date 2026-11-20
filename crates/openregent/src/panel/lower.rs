@@ -1886,7 +1886,6 @@ mod gear {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::files::config::Typeface;
 
     #[test]
     fn the_fairgrounds_research_page_is_apa0() {
@@ -2084,16 +2083,11 @@ mod tests {
         // A glyph's dark edge reaches a pixel out.
         let room = words.expand(1.0);
 
-        for face in [Typeface::Egui, Typeface::Inknut] {
-            let shown = crate::panel::canvas::tests::painted_bounds_in(face, |c| {
-                row_text(c, area, words, text, WHITE);
-            });
+        let shown = crate::panel::canvas::tests::painted_bounds(|c| {
+            row_text(c, area, words, text, WHITE);
+        });
 
-            assert!(!shown.is_empty(), "{face:?}");
-            assert!(
-                shown.iter().all(|r| room.contains_rect(*r)),
-                "{face:?}: {shown:?}"
-            );
-        }
+        assert!(!shown.is_empty(), "nothing drawn");
+        assert!(shown.iter().all(|r| room.contains_rect(*r)), "{shown:?}");
     }
 }

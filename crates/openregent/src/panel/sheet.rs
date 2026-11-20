@@ -632,9 +632,9 @@ mod tests {
     /// The look of a control at `rect` through `events`, one frame each:
     /// the last frame's.
     fn looks(rect: Rect, events: &[bevy_egui::egui::Event]) -> (Tick, Hover, Press) {
-        use bevy_egui::egui::{self, RawInput, Sense};
+        use bevy_egui::egui::{RawInput, Sense};
 
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let mut last = (Tick::Clear, Hover::Away, Press::Free);
 
         for event in events {
@@ -696,7 +696,7 @@ mod tests {
     /// Every shape `AP21`'s statics draw, at `scale` in the column's page
     /// slot, with the slot itself, in window points.
     fn stats_page(scale: f32) -> (Vec<Rect>, Rect) {
-        use bevy_egui::egui::{self, RawInput};
+        use bevy_egui::egui::RawInput;
         let catalogue = crate::testdata::hd();
         let text = regent_core::data::text::Text::build(catalogue);
         let layout = regent_core::view::menu::layout(catalogue, &text, FourCc(*b"AP21"))
@@ -706,7 +706,7 @@ mod tests {
             scale,
             origin: pos2(0.0, 428.0 * scale),
         };
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let mut ink = super::super::ink::Ink::default();
         let mut art = regent_draw::art::Art::default();
 

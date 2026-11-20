@@ -598,7 +598,7 @@ pub(crate) mod tests {
     /// the end's verdict.
     #[test]
     fn the_wheel_scrolls_a_box_over_the_game() {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let rect = Rect::from_min_size(pos2(100.0, 100.0), vec2(200.0, 100.0));
 
         // A pass to lay the menu out, as the game's last frame did.
@@ -656,14 +656,11 @@ pub(crate) mod tests {
             .collect()
     }
 
-    /// Where one frame drawing `draw` in typeface `face` shows anything:
-    /// each shape's bounds cut to its clip, empty ones left out; window
-    /// pixels at the fit's scale 1.
-    pub(crate) fn painted_bounds_in(
-        face: crate::files::config::Typeface,
-        draw: impl Fn(&mut Canvas<'_>),
-    ) -> Vec<Rect> {
-        let (_, output, _) = crate::ui::typeface::in_face(face, || painted_in(face, draw));
+    /// Where one frame drawing `draw` shows anything: each shape's bounds
+    /// cut to its clip, empty ones left out; window pixels at the fit's
+    /// scale 1.
+    pub(crate) fn painted_bounds(draw: impl Fn(&mut Canvas<'_>)) -> Vec<Rect> {
+        let (_, output, _) = painted(draw);
 
         output
             .shapes
@@ -678,19 +675,9 @@ pub(crate) mod tests {
     fn painted(
         draw: impl Fn(&mut Canvas<'_>),
     ) -> (egui::Context, egui::FullOutput, regent_draw::art::Art) {
-        painted_in(crate::files::config::Typeface::Egui, draw)
-    }
-
-    /// [`painted`] with typeface `face`'s fonts loaded.
-    fn painted_in(
-        face: crate::files::config::Typeface,
-        draw: impl Fn(&mut Canvas<'_>),
-    ) -> (egui::Context, egui::FullOutput, regent_draw::art::Art) {
         let catalogue = crate::testdata::hd();
         let window = Rect::from_min_size(Pos2::ZERO, vec2(400.0, 300.0));
-        let ctx = egui::Context::default();
-
-        ctx.set_fonts(crate::ui::typeface::definitions(face));
+        let ctx = crate::ui::typeface::context();
 
         let mut ink = Ink::default();
         let mut art = regent_draw::art::Art::default();

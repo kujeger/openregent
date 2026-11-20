@@ -1,7 +1,7 @@
 //! The view scrolled each drawn frame by the window's edge, as the
 //! original's (`regent_core::view::map::pan`), and, with
 //! `[enhancements] smooth_arrows`, by held arrow keys through the same
-//! ramp (W, A, S and D too with `[enhancements] wasd_scroll`). Else the
+//! ramp (W, A, S and D too with `[ui] wasd_scroll`). Else the
 //! arrows step once a key event (`map_keys`).
 //!
 //! ```text

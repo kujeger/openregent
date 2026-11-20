@@ -10,7 +10,7 @@
 //! ```
 //!
 //! The chat line empties the keys before `press` reads them, so typing
-//! presses nothing. With `[enhancements] wasd_scroll`, W, A, S and D
+//! presses nothing. With `[ui] wasd_scroll`, W, A, S and D
 //! are the scroll's: never a control's.
 
 use bevy::input::keyboard::{Key, KeyboardInput};
@@ -73,13 +73,13 @@ const FUNCTION: [Key; 15] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scrolling {
     Arrows,
-    /// `[enhancements] wasd_scroll`.
+    /// `[ui] wasd_scroll`.
     ArrowsAndWasd,
 }
 
 impl Scrolling {
     pub const fn of(settings: &Settings) -> Scrolling {
-        if settings.enhancements.wasd_scroll {
+        if settings.ui.wasd_scroll {
             Scrolling::ArrowsAndWasd
         } else {
             Scrolling::Arrows
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn the_first_enabled_control_takes_the_key_once() {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
 
         claim(&ctx, i32::from(b'r'));
 
@@ -282,7 +282,7 @@ mod tests {
     /// A control under a disabled ui leaves the key to the next.
     #[test]
     fn a_control_under_a_disabled_ui_takes_no_key() {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let mut hits = Vec::new();
 
         claim(&ctx, R);
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn only_enabled_controls_offer_their_keys() {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
 
         hit(&ctx, Some(R), Able::Disabled);
         hit(&ctx, Some(i32::from(b'H')), Able::Enabled);

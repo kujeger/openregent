@@ -629,7 +629,7 @@ mod tests {
     /// `APd3`, whose YES asks the restart.
     #[test]
     fn game_info_shows_the_goals_and_restart_asks_first() {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let controls = [
             keyed(id::GAME_INFO, 0, b'G'),
             keyed(id::RESTART, 50, b'R'),
@@ -657,7 +657,7 @@ mod tests {
     /// One Escape opens the menu, the next closes it (RESUME PLAY).
     #[test]
     fn escape_opens_options_and_the_next_escape_resumes() {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let mut menus = Menus::default();
         let mut paused = false;
 

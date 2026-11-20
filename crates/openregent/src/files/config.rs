@@ -4,7 +4,7 @@
 //!  $XDG_CONFIG_HOME/openregent/config.toml   (~/.config/... by default)
 //!    absent  ──> the defaults and commented optional examples, written
 //!    present ──> read key by key: a missing key, or one whose value
-//!                will not read or is out of [`RANGES`], takes its
+//!                will not read or is out of its range, takes its
 //!                default (the latter warned of); unknown keys and
 //!                sections are ignored
 //!    saved   ──> a value written only where it differs from the file's
@@ -22,10 +22,12 @@
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 
+use crate::files::setting::{Meta, Part, Setting, Visit, VisitMut, choices, in_range};
 use bevy::log::warn;
 use bevy::prelude::Resource;
 use regent_core::gpl::runtime;
 use regent_core::view::map::pan;
+use regent_derive::{Section, Sections};
 pub use regent_draw::art::Upscale;
 pub use regent_draw::art::fsr::VideoUpscale;
 pub use regent_draw::present::ViewUpscale;
@@ -46,60 +48,59 @@ const OPTIONAL: &str = "\
 # mods = [\"/path/to/mods\"]\n\n";
 
 /// Every setting.
-#[derive(Resource, Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Resource, Clone, Debug, Default, PartialEq, Sections)]
 pub struct Settings {
     pub ui: Ui,
     pub audio: Audio,
     pub game: Game,
+    #[section(tab = Enhancements)]
     pub enhancements: Enhancements,
 }
 
 /// The interface.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Section)]
+#[section(group = Interface)]
 pub struct Ui {
-    /// Which units show a hit point bar on the map.
+    #[setting(
+        name = "Hit point bars",
+        about = "Which units show a hit point bar on the map: all, only hurt ones, or none."
+    )]
     pub bars: HpBars,
-    /// Whose names show under them on the map: `on` every unit the
-    /// original names, `heroes` heroes alone (this game's), `off` none.
+    /// `heroes` is this game's.
+    #[setting(name = "Unit names", about = "Whose names show under them on the map.")]
     pub names: Names,
-    /// The main menu's art.
+    #[setting(
+        name = "Main menu picture",
+        about = "The main menu's picture: the original game's room, or the Northern Expansion's snowy one."
+    )]
     pub main_menu: MainMenu,
-    /// The start-up videos, MV02 and MV04: `on` as the original's
-    /// `ShowIntro`, `off` as its `-nointro`.
+    /// The original's `ShowIntro`, and its `-nointro`.
+    #[setting(name = "Intro videos", about = "Play the opening videos at start-up.")]
     pub intro: Intro,
-    /// The view's scroll in pixels: an arrow key's step, and the window
-    /// edge's (20 times that a second, at full ramp). The original's
-    /// `ScrollSpeed`, 32 to 64.
+    /// The original's `ScrollSpeed`.
+    #[setting(
+        about = "How far the map scrolls, in pixels, for each press of an arrow key. At the window's edge it scrolls 20 times that a second at full speed.",
+        default = pan::SCROLL_SPEED,
+        range = pan::SPEEDS
+    )]
     pub scroll_speed: i32,
-    /// `windowed` (default), or `full_screen`: borderless, the screen's
-    /// size; `exclusive`: the screen's video mode taken, `full_screen`
-    /// where the system offers none (Wayland). Alt+Enter flips windowed
-    /// and full screen. The original's `Windowed` switch.
+    /// The original's `Windowed` switch.
+    #[setting(
+        about = "Windowed, or full screen. Full screen fills the screen without changing its mode. Exclusive full screen changes the screen's mode; where the system does not allow that (Wayland), it works as full screen. Alt+Enter switches between windowed and full screen.",
+        group = Display
+    )]
     pub window: WindowMode,
-    /// The text's typeface: `inknut`, Inknut Antiqua, a stand-in for the
-    /// original's bitmap fonts; `egui`, egui's own (Ubuntu Light).
-    pub font: Typeface,
-    /// A LAN game's player list in the map's top right: `off` none,
-    /// `players` each player's colour and name, `details` also its round
-    /// trip and the lockstep delay in force. This game's.
+    /// This game's.
+    #[setting(
+        about = "In a LAN game, a list of the players in the map's top right corner. With timing, it also shows how long messages take to each player and back, and the delay in use."
+    )]
     pub player_list: PlayerList,
-}
-
-impl Default for Ui {
-    fn default() -> Self {
-        Ui {
-            bars: HpBars::default(),
-            names: Names::default(),
-            main_menu: MainMenu::default(),
-            intro: Intro::default(),
-            scroll_speed: pan::SCROLL_SPEED,
-            window: WindowMode::default(),
-            font: Typeface::default(),
-            player_list: PlayerList::default(),
-        }
-    }
+    /// This game's; W, A, S and D by place on the keyboard.
+    #[setting(
+        name = "WASD scroll",
+        about = "W, A, S and D scroll the map as the arrow keys do. Hot keys on those letters, such as upgrades, no longer work."
+    )]
+    pub wasd_scroll: bool,
 }
 
 /// How the window shows (`window`).
@@ -122,12 +123,6 @@ impl WindowMode {
         }
     }
 }
-
-/// [`Ui::scroll_speed`]'s range: `ScrollSpeedLow` to `High`
-/// ([`pan::SPEEDS`]).
-#[allow(clippy::cast_precision_loss, reason = "32 and 64")]
-pub const SCROLL_SPEEDS: RangeInclusive<f32> =
-    *pan::SPEEDS.start() as f32..=*pan::SPEEDS.end() as f32;
 
 impl Ui {
     /// [`Ui::scroll_speed`] held to its range.
@@ -155,15 +150,6 @@ pub enum MainMenu {
     #[default]
     Base,
     Expansion,
-}
-
-/// The typeface egui draws the text in (`typeface`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize, clap::ValueEnum)]
-#[serde(rename_all = "lowercase")]
-pub enum Typeface {
-    #[default]
-    Inknut,
-    Egui,
 }
 
 /// Which units show a hit point bar. The original has `always` while
@@ -218,24 +204,17 @@ impl Names {
 pub const LOUDNESS: RangeInclusive<f32> = 0.0..=1.0;
 
 /// Loudness, each 0 (mute) to 1 (as the engine plays it).
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Section)]
+#[section(group = Sound)]
 pub struct Audio {
-    /// Sound effects and voices.
+    #[setting(name = "Effects volume",
+        about = "How loud sound effects and voices are, from 0 (silent) to 1 (full).", default = 1.0, range = LOUDNESS)]
     pub effects: f32,
+    #[setting(name = "Music volume",
+        about = "How loud the music is, from 0 (silent) to 1 (full).", default = 1.0, range = LOUDNESS)]
     pub music: f32,
-    /// Silences both, keeping their levels.
+    #[setting(name = "Mute", about = "Silence all sound. The volumes are kept.")]
     pub muted: bool,
-}
-
-impl Default for Audio {
-    fn default() -> Self {
-        Audio {
-            effects: 1.0,
-            music: 1.0,
-            muted: false,
-        }
-    }
 }
 
 impl Audio {
@@ -259,17 +238,19 @@ impl Audio {
 }
 
 /// Play.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Eq, Section)]
+#[section(group = Game)]
 pub struct Game {
-    /// Save the game every 1, 5 (default) or 10 game days, keeping the
-    /// last 10 autosaves; `off` never. The original offers 5, 10 and 20
-    /// days and keeps one.
+    /// The original offers 5, 10 and 20 days and keeps one.
+    #[setting(
+        about = "How often the game saves itself, in game days. The last 10 autosaves are kept. The original game saves every 5, 10 or 20 days and keeps one."
+    )]
     pub autosave: Autosave,
-    /// Game speed, the original's options slider: `1` slowest, `5` the
-    /// engine's (default), `9` fastest (`runtime::PACES`). Each game
-    /// starts at it; `<` and `>` step it. A LAN game runs at `5`, and
-    /// neither changes it there.
+    /// The original's options slider (`runtime::PACES`).
+    #[setting(
+        name = "Game speed",
+        about = "How fast the game runs, as on the original's options slider: 1 is slowest, 5 normal, 9 fastest. Each game starts at this speed; the < and > keys change it. Network games always run at 5."
+    )]
     pub speed: SpeedSlider,
 }
 
@@ -364,108 +345,213 @@ impl Autosave {
     }
 }
 
-/// Departures from the original (`docs/openregent/enhancements.md`). The default is
-/// [`Preset::Modern`].
+// Each enum's choices on the settings page, in its order there, and
+// their labels.
+choices! {
+    HpBars { Always => "Always", Damaged => "When hurt", Never => "Never" }
+    Names { Off => "Off", On => "All units", Heroes => "Heroes only" }
+    MainMenu { Base => "Majesty", Expansion => "Northern Expansion" }
+    Intro { On => "On", Off => "Off" }
+    WindowMode { Windowed => "Windowed", FullScreen => "Full screen", Exclusive => "Exclusive full screen" }
+    PlayerList { Off => "Off", Players => "Players", Details => "Players and timing" }
+    Autosave { Off => "Off", Day => "Every day", FiveDays => "Every 5 days", TenDays => "Every 10 days" }
+    SpeedSlider {
+        S1 => "1 (slowest)", S2 => "2", S3 => "3", S4 => "4", S5 => "5 (normal)",
+        S6 => "6", S7 => "7", S8 => "8", S9 => "9 (fastest)",
+    }
+    Upscale { None => "Off", Xbrz => "xBRZ" }
+    ViewUpscale {
+        Nearest => "Off",
+        Sharp => "Sharp",
+        Fsr => "FSR",
+        SharpSprite => "Sharp, per sprite",
+        FsrSprite => "FSR, per sprite",
+    }
+    VideoUpscale { Linear => "Smooth", Fsr => "FSR" }
+    Shadows { Blend => "Stacked", Soft => "Soft" }
+    Rings { Art => "Original art", Native => "Drawn", Modern => "Modern" }
+    Cast { Painted => "Painted", Models => "From models" }
+}
+
+/// Departures from the original (`docs/openregent/enhancements.md`). The
+/// default is [`Preset::Modern`]; `classic` each key's [`Preset::Classic`]
+/// value.
 #[allow(
     clippy::struct_excessive_bools,
     reason = "independent switches, each a TOML key"
 )]
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Section)]
+#[section(presets)]
 pub struct Enhancements {
-    /// Keys 1, 2 and 3 set the game speed to 1×, 2× and 4×.
+    #[setting(
+        about = "Keys 1, 2 and 3 set the game speed to normal, double and four times.",
+        group = Game,
+        default = true,
+        classic = false
+    )]
     pub speed_keys: bool,
-    /// Debug helpers: L lifts the fog, O shows the models of
-    /// buildings casting from one in place of their sprites.
+    /// L lifts the fog; O draws the casting models in place of their sprites.
+    #[setting(
+        about = "Testing keys: L lifts the fog of war; O shows the 3D models that cast shadows in place of their buildings.",
+        show = Hidden,
+        kept
+    )]
     pub debug_keys: bool,
-    /// The wheel zooms smoothly, not between the original's two levels;
-    /// the gold amounts show at every zoom; a middle click or 0 goes
-    /// back to 1:1.
+    #[setting(
+        about = "The mouse wheel zooms in small steps, not only between the original's two levels. Gold amounts show at every zoom. A middle click or 0 goes back to normal size.",
+        group = Interface,
+        default = true,
+        classic = false
+    )]
     pub smooth_zoom: bool,
-    /// Pieces slide between game frames, not jump a frame at a time.
+    #[setting(
+        about = "Units move smoothly between the game's steps, instead of jumping from one to the next.",
+        group = Display,
+        default = true,
+        classic = false
+    )]
     pub smooth_position: bool,
-    /// While aiming a spell limited to a Wizards Guild's range, the range
-    /// shows on the map too, not only on the minimap.
+    #[setting(
+        name = "Spell range on the map",
+        about = "When you aim a spell that only works near a Wizards Guild, its range shows on the map too, not only on the minimap.",
+        group = Game,
+        default = true,
+        classic = false
+    )]
     pub show_wizards_guild_spell_range: bool,
-    /// The menus' and panels' pictures upscaled with xBRZ, not filtered:
-    /// sharper edges in a large window. Text and the map are untouched.
+    #[setting(
+        name = "Interface upscaling",
+        about = "Sharpen the pictures of the menus and panels in a large window. Text and the map do not change.",
+        group = Display,
+        default = Upscale::Xbrz,
+        classic = Upscale::None
+    )]
     pub ui_upscale: Upscale,
-    /// The game view drawn at the art grid and scaled into the map:
-    /// `nearest` sampled nearest, `sharp` sharp-bilinear (default), `fsr`
-    /// AMD FSR 1. Or at the screen's pixels, each sprite smoothed:
-    /// `sharp-sprite` sharp-bilinear, `fsr-sprite` that and FSR 1's RCAS.
+    #[setting(
+        name = "Map upscaling",
+        about = "How the map is enlarged to the window. Off repeats pixels. Sharp and FSR enlarge the whole picture. The per-sprite choices smooth each sprite at the screen's own resolution.",
+        group = Display,
+        default = ViewUpscale::Sharp,
+        classic = ViewUpscale::Nearest
+    )]
     pub view_upscale: ViewUpscale,
-    /// Videos shown larger than they are: `linear`, egui's filter, or
-    /// `fsr`, AMD FSR 1 (default).
+    #[setting(
+        name = "Video upscaling",
+        about = "How videos are enlarged: smooth filtering, or AMD FSR for sharper edges.",
+        group = Display,
+        default = VideoUpscale::Fsr,
+        classic = VideoUpscale::Linear
+    )]
     pub video_upscale: VideoUpscale,
-    /// Shadows: `soft` (default), no stacking, one strength, hue kept;
-    /// `blend`, a multiply as each draws, stacking as the original's.
+    /// Classic's `blend` stacks in draw order, as the original's: shadows
+    /// have no off.
+    #[setting(
+        about = "Soft: where shadows overlap, they do not get darker. Stacked: overlapping shadows darken each other, as in the original game.",
+        group = Display,
+        default = Shadows::Soft,
+        classic = Shadows::Blend
+    )]
     pub shadows: Shadows,
-    /// Each game message about a unit shows its portrait; a click selects
-    /// the unit while it exists and centres the view on it or its last place.
+    #[setting(
+        about = "Game messages about a unit show its portrait. Click it to select the unit and move the view to it, or to where it was last.",
+        group = Interface,
+        default = true,
+        classic = false
+    )]
     pub message_links: bool,
-    /// With a Temple to Krolm built, its Rage of Krolm is a button on the
-    /// spell bar too, darkened as it runs out.
+    #[setting(
+        name = "Rage of Krolm on the spell bar",
+        about = "With a Temple to Krolm built, Rage of Krolm also has a button on the spell bar. The button darkens as the rage runs out.",
+        group = Interface,
+        default = true,
+        classic = false
+    )]
     pub rage_on_spell_bar: bool,
-    /// Selection rings: `art`, the game's pictures; `native` (default),
-    /// drawn as shapes of the same size, place and look, smooth at any
-    /// zoom; `modern`, a thin line with a soft glow inside it.
+    #[setting(
+        name = "Selection rings",
+        about = "How selection rings look. Original art uses the game's pictures. Drawn looks the same but stays smooth at any zoom. Modern is a thin line with a soft glow.",
+        group = Display,
+        default = Rings::Modern,
+        classic = Rings::Art
+    )]
     pub rings: Rings,
-    /// The hover ring takes a thin line in its piece's side colour, its
-    /// hit point bar's: sides tell apart on unhurt units too.
+    #[setting(
+        name = "Side colour on hover",
+        about = "The ring under the unit you point at shows its side's colour, so you can tell sides apart even when no one is hurt.",
+        group = Display,
+        default = true,
+        classic = false
+    )]
     pub side_ring: bool,
-    /// A held arrow key scrolls smoothly, ramping up as the window's
-    /// edge does, not a step each time the key repeats.
+    #[setting(
+        name = "Smooth arrow keys",
+        about = "Holding an arrow key scrolls smoothly and speeds up, like scrolling at the window's edge, instead of jumping each time the key repeats.",
+        group = Interface,
+        default = true,
+        classic = false
+    )]
     pub smooth_arrows: bool,
-    /// W, A, S and D (by place on the keyboard) scroll as the arrows do,
-    /// over any hot key on them. Off by default: no preset sets it.
-    pub wasd_scroll: bool,
-    /// The experimental keys ([`EXPERIMENTAL_KEYS`]) take effect: off, each
-    /// plays as if off, its value kept.
+    /// The switch of the `gate = Experimental` keys: off, each plays as
+    /// if off, its value kept.
+    #[setting(
+        about = "Turn on the experimental settings below. While this is off, they have no effect but keep their values.",
+        gate = Switch,
+        classic = false
+    )]
     pub experimental: bool,
-    /// Experimental: trees sway in a west wind (`regent_draw::wind`).
+    /// `regent_draw::wind`.
+    #[setting(
+        about = "Trees sway in a wind from the west.",
+        gate = Experimental
+    )]
     pub wind: bool,
-    /// Art pixels the top of a tree `regent_draw::wind::Trees::reference`
-    /// tall leans at most, in [`WIND_REACHES`].
+    /// Art pixels a tree `regent_draw::wind::Trees::reference` tall leans
+    /// at most.
+    #[setting(
+        name = "Wind strength",
+        about = "How far the tops of trees lean, in pixels of the game's art.",
+        gate = Experimental,
+        default = 2.0,
+        range = WIND_REACHES
+    )]
     pub wind_amplitude: f32,
-    /// Experimental: the buildings' shadows, `painted` (default) into
-    /// their pictures, or cast by `models` of the buildings that have one
-    /// from one sun, on hills and other things too. Under soft shadows.
+    #[setting(
+        name = "Building shadows",
+        about = "Painted into the buildings' pictures, or cast from 3D models of the buildings by a single sun, onto hills and other things too. Only with soft shadows.",
+        gate = Experimental,
+        default = Cast::Painted
+    )]
     pub cast: Cast,
-    /// The models' sun: degrees from screen right toward the viewer, in
-    /// [`SUN_DIRECTIONS`]. Shadows fall the other way.
+    /// Degrees from screen right toward the viewer.
+    #[setting(
+        about = "Where the sun is, in degrees from the right of the screen towards you. Shadows fall the other way.",
+        gate = Experimental,
+        default = 29.0,
+        range = SUN_DIRECTIONS
+    )]
     pub sun_direction: f32,
-    /// The models' sun: degrees above the ground, in [`SUN_ELEVATIONS`].
+    #[setting(
+        about = "How high the sun is, in degrees above the ground.",
+        gate = Experimental,
+        default = 50.0,
+        range = SUN_ELEVATIONS
+    )]
     pub sun_elevation: f32,
-    /// The models' sun: its apparent size, degrees, in [`SUN_SIZES`].
-    /// A shadow is sharp where its building stands and softer farther
-    /// off; 0, as sharp all along.
+    /// Degrees; 0, a shadow as sharp all along.
+    #[setting(
+        about = "How large the sun looks, in degrees. A larger sun makes a shadow softer the further it falls from its building; 0 keeps shadows sharp.",
+        gate = Experimental,
+        default = regent_draw::sun::cast::SIZE,
+        range = SUN_SIZES
+    )]
     pub sun_size: f32,
-    /// Experimental: under `cast = "models"`, a model building takes its
-    /// own model's shadow too. For sprites with their painted self-shade
-    /// removed; the stock ones darken twice.
+    /// For sprites with their painted self-shade removed.
+    #[setting(
+        about = "With shadows from models, each building also shades itself. Meant for pictures without painted shading: the original pictures get darker twice.",
+        gate = Experimental
+    )]
     pub self_shadows: bool,
 }
-
-impl Default for Enhancements {
-    fn default() -> Self {
-        Enhancements::modern()
-    }
-}
-
-/// The master switch of the experimental keys.
-pub const EXPERIMENTAL_SWITCH: &str = "experimental";
-
-/// The keys [`Enhancements::experimental`] gates. No preset sets them.
-pub const EXPERIMENTAL_KEYS: [&str; 7] = [
-    "cast",
-    "sun_direction",
-    "sun_elevation",
-    "sun_size",
-    "self_shadows",
-    "wind",
-    "wind_amplitude",
-];
 
 /// A set of [`Enhancements`] picked at once. Not stored: read from the
 /// values ([`Enhancements::preset`]), so any change shows as `Custom`.
@@ -492,79 +578,10 @@ impl Preset {
 }
 
 impl Enhancements {
-    /// [`Preset::Modern`].
-    #[must_use]
-    pub const fn modern() -> Enhancements {
-        Enhancements {
-            speed_keys: true,
-            debug_keys: false,
-            smooth_zoom: true,
-            smooth_position: true,
-            show_wizards_guild_spell_range: true,
-            ui_upscale: Upscale::Xbrz,
-            view_upscale: ViewUpscale::Sharp,
-            video_upscale: VideoUpscale::Fsr,
-            shadows: Shadows::Soft,
-            message_links: true,
-            rage_on_spell_bar: true,
-            rings: Rings::Modern,
-            side_ring: true,
-            smooth_arrows: true,
-            wasd_scroll: false,
-            experimental: false,
-            wind: false,
-            wind_amplitude: 2.0,
-            cast: Cast::Painted,
-            sun_direction: 29.0,
-            sun_elevation: 50.0,
-            sun_size: regent_draw::sun::cast::SIZE,
-            self_shadows: false,
-        }
-    }
-
-    /// [`Preset::Classic`]: every departure off. `shadows` has no off:
-    /// `blend` stacks in draw order, as the original's.
-    #[must_use]
-    pub const fn classic() -> Enhancements {
-        Enhancements {
-            speed_keys: false,
-            smooth_zoom: false,
-            smooth_position: false,
-            show_wizards_guild_spell_range: false,
-            message_links: false,
-            rage_on_spell_bar: false,
-            smooth_arrows: false,
-            ui_upscale: Upscale::None,
-            view_upscale: ViewUpscale::Nearest,
-            video_upscale: VideoUpscale::Linear,
-            shadows: Shadows::Blend,
-            rings: Rings::Art,
-            side_ring: false,
-            ..Enhancements::modern()
-        }
-    }
-
-    /// `self` with the keys no preset sets taken from `from`: the debug
-    /// keys, WASD scrolling, and the experimental ones but their switch.
-    const fn keeping(self, from: &Enhancements) -> Enhancements {
-        Enhancements {
-            debug_keys: from.debug_keys,
-            wasd_scroll: from.wasd_scroll,
-            wind: from.wind,
-            wind_amplitude: from.wind_amplitude,
-            cast: from.cast,
-            sun_direction: from.sun_direction,
-            sun_elevation: from.sun_elevation,
-            sun_size: from.sun_size,
-            self_shadows: from.self_shadows,
-            ..self
-        }
-    }
-
     /// The preset these values are: `Custom` when they match none.
     #[must_use]
     pub fn preset(&self) -> Preset {
-        if Enhancements::modern().keeping(self) == *self {
+        if Enhancements::default().keeping(self) == *self {
             Preset::Modern
         } else if Enhancements::classic().keeping(self) == *self {
             Preset::Classic
@@ -577,7 +594,7 @@ impl Enhancements {
     #[must_use]
     pub fn picked(&self, preset: Preset) -> Enhancements {
         match preset {
-            Preset::Modern => Enhancements::modern().keeping(self),
+            Preset::Modern => Enhancements::default().keeping(self),
             Preset::Classic => Enhancements::classic().keeping(self),
             Preset::Custom => self.clone(),
         }
@@ -621,18 +638,6 @@ pub const SUN_ELEVATIONS: RangeInclusive<f32> = 10.0..=89.0;
 
 /// [`Enhancements::sun_size`]'s range: degrees.
 pub const SUN_SIZES: RangeInclusive<f32> = 0.0..=8.0;
-
-/// The numbers held to a range: section, key, range. Out of it in the
-/// file, a key takes its default.
-pub const RANGES: [(&str, &str, RangeInclusive<f32>); 7] = [
-    ("ui", "scroll_speed", SCROLL_SPEEDS),
-    ("audio", "effects", LOUDNESS),
-    ("audio", "music", LOUDNESS),
-    ("enhancements", "wind_amplitude", WIND_REACHES),
-    ("enhancements", "sun_direction", SUN_DIRECTIONS),
-    ("enhancements", "sun_elevation", SUN_ELEVATIONS),
-    ("enhancements", "sun_size", SUN_SIZES),
-];
 
 /// Where the settings live; `None` with no config directory.
 pub fn path() -> Option<PathBuf> {
@@ -796,7 +801,7 @@ fn read(path: &Path) -> Result<Settings, String> {
 }
 
 /// `text` read key by key over the defaults: a key whose value will not
-/// read, or is out of its [`RANGES`] range, keeps its default, warned
+/// read as its type, or is out of its range, keeps its default, warned
 /// of; keys and sections the settings lack are ignored.
 ///
 /// ```text
@@ -807,69 +812,45 @@ fn read(path: &Path) -> Result<Settings, String> {
 /// ```
 fn lenient(text: &str) -> Result<Settings, String> {
     let file: Table = toml::from_str(text).map_err(|e: toml::de::Error| e.to_string())?;
-    let defaults = Table::try_from(Settings::default()).map_err(|e| e.to_string())?;
 
     // A known section that is no table: its keys all take their default.
-    for section in defaults.keys() {
-        if file.get(section).is_some_and(|v| !v.is_table()) {
-            warn!("settings: [{section}] is not a table; its defaults used");
+    for part in Settings::parts() {
+        if file.get(part.name).is_some_and(|v| !v.is_table()) {
+            warn!(
+                "settings: [{}] is not a table; its defaults used",
+                part.name
+            );
         }
     }
 
-    let keys: Vec<(String, String)> = defaults
-        .iter()
-        .filter_map(|(section, keys)| keys.as_table().map(|keys| (section, keys)))
-        .flat_map(|(section, keys)| keys.keys().map(move |key| (section.clone(), key.clone())))
-        .collect();
+    let mut settings = Settings::default();
 
-    // Each key tried alone over those read so far: one bad value spoils
-    // no other.
-    let table = keys.iter().fold(defaults, |table, (section, key)| {
-        match file.get(section).and_then(|keys| keys.get(key)) {
-            Some(value) => tried(table, section, key, value),
-            None => table,
+    settings.visit_mut(&mut Load(&file));
+    Ok(settings)
+}
+
+/// Each key a file holds read over its setting: one bad value spoils no
+/// other.
+struct Load<'a>(&'a Table);
+
+impl VisitMut for Load<'_> {
+    fn field<T: Setting>(&mut self, part: &'static Part, meta: &'static Meta, value: &mut T) {
+        let held = self
+            .0
+            .get(part.name)
+            .and_then(Value::as_table)
+            .and_then(|keys| keys.get(meta.key));
+
+        if let Some(held) = held {
+            match held.clone().try_into::<T>() {
+                Ok(read) if in_range(meta, &read) => *value = read,
+                _ => warn!(
+                    "settings: [{}] {} = {held} is not valid; its default used",
+                    part.name, meta.key
+                ),
+            }
         }
-    });
-
-    table.try_into().map_err(|e: toml::de::Error| e.to_string())
-}
-
-/// `table` with `section`'s `key` set to `value`, if the settings read it
-/// and it is in its range; else `table` as it was, warned of.
-fn tried(table: Table, section: &str, key: &str, value: &Value) -> Table {
-    let mut tried = table.clone();
-
-    if let Some(Value::Table(keys)) = tried.get_mut(section) {
-        keys.insert(key.to_owned(), value.clone());
     }
-
-    let read = in_range(section, key, value) && tried.clone().try_into::<Settings>().is_ok();
-
-    if read {
-        tried
-    } else {
-        warn!("settings: [{section}] {key} = {value} is not valid; its default used");
-        table
-    }
-}
-
-/// Whether `value` is in `section`'s `key`'s [`RANGES`] range; true for
-/// a key with none, or a value no number (its type is checked apart).
-fn in_range(section: &str, key: &str, value: &Value) -> bool {
-    let number = match value {
-        Value::Float(x) => Some(*x),
-        #[allow(clippy::cast_precision_loss, reason = "a setting's size")]
-        Value::Integer(x) => Some(*x as f64),
-        _ => None,
-    };
-
-    RANGES
-        .iter()
-        .find(|(s, k, _)| *s == section && *k == key)
-        .zip(number)
-        .is_none_or(|((_, _, range), x)| {
-            (f64::from(*range.start())..=f64::from(*range.end())).contains(&x)
-        })
 }
 
 fn write(path: &Path, settings: &Settings) -> Result<(), String> {
@@ -892,42 +873,65 @@ fn write(path: &Path, settings: &Settings) -> Result<(), String> {
 /// changed from the default it took. Text that does not parse is
 /// replaced whole.
 fn merged(old: &str, settings: &Settings) -> Result<String, String> {
-    let new: toml_edit::DocumentMut = toml::to_string(settings)
-        .map_err(|e| e.to_string())?
-        .parse()
-        .map_err(|e: toml_edit::TomlError| e.to_string())?;
     let mut doc: toml_edit::DocumentMut = old.parse().unwrap_or_default();
+    let now = Written::of(settings)?;
+    let was = Written::of(&lenient(old).unwrap_or_default())?;
 
-    // The values as read, and as they are now, to compare key by key.
-    let was = Table::try_from(lenient(old).unwrap_or_default()).map_err(|e| e.to_string())?;
-    let now = Table::try_from(settings).map_err(|e| e.to_string())?;
-    let same = |section: &str, key: &str| {
-        let value = |t: &Table| t.get(section).and_then(|keys| keys.get(key)).cloned();
-
-        value(&was) == value(&now)
-    };
-
-    for (name, item) in new.iter() {
-        let section = doc.entry(name).or_insert_with(toml_edit::table);
+    for ((part, meta, value), (_, _, before)) in now.iter().zip(&was) {
+        let section = doc.entry(part.name).or_insert_with(toml_edit::table);
 
         if !section.is_table_like() {
             *section = toml_edit::table();
         }
 
-        let pairs = item.as_table_like().into_iter().flat_map(|t| t.iter());
-
         if let Some(section) = section.as_table_like_mut() {
-            for (key, item) in pairs {
-                let there = section.get(key).is_some_and(|i| !i.is_none());
+            let there = section.get(meta.key).is_some_and(|i| !i.is_none());
+            let same = value.to_string() == before.to_string();
 
-                if !(there && same(name, key)) {
-                    kept(section.entry(key).or_insert(toml_edit::Item::None), item);
-                }
+            if !(there && same) {
+                let item = section.entry(meta.key).or_insert(toml_edit::Item::None);
+
+                kept(item, &toml_edit::Item::Value(value.clone()));
             }
         }
     }
 
     Ok(doc.to_string())
+}
+
+/// Each setting's value as the file writes it, in the file's order.
+#[derive(Default)]
+struct Written {
+    values: Vec<(&'static Part, &'static Meta, toml_edit::Value)>,
+    error: Option<String>,
+}
+
+impl Written {
+    /// `settings`' values, or why one will not write.
+    fn of(
+        settings: &Settings,
+    ) -> Result<Vec<(&'static Part, &'static Meta, toml_edit::Value)>, String> {
+        let mut written = Written::default();
+
+        settings.visit(&mut written);
+        written.error.map_or(Ok(written.values), Err)
+    }
+}
+
+impl Visit for Written {
+    fn field<T: Setting>(&mut self, part: &'static Part, meta: &'static Meta, value: &T) {
+        // toml's own text for the value, as a whole file writes it.
+        let mut text = String::new();
+        let value = value
+            .serialize(toml::ser::ValueSerializer::new(&mut text))
+            .map_err(|e| e.to_string())
+            .and_then(|text| text.parse::<toml_edit::Value>().map_err(|e| e.to_string()));
+
+        match value {
+            Ok(value) => self.values.push((part, meta, value)),
+            Err(e) => self.error = Some(format!("[{}] {}: {e}", part.name, meta.key)),
+        }
+    }
 }
 
 /// `old` given `new`'s value, keeping `old`'s comments and spacing.
@@ -947,20 +951,89 @@ fn kept(old: &mut toml_edit::Item, new: &toml_edit::Item) {
 mod tests {
     use super::*;
 
+    /// The file a save over nothing writes, byte for byte.
+    const DEFAULT_FILE: &str = include_str!("../../tests/fixtures/config/default.toml");
+
+    /// A hand-edited file: comments, unknown keys and sections, `[paths]`,
+    /// bad and out-of-range values, an integer for a fraction.
+    const OLD_FILE: &str = include_str!("../../tests/fixtures/config/old.toml");
+
+    /// [`OLD_FILE`] saved: its text kept, the missing keys added.
+    const OLD_SAVED: &str = include_str!("../../tests/fixtures/config/old_saved.toml");
+
     #[test]
-    fn the_defaults_survive_a_round_trip() {
-        let text = toml::to_string(&Settings::default()).expect("writes");
+    fn a_save_over_nothing_writes_the_default_file() {
+        assert_eq!(
+            merged("", &Settings::default()).as_deref(),
+            Ok(DEFAULT_FILE)
+        );
+    }
+
+    /// Each value read alone: a bad or out-of-range one keeps its default.
+    #[test]
+    #[allow(clippy::float_cmp, reason = "read back exactly")]
+    fn a_hand_edited_file_reads_key_by_key() {
+        let settings = lenient(OLD_FILE).expect("parses");
+        let mut expected = Settings::default();
+
+        expected.ui.bars = HpBars::Always;
+        expected.ui.window = WindowMode::FullScreen;
+        expected.audio.effects = 0.3;
+        expected.audio.music = 1.0;
+        expected.game.speed = SpeedSlider::S7;
+        expected.game.autosave = Autosave::Off;
+        expected.enhancements.rings = Rings::Art;
+        expected.enhancements.experimental = true;
+        expected.enhancements.wind_amplitude = 3.5;
+
+        assert_eq!(settings, expected);
+    }
+
+    /// A save of what was read keeps the file's text, byte for byte, and
+    /// adds the keys it lacks; saved again, it stays.
+    #[test]
+    fn a_hand_edited_file_saves_with_its_text_kept() {
+        let settings = lenient(OLD_FILE).expect("parses");
+
+        assert_eq!(merged(OLD_FILE, &settings).as_deref(), Ok(OLD_SAVED));
+        assert_eq!(merged(OLD_SAVED, &settings).as_deref(), Ok(OLD_SAVED));
+    }
+
+    /// One setting changed: one line of the file changed.
+    #[test]
+    fn a_change_rewrites_its_line_alone() {
+        let mut settings = lenient(OLD_SAVED).expect("parses");
+
+        settings.audio.effects = 0.7;
+        settings.enhancements.rings = Rings::Native;
+
+        let text = merged(OLD_SAVED, &settings).expect("merges");
+        let changed: Vec<(&str, &str)> = OLD_SAVED
+            .lines()
+            .zip(text.lines())
+            .filter(|(a, b)| a != b)
+            .collect();
 
         assert_eq!(
-            toml::from_str::<Settings>(&text).ok(),
-            Some(Settings::default())
+            changed,
+            [
+                ("effects = 0.3", "effects = 0.7"),
+                ("rings = \"art\"", "rings = \"native\""),
+            ]
         );
+        assert_eq!(OLD_SAVED.lines().count(), text.lines().count());
+    }
+
+    #[test]
+    fn the_defaults_survive_a_round_trip() {
+        let text = merged("", &Settings::default()).expect("writes");
+
+        assert_eq!(lenient(&text).ok(), Some(Settings::default()));
     }
 
     #[test]
     fn a_missing_key_takes_its_default() {
-        let settings: Settings =
-            toml::from_str("[ui]\nmain_menu = \"expansion\"\n").expect("parses");
+        let settings = lenient("[ui]\nmain_menu = \"expansion\"\n").expect("parses");
 
         assert_eq!(
             settings,
@@ -1031,7 +1104,7 @@ mod tests {
 
     #[test]
     fn the_scroll_speed_is_the_originals_and_held_to_its_slider() {
-        let fast: Settings = toml::from_str("[ui]\nscroll_speed = 64\n").expect("parses");
+        let fast = lenient("[ui]\nscroll_speed = 64\n").expect("parses");
 
         assert_eq!(Settings::default().ui.scroll(), 32);
         assert_eq!(fast.ui.scroll(), 64);
@@ -1042,17 +1115,13 @@ mod tests {
         assert!(Settings::default().enhancements.smooth_arrows);
     }
 
-    /// WASD scrolling off by default, in both presets; a pick keeps it.
+    /// WASD scrolling off by default; on read.
     #[test]
-    fn wasd_scroll_is_off_by_default_and_outlives_a_pick() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nwasd_scroll = true\n").expect("parses");
-        let on = &settings.enhancements;
+    fn wasd_scroll_is_off_by_default() {
+        let settings = lenient("[ui]\nwasd_scroll = true\n").expect("parses");
 
-        assert!(!Settings::default().enhancements.wasd_scroll);
-        assert!(!Enhancements::classic().wasd_scroll);
-        assert_eq!(on.preset(), Preset::Modern);
-        assert!(on.picked(Preset::Classic).wasd_scroll);
+        assert!(!Settings::default().ui.wasd_scroll);
+        assert!(settings.ui.wasd_scroll);
     }
 
     /// Out of range in the file: the default, the keys in range read.
@@ -1076,8 +1145,7 @@ mod tests {
 
     #[test]
     fn the_speed_keys_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nspeed_keys = true\n").expect("parses");
+        let settings = lenient("[enhancements]\nspeed_keys = true\n").expect("parses");
 
         assert!(settings.enhancements.speed_keys);
     }
@@ -1089,8 +1157,7 @@ mod tests {
 
     #[test]
     fn the_debug_keys_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\ndebug_keys = true\n").expect("parses");
+        let settings = lenient("[enhancements]\ndebug_keys = true\n").expect("parses");
 
         assert!(settings.enhancements.debug_keys);
     }
@@ -1102,8 +1169,7 @@ mod tests {
 
     #[test]
     fn the_smooth_zoom_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nsmooth_zoom = true\n").expect("parses");
+        let settings = lenient("[enhancements]\nsmooth_zoom = true\n").expect("parses");
 
         assert!(settings.enhancements.smooth_zoom);
     }
@@ -1161,8 +1227,7 @@ mod tests {
 
     #[test]
     fn the_smooth_position_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nsmooth_position = true\n").expect("parses");
+        let settings = lenient("[enhancements]\nsmooth_position = true\n").expect("parses");
 
         assert!(settings.enhancements.smooth_position);
     }
@@ -1194,17 +1259,15 @@ mod tests {
 
     #[test]
     fn the_spell_range_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nshow_wizards_guild_spell_range = false\n")
-                .expect("parses");
+        let settings =
+            lenient("[enhancements]\nshow_wizards_guild_spell_range = false\n").expect("parses");
 
         assert!(!settings.enhancements.show_wizards_guild_spell_range);
     }
 
     #[test]
     fn the_ui_upscale_is_xbrz_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nui_upscale = \"none\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nui_upscale = \"none\"\n").expect("parses");
 
         assert_eq!(Settings::default().enhancements.ui_upscale, Upscale::Xbrz);
         assert_eq!(settings.enhancements.ui_upscale, Upscale::None);
@@ -1212,8 +1275,7 @@ mod tests {
 
     #[test]
     fn the_view_upscale_is_sharp_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nview_upscale = \"fsr\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nview_upscale = \"fsr\"\n").expect("parses");
 
         assert_eq!(
             Settings::default().enhancements.view_upscale,
@@ -1225,9 +1287,8 @@ mod tests {
             ("sharp-sprite", ViewUpscale::SharpSprite),
             ("fsr-sprite", ViewUpscale::FsrSprite),
         ] {
-            let settings: Settings =
-                toml::from_str(&format!("[enhancements]\nview_upscale = \"{name}\"\n"))
-                    .expect("parses");
+            let settings =
+                lenient(&format!("[enhancements]\nview_upscale = \"{name}\"\n")).expect("parses");
 
             assert_eq!(settings.enhancements.view_upscale, mode);
         }
@@ -1235,8 +1296,7 @@ mod tests {
 
     #[test]
     fn the_video_upscale_is_fsr_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nvideo_upscale = \"linear\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nvideo_upscale = \"linear\"\n").expect("parses");
 
         assert_eq!(
             Settings::default().enhancements.video_upscale,
@@ -1247,8 +1307,7 @@ mod tests {
 
     #[test]
     fn the_shadows_are_soft_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nshadows = \"blend\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nshadows = \"blend\"\n").expect("parses");
 
         assert_eq!(Settings::default().enhancements.shadows, Shadows::Soft);
         assert_eq!(settings.enhancements.shadows, Shadows::Blend);
@@ -1267,8 +1326,7 @@ mod tests {
 
     #[test]
     fn the_message_links_are_on_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nmessage_links = false\n").expect("parses");
+        let settings = lenient("[enhancements]\nmessage_links = false\n").expect("parses");
 
         assert!(Settings::default().enhancements.message_links);
         assert!(!settings.enhancements.message_links);
@@ -1277,8 +1335,7 @@ mod tests {
     /// The modern rings by default; a bad value takes the default.
     #[test]
     fn the_rings_are_modern_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nrings = \"art\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nrings = \"art\"\n").expect("parses");
         let bad = lenient("[enhancements]\nrings = \"square\"\n");
 
         assert_eq!(Settings::default().enhancements.rings, Rings::Modern);
@@ -1289,8 +1346,7 @@ mod tests {
     /// The side ring on by default; off read.
     #[test]
     fn the_side_ring_is_on_by_default() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nside_ring = false\n").expect("parses");
+        let settings = lenient("[enhancements]\nside_ring = false\n").expect("parses");
 
         assert!(Settings::default().enhancements.side_ring);
         assert!(!settings.enhancements.side_ring);
@@ -1298,8 +1354,7 @@ mod tests {
 
     #[test]
     fn the_native_rings_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nrings = \"native\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nrings = \"native\"\n").expect("parses");
 
         assert_eq!(settings.enhancements.rings, Rings::Native);
     }
@@ -1311,7 +1366,7 @@ mod tests {
 
     #[test]
     fn the_bars_setting_is_read() {
-        let settings: Settings = toml::from_str("[ui]\nbars = \"always\"\n").expect("parses");
+        let settings = lenient("[ui]\nbars = \"always\"\n").expect("parses");
 
         assert_eq!(settings.ui.bars, HpBars::Always);
     }
@@ -1327,7 +1382,7 @@ mod tests {
     /// On by default, as the original's `DisplayFlagNames`.
     #[test]
     fn the_names_show_by_default_and_are_read() {
-        let settings: Settings = toml::from_str("[ui]\nnames = \"heroes\"\n").expect("parses");
+        let settings = lenient("[ui]\nnames = \"heroes\"\n").expect("parses");
 
         assert_eq!(Settings::default().ui.names, Names::On);
         assert_eq!(settings.ui.names, Names::Heroes);
@@ -1343,24 +1398,9 @@ mod tests {
         assert_eq!(Names::Off.toggled(Names::Off), Names::On);
     }
 
-    /// Inknut by default; `egui` reads, anything else keeps the default.
-    #[test]
-    fn the_font_is_inknut_by_default() {
-        let font = |text: &str| lenient(text).map(|s| s.ui.font);
-
-        assert_eq!(Settings::default().ui.font, Typeface::Inknut);
-        assert_eq!(font("[ui]\nfont = \"egui\"\n"), Ok(Typeface::Egui));
-        assert_eq!(font("[ui]\nfont = \"comic\"\n"), Ok(Typeface::Inknut));
-    }
-
     #[test]
     fn the_main_menu_is_the_base_games_by_default() {
-        let read = |text| {
-            toml::from_str::<Settings>(text)
-                .expect("parses")
-                .ui
-                .main_menu
-        };
+        let read = |text| lenient(text).expect("parses").ui.main_menu;
 
         assert_eq!(Settings::default().ui.main_menu, MainMenu::Base);
         assert_eq!(
@@ -1535,7 +1575,7 @@ mod tests {
             cast: Cast::Models,
             sun_size: 1.0,
             debug_keys: true,
-            ..Enhancements::modern()
+            ..Enhancements::default()
         };
         let on = Enhancements {
             experimental: true,
@@ -1555,7 +1595,7 @@ mod tests {
             cast: Cast::Models,
             self_shadows: true,
             wind: true,
-            ..Enhancements::modern()
+            ..Enhancements::default()
         };
         let on = Enhancements {
             experimental: true,
@@ -1594,7 +1634,7 @@ mod tests {
     #[test]
     fn a_save_keeps_the_files_comments() {
         let old = "# mine\n[ui]\nbars = \"never\" # hidden\n\n[audio]\nmusic = 0.5\n";
-        let mut settings: Settings = toml::from_str(old).expect("parses");
+        let mut settings = lenient(old).expect("parses");
 
         settings.ui.bars = HpBars::Always;
 
@@ -1603,17 +1643,14 @@ mod tests {
         assert!(text.starts_with("# mine\n[ui]\n"), "{text}");
         assert!(text.contains("bars = \"always\" # hidden"), "{text}");
         assert!(text.contains("music = 0.5"), "{text}");
-        assert_eq!(toml::from_str::<Settings>(&text).ok(), Some(settings));
+        assert_eq!(lenient(&text).ok(), Some(settings));
     }
 
     #[test]
     fn a_save_over_nothing_writes_every_key() {
         let text = merged("", &Settings::default()).expect("merges");
 
-        assert_eq!(
-            toml::from_str::<Settings>(&text).ok(),
-            Some(Settings::default())
-        );
+        assert_eq!(lenient(&text).ok(), Some(Settings::default()));
         assert!(text.contains("[enhancements]"), "{text}");
     }
 
