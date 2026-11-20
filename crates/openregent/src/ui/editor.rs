@@ -16,10 +16,9 @@
 //! Its control comes from its value: a bool a check box; a number its
 //! plus and minus buttons and a value dragged, in its [`RANGES`] range;
 //! a string a list of the names the settings take, when they refuse any
-//! other (an enum), else a text field. The docs are read from
-//! `config.rs`'s source.
+//! other (an enum), else a text field. Its name and text are its
+//! section's `#[setting(…)]` (`config::Described`).
 
-use std::collections::HashMap;
 use std::ops::{DerefMut, RangeInclusive};
 
 use bevy::prelude::Resource;
@@ -27,15 +26,10 @@ use bevy_egui::egui;
 use toml::{Table, Value};
 
 use crate::files::config::{self, Preset, RANGES, Settings};
+use crate::files::setting::{Meta, Part, Setting, Visit};
 use crate::menu::Art;
 use crate::menu::settings::{self as page, Look, Tab};
 use regent_draw::art as service;
-
-/// Where the docs are read from.
-const SOURCE: &str = include_str!("../files/config.rs");
-
-/// The struct that holds the sections.
-const ROOT: &str = "Settings";
 
 /// A name no enum has: what a key's names are asked with.
 const PROBE: &str = "\u{1}";
@@ -58,7 +52,10 @@ pub enum Kind {
 pub struct Field {
     pub section: String,
     pub key: String,
-    pub doc: String,
+    /// Its row's name.
+    pub name: String,
+    /// What it does.
+    pub about: &'static str,
     pub kind: Kind,
 }
 
@@ -70,8 +67,6 @@ pub struct Draft {
     /// Section to key to value, as the file writes them.
     table: Table,
     fields: Vec<Field>,
-    /// Section docs, by section.
-    headings: HashMap<String, String>,
     /// The defaults, as the file writes them.
     defaults: Table,
     /// Why the table does not read as settings, or will not save.
@@ -82,19 +77,13 @@ impl Draft {
     /// `settings` to edit; a number out of its range comes in clamped.
     #[must_use]
     pub fn new(settings: &Settings) -> Draft {
-        let docs = Docs::read(SOURCE);
         let defaults = table(&Settings::default());
         let table = table(settings);
-        let fields = fields(&table, &docs);
-        let headings = table
-            .keys()
-            .map(|s| (s.clone(), docs.heading(s).to_owned()))
-            .collect();
+        let fields = fields(&table);
         let mut draft = Draft {
             opened: settings.clone(),
             table,
             fields,
-            headings,
             defaults,
             error: None,
         };
@@ -147,12 +136,6 @@ impl Draft {
     #[must_use]
     pub fn default_of(&self, section: &str, key: &str) -> Option<&Value> {
         self.defaults.get(section)?.get(key)
-    }
-
-    /// `section`'s doc.
-    #[must_use]
-    pub fn heading(&self, section: &str) -> &str {
-        self.headings.get(section).map_or("", String::as_str)
     }
 
     /// Why the draft does not read as settings, or did not save.
@@ -357,8 +340,8 @@ fn put(table: &mut Table, section: &str, key: &str, value: Value) {
     }
 }
 
-/// Each key of `table`'s sections, its doc from `docs`.
-fn fields(table: &Table, docs: &Docs) -> Vec<Field> {
+/// Each key of `table`'s sections, its text from its section's.
+fn fields(table: &Table) -> Vec<Field> {
     table
         .iter()
         .filter_map(|(section, keys)| keys.as_table().map(|keys| (section, keys)))
@@ -366,10 +349,29 @@ fn fields(table: &Table, docs: &Docs) -> Vec<Field> {
         .map(|(section, key, value)| Field {
             section: section.clone(),
             key: key.clone(),
-            doc: docs.field(section, key).to_owned(),
+            name: meta(section, key).map_or_else(|| key.clone(), |m| m.name.to_owned()),
+            about: meta(section, key).map_or("", |m| m.about),
             kind: kind(table, section, key, value),
         })
         .collect()
+}
+
+/// `section`'s `key`'s setting.
+fn meta(section: &str, key: &str) -> Option<&'static Meta> {
+    struct Find<'a>(&'a str, &'a str, Option<&'static Meta>);
+
+    impl Visit for Find<'_> {
+        fn field<T: Setting>(&mut self, part: &'static Part, meta: &'static Meta, _: &T) {
+            if part.name == self.0 && meta.key == self.1 {
+                self.2 = Some(meta);
+            }
+        }
+    }
+
+    let mut find = Find(section, key, None);
+
+    Settings::default().visit(&mut find);
+    find.2
 }
 
 /// How `key`, holding `value`, is edited.
@@ -435,92 +437,6 @@ fn clamped(value: &Value, range: &RangeInclusive<f64>) -> Value {
         || value.clone(),
         |x| renumbered(value, x.clamp(*range.start(), *range.end())),
     )
-}
-
-/// The doc comments of a source's structs and their fields.
-#[derive(Debug, Default)]
-struct Docs {
-    /// A struct's own, by name.
-    structs: HashMap<String, String>,
-    /// A field's type and doc, by struct and field.
-    fields: HashMap<(String, String), (String, String)>,
-}
-
-impl Docs {
-    /// `source`'s, read line by line: `///` lines gather until a struct
-    /// or field takes them; a blank line, `}` or a `fn` drops them.
-    fn read(source: &str) -> Docs {
-        let mut docs = Docs::default();
-        let mut pending: Vec<&str> = Vec::new();
-        let mut within: Option<&str> = None;
-
-        for line in source.lines().map(str::trim) {
-            if let Some(text) = line.strip_prefix("///") {
-                pending.push(text.trim());
-            } else if let Some(name) = struct_name(line) {
-                docs.structs.insert(name.to_owned(), prose(&pending));
-                within = Some(name);
-                pending.clear();
-            } else if let (Some(owner), Some((field, ty))) = (within, field(line)) {
-                let at = (owner.to_owned(), field.to_owned());
-
-                docs.fields.insert(at, (ty.to_owned(), prose(&pending)));
-                pending.clear();
-            } else if line.is_empty() || line.starts_with('}') || line.contains("fn ") {
-                within = within.filter(|_| !line.starts_with('}'));
-                pending.clear();
-            }
-        }
-
-        docs
-    }
-
-    /// The struct behind `section`: [`ROOT`]'s field's type.
-    fn section(&self, section: &str) -> Option<&str> {
-        self.fields
-            .get(&(ROOT.to_owned(), section.to_owned()))
-            .map(|(ty, _)| ty.as_str())
-    }
-
-    /// `section`'s doc: its struct's.
-    fn heading(&self, section: &str) -> &str {
-        self.section(section)
-            .and_then(|ty| self.structs.get(ty))
-            .map_or("", String::as_str)
-    }
-
-    /// `key`'s doc in `section`.
-    fn field(&self, section: &str, key: &str) -> &str {
-        self.section(section)
-            .and_then(|ty| self.fields.get(&(ty.to_owned(), key.to_owned())))
-            .map_or("", |(_, doc)| doc.as_str())
-    }
-}
-
-/// The name a `struct` line opens: `pub struct Audio {` is `Audio`.
-fn struct_name(line: &str) -> Option<&str> {
-    let rest = line.strip_prefix("pub ").unwrap_or(line);
-    let name = rest.strip_prefix("struct ")?.strip_suffix('{')?.trim();
-
-    ident(name).then_some(name)
-}
-
-/// A field line's name and type: `pub music: f32,` is `music`, `f32`.
-fn field(line: &str) -> Option<(&str, &str)> {
-    let rest = line.strip_prefix("pub ").unwrap_or(line);
-    let (name, ty) = rest.strip_suffix(',')?.split_once(':')?;
-
-    ident(name).then(|| (name, ty.trim()))
-}
-
-/// Whether `s` is a Rust identifier, near enough.
-fn ident(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
-}
-
-/// Doc lines as one paragraph, without rustdoc's link brackets.
-fn prose(lines: &[&str]) -> String {
-    lines.join(" ").replace("[`", "`").replace("`]", "`")
 }
 
 #[cfg(test)]
@@ -674,32 +590,40 @@ mod tests {
         );
     }
 
+    /// A row's name and text are its `#[setting(…)]`'s; without `name`,
+    /// the key in words.
     #[test]
-    fn the_docs_come_from_the_doc_comments() {
+    fn the_rows_take_their_settings_text() {
         let draft = Draft::new(&Settings::default());
-        let doc = |section: &str, key: &str| {
+        let field = |section: &str, key: &str| {
             draft
                 .fields()
                 .iter()
                 .find(|f| f.section == section && f.key == key)
-                .map(|f| f.doc.clone())
+                .map(|f| (f.name.as_str(), f.about))
         };
 
         assert_eq!(
-            doc("ui", "bars").as_deref(),
-            Some("Which units show a hit point bar on the map.")
+            field("ui", "bars"),
+            Some(("Bars", "Which units show a hit point bar on the map."))
         );
-        assert_eq!(
-            doc("enhancements", "debug_keys").as_deref(),
-            Some(
-                "Debug helpers: L lifts the fog, O shows the models of buildings casting from one in place of their sprites."
-            )
-        );
-        assert_eq!(doc("audio", "music").as_deref(), Some(""));
-        assert_eq!(
-            draft.headings.get("ui").map(String::as_str),
-            Some("The interface.")
-        );
+        assert_eq!(field("ui", "wasd_scroll").map(|f| f.0), Some("WASD scroll"));
+        assert_eq!(field("audio", "music"), Some(("Music", "Music.")));
+    }
+
+    /// Every key the file writes has its text.
+    #[test]
+    fn every_key_has_its_text() {
+        let draft = Draft::new(&Settings::default());
+
+        for f in draft.fields() {
+            assert!(
+                meta(&f.section, &f.key).is_some(),
+                "[{}] {}",
+                f.section,
+                f.key
+            );
+        }
     }
 
     #[test]

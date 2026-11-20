@@ -26,6 +26,7 @@ iroh = "1.4.1"
 jiff = "0.2"
 regent_draw = { path = "../regent_draw", features = ["clap"] }
 regent_core = { path = "../regent_core" }
+regent_derive = { path = "../regent_derive" }
 # The save file (`save`): a tar of RON and a PNG, one zstd stream.
 png = { workspace = true }
 ron = "0.12"

@@ -1,0 +1,20 @@
+# openregent's derive macros. Separate crate: a proc-macro crate exports
+# nothing else.
+[package]
+name = "regent_derive"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Derive macros for openregent"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = "2"
+
+[lints]
+workspace = true

@@ -5,8 +5,8 @@ Readers for Majesty's data files, and a compiler for its scripting language.
 Windows Gold HD is the target, read with its mods and SDK — see
 [docs/original/editions.md](../docs/original/editions.md).
 
-Eight crates. The library is the artefact; `bink` is a vendored video
-decoder; `regent_corpus` finds the tests' corpora; `regent_testgame` is a made-up
+Nine crates. The library is the artefact; `bink` is a vendored video
+decoder; `regent_derive` holds openregent's derive macros; `regent_corpus` finds the tests' corpora; `regent_testgame` is a made-up
 game for them; the other four consume the library, and are
 separate so that what *they* depend on never reaches it. In one package,
 `cargo test` on the library would build everything in `[dependencies]`, so
@@ -21,6 +21,7 @@ separate so that what *they* depend on never reaches it. In one package,
 | `regent_draw/` | The Bevy drawing layer `regent_viewer` and `openregent` share; a lib |
 | `regent_viewer/` | A Bevy art browser: units and the tileset |
 | `openregent/` | A new game run by the library, played and drawn with `regent_draw` |
+| `regent_derive/` | openregent's derive macros: `Section` and `Sections`, each setting declared once on its field (text, page group, default, range, preset role). Takes `syn`, `quote` |
 | `bink/` | NihAV's Bink 1 decoder, vendored and trimmed, for the videos ([bink/README.md](bink/README.md)) |
 
 The library is seven layers, lowest first; each uses only those below it

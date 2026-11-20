@@ -1,0 +1,53 @@
+# Hand-edited settings, as a player might keep them.
+
+[paths]
+majesty_hd = "~/games/Majesty HD"   # the install
+
+[ui]
+bars = "always"
+names = "sometimes"      # no such choice: its default
+scroll_speed = 100       # out of range: its default
+window = "full_screen"
+bar_width = 260.0        # an old key, kept
+main_menu = "base"
+intro = "on"
+font = "inknut"
+player_list = "details"
+wasd_scroll = false
+
+[audio]
+# quieter
+effects = 0.3
+music = 1                # an integer for a fraction
+muted = false
+
+[game]
+speed = "7"
+autosave = "off"
+
+[enhancements]
+rings = "art"
+sun_size = 20.0          # out of range: its default
+experimental = true
+wind_amplitude = 3.5
+speed_keys = true
+debug_keys = false
+smooth_zoom = true
+smooth_position = true
+show_wizards_guild_spell_range = true
+ui_upscale = "xbrz"
+view_upscale = "sharp"
+video_upscale = "fsr"
+shadows = "soft"
+message_links = true
+rage_on_spell_bar = true
+side_ring = true
+smooth_arrows = true
+wind = false
+cast = "painted"
+sun_direction = 29.0
+sun_elevation = 50.0
+self_shadows = false
+
+[theirs]
+x = [1, 2]

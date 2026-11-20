@@ -14,5 +14,6 @@ pub(crate) mod mod_list;
 pub(crate) mod presets;
 pub(crate) mod profile;
 pub(crate) mod scores;
+pub(crate) mod setting;
 pub(crate) mod store;
 pub(crate) mod trees;

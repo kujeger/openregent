@@ -22,10 +22,12 @@
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 
+use crate::files::setting::choices;
 use bevy::log::warn;
 use bevy::prelude::Resource;
 use regent_core::gpl::runtime;
 use regent_core::view::map::pan;
+use regent_derive::{Section, Sections};
 pub use regent_draw::art::Upscale;
 pub use regent_draw::art::fsr::VideoUpscale;
 pub use regent_draw::present::ViewUpscale;
@@ -46,64 +48,63 @@ const OPTIONAL: &str = "\
 # mods = [\"/path/to/mods\"]\n\n";
 
 /// Every setting.
-#[derive(Resource, Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+#[derive(Resource, Clone, Debug, Default, PartialEq, Deserialize, Serialize, Sections)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     pub ui: Ui,
     pub audio: Audio,
     pub game: Game,
+    #[section(tab = Enhancements)]
     pub enhancements: Enhancements,
 }
 
 /// The interface.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Section)]
 #[serde(default, deny_unknown_fields)]
+#[section(group = Interface)]
 pub struct Ui {
-    /// Which units show a hit point bar on the map.
+    #[setting(about = "Which units show a hit point bar on the map.")]
     pub bars: HpBars,
-    /// Whose names show under them on the map: `on` every unit the
-    /// original names, `heroes` heroes alone (this game's), `off` none.
+    /// `heroes` is this game's.
+    #[setting(
+        about = "Whose names show under them on the map: `on` every unit the original names, `heroes` heroes alone (this game's), `off` none."
+    )]
     pub names: Names,
-    /// The main menu's art.
+    #[setting(about = "The main menu's art.")]
     pub main_menu: MainMenu,
-    /// The start-up videos, MV02 and MV04: `on` as the original's
-    /// `ShowIntro`, `off` as its `-nointro`.
+    /// The original's `ShowIntro`, and its `-nointro`.
+    #[setting(
+        about = "The start-up videos, MV02 and MV04: `on` as the original's `ShowIntro`, `off` as its `-nointro`."
+    )]
     pub intro: Intro,
-    /// The view's scroll in pixels: an arrow key's step, and the window
-    /// edge's (20 times that a second, at full ramp). The original's
-    /// `ScrollSpeed`, 32 to 64.
+    /// The original's `ScrollSpeed`.
+    #[setting(
+        about = "The view's scroll in pixels: an arrow key's step, and the window edge's (20 times that a second, at full ramp). The original's `ScrollSpeed`, 32 to 64.",
+        default = pan::SCROLL_SPEED,
+        range = pan::SPEEDS
+    )]
     pub scroll_speed: i32,
-    /// `windowed` (default), or `full_screen`: borderless, the screen's
-    /// size; `exclusive`: the screen's video mode taken, `full_screen`
-    /// where the system offers none (Wayland). Alt+Enter flips windowed
-    /// and full screen. The original's `Windowed` switch.
+    /// The original's `Windowed` switch.
+    #[setting(
+        about = "`windowed` (default), or `full_screen`: borderless, the screen's size; `exclusive`: the screen's video mode taken, `full_screen` where the system offers none (Wayland). Alt+Enter flips windowed and full screen. The original's `Windowed` switch.",
+        group = Display
+    )]
     pub window: WindowMode,
-    /// The text's typeface: `inknut`, Inknut Antiqua, a stand-in for the
-    /// original's bitmap fonts; `egui`, egui's own (Ubuntu Light).
+    #[setting(
+        about = "The text's typeface: `inknut`, Inknut Antiqua, a stand-in for the original's bitmap fonts; `egui`, egui's own (Ubuntu Light)."
+    )]
     pub font: Typeface,
-    /// A LAN game's player list in the map's top right: `off` none,
-    /// `players` each player's colour and name, `details` also its round
-    /// trip and the lockstep delay in force. This game's.
+    /// This game's.
+    #[setting(
+        about = "A LAN game's player list in the map's top right: `off` none, `players` each player's colour and name, `details` also its round trip and the lockstep delay in force. This game's."
+    )]
     pub player_list: PlayerList,
-    /// W, A, S and D (by place on the keyboard) scroll as the arrows do,
-    /// over any hot key on them. Off by default. This game's.
+    /// This game's; W, A, S and D by place on the keyboard.
+    #[setting(
+        name = "WASD scroll",
+        about = "W, A, S and D scroll the map as the arrow keys do. Hot keys on those letters, such as upgrades, no longer work."
+    )]
     pub wasd_scroll: bool,
-}
-
-impl Default for Ui {
-    fn default() -> Self {
-        Ui {
-            bars: HpBars::default(),
-            names: Names::default(),
-            main_menu: MainMenu::default(),
-            intro: Intro::default(),
-            scroll_speed: pan::SCROLL_SPEED,
-            window: WindowMode::default(),
-            font: Typeface::default(),
-            player_list: PlayerList::default(),
-            wasd_scroll: false,
-        }
-    }
 }
 
 /// How the window shows (`window`).
@@ -222,24 +223,16 @@ impl Names {
 pub const LOUDNESS: RangeInclusive<f32> = 0.0..=1.0;
 
 /// Loudness, each 0 (mute) to 1 (as the engine plays it).
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Section)]
 #[serde(default, deny_unknown_fields)]
+#[section(group = Sound)]
 pub struct Audio {
-    /// Sound effects and voices.
+    #[setting(about = "Sound effects and voices.", default = 1.0, range = LOUDNESS)]
     pub effects: f32,
+    #[setting(about = "Music.", default = 1.0, range = LOUDNESS)]
     pub music: f32,
-    /// Silences both, keeping their levels.
+    #[setting(about = "Silences both, keeping their levels.")]
     pub muted: bool,
-}
-
-impl Default for Audio {
-    fn default() -> Self {
-        Audio {
-            effects: 1.0,
-            music: 1.0,
-            muted: false,
-        }
-    }
 }
 
 impl Audio {
@@ -263,17 +256,19 @@ impl Audio {
 }
 
 /// Play.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, Section)]
 #[serde(default, deny_unknown_fields)]
+#[section(group = Game)]
 pub struct Game {
-    /// Save the game every 1, 5 (default) or 10 game days, keeping the
-    /// last 10 autosaves; `off` never. The original offers 5, 10 and 20
-    /// days and keeps one.
+    /// The original offers 5, 10 and 20 days and keeps one.
+    #[setting(
+        about = "Save the game every 1, 5 (default) or 10 game days, keeping the last 10 autosaves; `off` never. The original offers 5, 10 and 20 days and keeps one."
+    )]
     pub autosave: Autosave,
-    /// Game speed, the original's options slider: `1` slowest, `5` the
-    /// engine's (default), `9` fastest (`runtime::PACES`). Each game
-    /// starts at it; `<` and `>` step it. A LAN game runs at `5`, and
-    /// neither changes it there.
+    /// The original's options slider (`runtime::PACES`).
+    #[setting(
+        about = "Game speed, the original's options slider: `1` slowest, `5` the engine's (default), `9` fastest (`runtime::PACES`). Each game starts at it; `<` and `>` step it. A LAN game runs at `5`, and neither changes it there."
+    )]
     pub speed: SpeedSlider,
 }
 
@@ -368,90 +363,203 @@ impl Autosave {
     }
 }
 
-/// Departures from the original (`docs/openregent/enhancements.md`). The default is
-/// [`Preset::Modern`].
+// Each enum's choices on the settings page, in its order there.
+choices! {
+    HpBars { Always => "always", Damaged => "damaged", Never => "never" }
+    Names { Off => "off", On => "on", Heroes => "heroes" }
+    MainMenu { Base => "base", Expansion => "expansion" }
+    Intro { On => "on", Off => "off" }
+    WindowMode { Windowed => "windowed", FullScreen => "full_screen", Exclusive => "exclusive" }
+    Typeface { Inknut => "inknut", Egui => "egui" }
+    PlayerList { Off => "off", Players => "players", Details => "details" }
+    Autosave { Off => "off", Day => "1", FiveDays => "5", TenDays => "10" }
+    SpeedSlider {
+        S1 => "1", S2 => "2", S3 => "3", S4 => "4", S5 => "5",
+        S6 => "6", S7 => "7", S8 => "8", S9 => "9",
+    }
+    Upscale { None => "none", Xbrz => "xbrz" }
+    ViewUpscale {
+        Nearest => "nearest",
+        Sharp => "sharp",
+        Fsr => "fsr",
+        SharpSprite => "sharp-sprite",
+        FsrSprite => "fsr-sprite",
+    }
+    VideoUpscale { Linear => "linear", Fsr => "fsr" }
+    Shadows { Blend => "blend", Soft => "soft" }
+    Rings { Art => "art", Native => "native", Modern => "modern" }
+    Cast { Painted => "painted", Models => "models" }
+}
+
+/// Departures from the original (`docs/openregent/enhancements.md`). The
+/// default is [`Preset::Modern`]; `classic` each key's [`Preset::Classic`]
+/// value.
 #[allow(
     clippy::struct_excessive_bools,
     reason = "independent switches, each a TOML key"
 )]
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Section)]
 #[serde(default, deny_unknown_fields)]
+#[section(presets)]
 pub struct Enhancements {
-    /// Keys 1, 2 and 3 set the game speed to 1×, 2× and 4×.
+    #[setting(
+        about = "Keys 1, 2 and 3 set the game speed to 1×, 2× and 4×.",
+        group = Game,
+        default = true,
+        classic = false
+    )]
     pub speed_keys: bool,
-    /// Debug helpers: L lifts the fog, O shows the models of
-    /// buildings casting from one in place of their sprites.
+    /// L lifts the fog; O draws the casting models in place of their sprites.
+    #[setting(
+        about = "Debug helpers: L lifts the fog, O shows the models of buildings casting from one in place of their sprites.",
+        show = Hidden,
+        kept
+    )]
     pub debug_keys: bool,
-    /// The wheel zooms smoothly, not between the original's two levels;
-    /// the gold amounts show at every zoom; a middle click or 0 goes
-    /// back to 1:1.
+    #[setting(
+        about = "The wheel zooms smoothly, not between the original's two levels; the gold amounts show at every zoom; a middle click or 0 goes back to 1:1.",
+        group = Interface,
+        default = true,
+        classic = false
+    )]
     pub smooth_zoom: bool,
-    /// Pieces slide between game frames, not jump a frame at a time.
+    #[setting(
+        about = "Pieces slide between game frames, not jump a frame at a time.",
+        group = Display,
+        default = true,
+        classic = false
+    )]
     pub smooth_position: bool,
-    /// While aiming a spell limited to a Wizards Guild's range, the range
-    /// shows on the map too, not only on the minimap.
+    #[setting(
+        about = "While aiming a spell limited to a Wizards Guild's range, the range shows on the map too, not only on the minimap.",
+        group = Game,
+        default = true,
+        classic = false
+    )]
     pub show_wizards_guild_spell_range: bool,
-    /// The menus' and panels' pictures upscaled with xBRZ, not filtered:
-    /// sharper edges in a large window. Text and the map are untouched.
+    #[setting(
+        about = "The menus' and panels' pictures upscaled with xBRZ, not filtered: sharper edges in a large window. Text and the map are untouched.",
+        group = Display,
+        default = Upscale::Xbrz,
+        classic = Upscale::None
+    )]
     pub ui_upscale: Upscale,
-    /// The game view drawn at the art grid and scaled into the map:
-    /// `nearest` sampled nearest, `sharp` sharp-bilinear (default), `fsr`
-    /// AMD FSR 1. Or at the screen's pixels, each sprite smoothed:
-    /// `sharp-sprite` sharp-bilinear, `fsr-sprite` that and FSR 1's RCAS.
+    #[setting(
+        about = "The game view drawn at the art grid and scaled into the map: `nearest` sampled nearest, `sharp` sharp-bilinear (default), `fsr` AMD FSR 1. Or at the screen's pixels, each sprite smoothed: `sharp-sprite` sharp-bilinear, `fsr-sprite` that and FSR 1's RCAS.",
+        group = Display,
+        default = ViewUpscale::Sharp,
+        classic = ViewUpscale::Nearest
+    )]
     pub view_upscale: ViewUpscale,
-    /// Videos shown larger than they are: `linear`, egui's filter, or
-    /// `fsr`, AMD FSR 1 (default).
+    #[setting(
+        about = "Videos shown larger than they are: `linear`, egui's filter, or `fsr`, AMD FSR 1 (default).",
+        group = Display,
+        default = VideoUpscale::Fsr,
+        classic = VideoUpscale::Linear
+    )]
     pub video_upscale: VideoUpscale,
-    /// Shadows: `soft` (default), no stacking, one strength, hue kept;
-    /// `blend`, a multiply as each draws, stacking as the original's.
+    /// Classic's `blend` stacks in draw order, as the original's: shadows
+    /// have no off.
+    #[setting(
+        about = "Shadows: `soft` (default), no stacking, one strength, hue kept; `blend`, a multiply as each draws, stacking as the original's.",
+        group = Display,
+        default = Shadows::Soft,
+        classic = Shadows::Blend
+    )]
     pub shadows: Shadows,
-    /// Each game message about a unit shows its portrait; a click selects
-    /// the unit while it exists and centres the view on it or its last place.
+    #[setting(
+        about = "Each game message about a unit shows its portrait; a click selects the unit while it exists and centres the view on it or its last place.",
+        group = Interface,
+        default = true,
+        classic = false
+    )]
     pub message_links: bool,
-    /// With a Temple to Krolm built, its Rage of Krolm is a button on the
-    /// spell bar too, darkened as it runs out.
+    #[setting(
+        about = "With a Temple to Krolm built, its Rage of Krolm is a button on the spell bar too, darkened as it runs out.",
+        group = Interface,
+        default = true,
+        classic = false
+    )]
     pub rage_on_spell_bar: bool,
-    /// Selection rings: `art`, the game's pictures; `native` (default),
-    /// drawn as shapes of the same size, place and look, smooth at any
-    /// zoom; `modern`, a thin line with a soft glow inside it.
+    #[setting(
+        about = "Selection rings: `art`, the game's pictures; `native` (default), drawn as shapes of the same size, place and look, smooth at any zoom; `modern`, a thin line with a soft glow inside it.",
+        group = Display,
+        default = Rings::Modern,
+        classic = Rings::Art
+    )]
     pub rings: Rings,
-    /// The hover ring takes a thin line in its piece's side colour, its
-    /// hit point bar's: sides tell apart on unhurt units too.
+    #[setting(
+        about = "The hover ring takes a thin line in its piece's side colour, its hit point bar's: sides tell apart on unhurt units too.",
+        group = Display,
+        default = true,
+        classic = false
+    )]
     pub side_ring: bool,
-    /// A held arrow key scrolls smoothly, ramping up as the window's
-    /// edge does, not a step each time the key repeats.
+    #[setting(
+        about = "A held arrow key scrolls smoothly, ramping up as the window's edge does, not a step each time the key repeats.",
+        group = Interface,
+        default = true,
+        classic = false
+    )]
     pub smooth_arrows: bool,
-    /// The experimental keys ([`EXPERIMENTAL_KEYS`]) take effect: off, each
-    /// plays as if off, its value kept.
+    /// The switch of the `gate = Experimental` keys: off, each plays as
+    /// if off, its value kept.
+    #[setting(
+        about = "The experimental keys (`EXPERIMENTAL_KEYS`) take effect: off, each plays as if off, its value kept.",
+        gate = Switch,
+        classic = false
+    )]
     pub experimental: bool,
-    /// Experimental: trees sway in a west wind (`regent_draw::wind`).
+    /// `regent_draw::wind`.
+    #[setting(
+        about = "Experimental: trees sway in a west wind (`regent_draw::wind`).",
+        gate = Experimental
+    )]
     pub wind: bool,
-    /// Art pixels the top of a tree `regent_draw::wind::Trees::reference`
-    /// tall leans at most, in [`WIND_REACHES`].
+    /// Art pixels a tree `regent_draw::wind::Trees::reference` tall leans
+    /// at most.
+    #[setting(
+        about = "Art pixels the top of a tree `regent_draw::wind::Trees::reference` tall leans at most, in `WIND_REACHES`.",
+        gate = Experimental,
+        default = 2.0,
+        range = WIND_REACHES
+    )]
     pub wind_amplitude: f32,
-    /// Experimental: the buildings' shadows, `painted` (default) into
-    /// their pictures, or cast by `models` of the buildings that have one
-    /// from one sun, on hills and other things too. Under soft shadows.
+    #[setting(
+        about = "Experimental: the buildings' shadows, `painted` (default) into their pictures, or cast by `models` of the buildings that have one from one sun, on hills and other things too. Under soft shadows.",
+        gate = Experimental,
+        default = Cast::Painted
+    )]
     pub cast: Cast,
-    /// The models' sun: degrees from screen right toward the viewer, in
-    /// [`SUN_DIRECTIONS`]. Shadows fall the other way.
+    /// Degrees from screen right toward the viewer.
+    #[setting(
+        about = "The models' sun: degrees from screen right toward the viewer, in `SUN_DIRECTIONS`. Shadows fall the other way.",
+        gate = Experimental,
+        default = 29.0,
+        range = SUN_DIRECTIONS
+    )]
     pub sun_direction: f32,
-    /// The models' sun: degrees above the ground, in [`SUN_ELEVATIONS`].
+    #[setting(
+        about = "The models' sun: degrees above the ground, in `SUN_ELEVATIONS`.",
+        gate = Experimental,
+        default = 50.0,
+        range = SUN_ELEVATIONS
+    )]
     pub sun_elevation: f32,
-    /// The models' sun: its apparent size, degrees, in [`SUN_SIZES`].
-    /// A shadow is sharp where its building stands and softer farther
-    /// off; 0, as sharp all along.
+    /// Degrees; 0, a shadow as sharp all along.
+    #[setting(
+        about = "The models' sun: its apparent size, degrees, in `SUN_SIZES`. A shadow is sharp where its building stands and softer farther off; 0, as sharp all along.",
+        gate = Experimental,
+        default = regent_draw::sun::cast::SIZE,
+        range = SUN_SIZES
+    )]
     pub sun_size: f32,
-    /// Experimental: under `cast = "models"`, a model building takes its
-    /// own model's shadow too. For sprites with their painted self-shade
-    /// removed; the stock ones darken twice.
+    /// For sprites with their painted self-shade removed.
+    #[setting(
+        about = "Experimental: under `cast = \"models\"`, a model building takes its own model's shadow too. For sprites with their painted self-shade removed; the stock ones darken twice.",
+        gate = Experimental
+    )]
     pub self_shadows: bool,
-}
-
-impl Default for Enhancements {
-    fn default() -> Self {
-        Enhancements::modern()
-    }
 }
 
 /// The master switch of the experimental keys.
@@ -493,77 +601,10 @@ impl Preset {
 }
 
 impl Enhancements {
-    /// [`Preset::Modern`].
-    #[must_use]
-    pub const fn modern() -> Enhancements {
-        Enhancements {
-            speed_keys: true,
-            debug_keys: false,
-            smooth_zoom: true,
-            smooth_position: true,
-            show_wizards_guild_spell_range: true,
-            ui_upscale: Upscale::Xbrz,
-            view_upscale: ViewUpscale::Sharp,
-            video_upscale: VideoUpscale::Fsr,
-            shadows: Shadows::Soft,
-            message_links: true,
-            rage_on_spell_bar: true,
-            rings: Rings::Modern,
-            side_ring: true,
-            smooth_arrows: true,
-            experimental: false,
-            wind: false,
-            wind_amplitude: 2.0,
-            cast: Cast::Painted,
-            sun_direction: 29.0,
-            sun_elevation: 50.0,
-            sun_size: regent_draw::sun::cast::SIZE,
-            self_shadows: false,
-        }
-    }
-
-    /// [`Preset::Classic`]: every departure off. `shadows` has no off:
-    /// `blend` stacks in draw order, as the original's.
-    #[must_use]
-    pub const fn classic() -> Enhancements {
-        Enhancements {
-            speed_keys: false,
-            smooth_zoom: false,
-            smooth_position: false,
-            show_wizards_guild_spell_range: false,
-            message_links: false,
-            rage_on_spell_bar: false,
-            smooth_arrows: false,
-            ui_upscale: Upscale::None,
-            view_upscale: ViewUpscale::Nearest,
-            video_upscale: VideoUpscale::Linear,
-            shadows: Shadows::Blend,
-            rings: Rings::Art,
-            side_ring: false,
-            ..Enhancements::modern()
-        }
-    }
-
-    /// `self` with the keys no preset sets taken from `from`: the debug
-    /// keys and the experimental ones but their switch.
-    const fn keeping(self, from: &Enhancements) -> Enhancements {
-        Enhancements {
-            debug_keys: from.debug_keys,
-            wind: from.wind,
-            wind_amplitude: from.wind_amplitude,
-            cast: from.cast,
-            sun_direction: from.sun_direction,
-            sun_elevation: from.sun_elevation,
-            sun_size: from.sun_size,
-            self_shadows: from.self_shadows,
-            ..self
-        }
-    }
-
     /// The preset these values are: `Custom` when they match none.
     #[must_use]
     pub fn preset(&self) -> Preset {
-        if Enhancements::modern().keeping(self) == *self {
+        if Enhancements::default().keeping(self) == *self {
             Preset::Modern
         } else if Enhancements::classic().keeping(self) == *self {
             Preset::Classic
@@ -576,7 +617,7 @@ impl Enhancements {
     #[must_use]
     pub fn picked(&self, preset: Preset) -> Enhancements {
         match preset {
-            Preset::Modern => Enhancements::modern().keeping(self),
+            Preset::Modern => Enhancements::default().keeping(self),
             Preset::Classic => Enhancements::classic().keeping(self),
             Preset::Custom => self.clone(),
         }
@@ -946,6 +987,79 @@ fn kept(old: &mut toml_edit::Item, new: &toml_edit::Item) {
 mod tests {
     use super::*;
 
+    /// The file a save over nothing writes, byte for byte.
+    const DEFAULT_FILE: &str = include_str!("../../tests/fixtures/config/default.toml");
+
+    /// A hand-edited file: comments, unknown keys and sections, `[paths]`,
+    /// bad and out-of-range values, an integer for a fraction.
+    const OLD_FILE: &str = include_str!("../../tests/fixtures/config/old.toml");
+
+    /// [`OLD_FILE`] saved: its text kept, the missing keys added.
+    const OLD_SAVED: &str = include_str!("../../tests/fixtures/config/old_saved.toml");
+
+    #[test]
+    fn a_save_over_nothing_writes_the_default_file() {
+        assert_eq!(
+            merged("", &Settings::default()).as_deref(),
+            Ok(DEFAULT_FILE)
+        );
+    }
+
+    /// Each value read alone: a bad or out-of-range one keeps its default.
+    #[test]
+    #[allow(clippy::float_cmp, reason = "read back exactly")]
+    fn a_hand_edited_file_reads_key_by_key() {
+        let settings = lenient(OLD_FILE).expect("parses");
+        let mut expected = Settings::default();
+
+        expected.ui.bars = HpBars::Always;
+        expected.ui.window = WindowMode::FullScreen;
+        expected.audio.effects = 0.3;
+        expected.audio.music = 1.0;
+        expected.game.speed = SpeedSlider::S7;
+        expected.game.autosave = Autosave::Off;
+        expected.enhancements.rings = Rings::Art;
+        expected.enhancements.experimental = true;
+        expected.enhancements.wind_amplitude = 3.5;
+
+        assert_eq!(settings, expected);
+    }
+
+    /// A save of what was read keeps the file's text, byte for byte, and
+    /// adds the keys it lacks; saved again, it stays.
+    #[test]
+    fn a_hand_edited_file_saves_with_its_text_kept() {
+        let settings = lenient(OLD_FILE).expect("parses");
+
+        assert_eq!(merged(OLD_FILE, &settings).as_deref(), Ok(OLD_SAVED));
+        assert_eq!(merged(OLD_SAVED, &settings).as_deref(), Ok(OLD_SAVED));
+    }
+
+    /// One setting changed: one line of the file changed.
+    #[test]
+    fn a_change_rewrites_its_line_alone() {
+        let mut settings = lenient(OLD_SAVED).expect("parses");
+
+        settings.audio.effects = 0.7;
+        settings.enhancements.rings = Rings::Native;
+
+        let text = merged(OLD_SAVED, &settings).expect("merges");
+        let changed: Vec<(&str, &str)> = OLD_SAVED
+            .lines()
+            .zip(text.lines())
+            .filter(|(a, b)| a != b)
+            .collect();
+
+        assert_eq!(
+            changed,
+            [
+                ("effects = 0.3", "effects = 0.7"),
+                ("rings = \"art\"", "rings = \"native\""),
+            ]
+        );
+        assert_eq!(OLD_SAVED.lines().count(), text.lines().count());
+    }
+
     #[test]
     fn the_defaults_survive_a_round_trip() {
         let text = toml::to_string(&Settings::default()).expect("writes");
@@ -1044,7 +1158,7 @@ mod tests {
     /// WASD scrolling off by default; on read.
     #[test]
     fn wasd_scroll_is_off_by_default() {
-        let settings = lenient("[ui]\nwasd_scroll = true\n").expect("parses");
+        let settings: Settings = toml::from_str("[ui]\nwasd_scroll = true\n").expect("parses");
 
         assert!(!Settings::default().ui.wasd_scroll);
         assert!(settings.ui.wasd_scroll);
@@ -1530,7 +1644,7 @@ mod tests {
             cast: Cast::Models,
             sun_size: 1.0,
             debug_keys: true,
-            ..Enhancements::modern()
+            ..Enhancements::default()
         };
         let on = Enhancements {
             experimental: true,
@@ -1550,7 +1664,7 @@ mod tests {
             cast: Cast::Models,
             self_shadows: true,
             wind: true,
-            ..Enhancements::modern()
+            ..Enhancements::default()
         };
         let on = Enhancements {
             experimental: true,

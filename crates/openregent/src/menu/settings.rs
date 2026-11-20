@@ -560,7 +560,7 @@ fn widths(
     };
     let names = widest(
         layout.control(tree::LIST).and_then(|c| c.font),
-        &mut fields.iter().map(|f| named(&f.key)),
+        &mut fields.iter().map(|f| f.name.clone()),
     );
     let choices = widest(
         combo.and_then(|c| c.font),
@@ -1024,7 +1024,7 @@ fn listed(
                 line(
                     canvas,
                     &name,
-                    (&named(&field.key), paint::pick(list, State::Normal)),
+                    (&field.name, paint::pick(list, State::Normal)),
                 );
             }
         }
@@ -1365,12 +1365,7 @@ fn doc(
 
         line(canvas, &first, (error, REFUSED));
     } else {
-        let doc = if field.doc.is_empty() {
-            draft.heading(&field.section)
-        } else {
-            &field.doc
-        };
-        let text = format!("{doc}\n{}", hint(draft, field));
+        let text = format!("{}\n{}", field.about, hint(draft, field));
 
         canvas.text_box(
             (Pack::Expansion, &c, None),
@@ -1416,16 +1411,6 @@ fn shaded(rows: &[Row<'_>], n: usize) -> bool {
         .unwrap_or_default();
 
     (n - heading).is_multiple_of(2)
-}
-
-/// A key as a row names it: `scroll_speed` is "Scroll speed".
-fn named(key: &str) -> String {
-    let spaced = key.replace('_', " ");
-    let mut chars = spaced.chars();
-
-    chars.next().map_or_else(String::new, |first| {
-        first.to_uppercase().chain(chars).collect()
-    })
 }
 
 /// Control `id` as key `i`'s row draws it: an id of its own, so egui
@@ -1656,12 +1641,6 @@ mod tests {
     }
 
     #[test]
-    fn a_key_is_named_in_words() {
-        assert_eq!(named("scroll_speed"), "Scroll speed");
-        assert_eq!(named("bars"), "Bars");
-    }
-
-    #[test]
     fn the_hint_gives_the_default_and_range() {
         let draft = Draft::new(&Settings::default());
         let field = |key: &str| {
@@ -1676,6 +1655,167 @@ mod tests {
         assert_eq!(hint(&draft, &field("music")), "Default: 1 (0 to 1)");
         assert_eq!(hint(&draft, &field("bars")), "Default: damaged");
         assert_eq!(hint(&draft, &field("speed_keys")), "Default: on");
+    }
+
+    /// What `tab` lists, `fold` as given, row by row.
+    fn listed_rows(tab: Tab, fold: Fold) -> Vec<String> {
+        let draft = Draft::new(&Settings::default());
+        let f = draft.fields();
+
+        rows(f, tab, fold)
+            .into_iter()
+            .map(|r| match r {
+                Row::Heading(h) => format!("heading {h}"),
+                Row::Preset => "preset".to_owned(),
+                Row::Key(i) => format!("key {}.{}", f[i].section, f[i].key),
+                Row::Fold(i) => format!("fold {}.{}", f[i].section, f[i].key),
+            })
+            .collect()
+    }
+
+    /// Each tab's rows, in order.
+    #[test]
+    fn each_tab_lists_its_rows_in_order() {
+        assert_eq!(
+            listed_rows(Tab::Settings, Fold::Shut),
+            [
+                "heading game",
+                "key game.autosave",
+                "key game.speed",
+                "heading sound",
+                "key audio.effects",
+                "key audio.music",
+                "key audio.muted",
+                "heading display",
+                "key ui.window",
+                "heading interface",
+                "key ui.bars",
+                "key ui.font",
+                "key ui.intro",
+                "key ui.main_menu",
+                "key ui.names",
+                "key ui.player_list",
+                "key ui.scroll_speed",
+                "key ui.wasd_scroll",
+            ]
+        );
+
+        let shut = listed_rows(Tab::Enhancements, Fold::Shut);
+        let open = listed_rows(Tab::Enhancements, Fold::Open);
+
+        assert_eq!(
+            shut,
+            [
+                "preset",
+                "heading display",
+                "key enhancements.rings",
+                "key enhancements.shadows",
+                "key enhancements.side_ring",
+                "key enhancements.smooth_position",
+                "key enhancements.ui_upscale",
+                "key enhancements.video_upscale",
+                "key enhancements.view_upscale",
+                "heading game",
+                "key enhancements.show_wizards_guild_spell_range",
+                "key enhancements.speed_keys",
+                "heading interface",
+                "key enhancements.message_links",
+                "key enhancements.rage_on_spell_bar",
+                "key enhancements.smooth_arrows",
+                "key enhancements.smooth_zoom",
+                "fold enhancements.experimental",
+            ]
+        );
+        assert_eq!(open[..shut.len()], shut);
+        assert_eq!(
+            open[shut.len()..],
+            [
+                "key enhancements.cast",
+                "key enhancements.self_shadows",
+                "key enhancements.sun_direction",
+                "key enhancements.sun_elevation",
+                "key enhancements.sun_size",
+                "key enhancements.wind",
+                "key enhancements.wind_amplitude",
+            ]
+        );
+    }
+
+    /// Each key's hint, and its choices where it has a list.
+    #[test]
+    fn each_key_shows_its_hint_and_choices() {
+        let draft = Draft::new(&Settings::default());
+        let shown: Vec<(String, String, String)> = draft
+            .fields()
+            .iter()
+            .map(|f| {
+                let choices = match &f.kind {
+                    Kind::Choice(names) => names.join(","),
+                    _ => String::new(),
+                };
+
+                (format!("{}.{}", f.section, f.key), hint(&draft, f), choices)
+            })
+            .collect();
+        let expected = [
+            ("audio.effects", "Default: 1 (0 to 1)", ""),
+            ("audio.music", "Default: 1 (0 to 1)", ""),
+            ("audio.muted", "Default: off", ""),
+            ("enhancements.cast", "Default: painted", "painted,models"),
+            ("enhancements.debug_keys", "Default: off", ""),
+            ("enhancements.experimental", "Default: off", ""),
+            ("enhancements.message_links", "Default: on", ""),
+            ("enhancements.rage_on_spell_bar", "Default: on", ""),
+            ("enhancements.rings", "Default: modern", "art,native,modern"),
+            ("enhancements.self_shadows", "Default: off", ""),
+            ("enhancements.shadows", "Default: soft", "blend,soft"),
+            (
+                "enhancements.show_wizards_guild_spell_range",
+                "Default: on",
+                "",
+            ),
+            ("enhancements.side_ring", "Default: on", ""),
+            ("enhancements.smooth_arrows", "Default: on", ""),
+            ("enhancements.smooth_position", "Default: on", ""),
+            ("enhancements.smooth_zoom", "Default: on", ""),
+            ("enhancements.speed_keys", "Default: on", ""),
+            (
+                "enhancements.sun_direction",
+                "Default: 29 (-180 to 180)",
+                "",
+            ),
+            ("enhancements.sun_elevation", "Default: 50 (10 to 89)", ""),
+            ("enhancements.sun_size", "Default: 3 (0 to 8)", ""),
+            ("enhancements.ui_upscale", "Default: xbrz", "none,xbrz"),
+            ("enhancements.video_upscale", "Default: fsr", "linear,fsr"),
+            (
+                "enhancements.view_upscale",
+                "Default: sharp",
+                "nearest,sharp,fsr,sharp-sprite,fsr-sprite",
+            ),
+            ("enhancements.wind", "Default: off", ""),
+            ("enhancements.wind_amplitude", "Default: 2 (0 to 4)", ""),
+            ("game.autosave", "Default: 5", "off,1,5,10"),
+            ("game.speed", "Default: 5", "1,2,3,4,5,6,7,8,9"),
+            ("ui.bars", "Default: damaged", "always,damaged,never"),
+            ("ui.font", "Default: inknut", "inknut,egui"),
+            ("ui.intro", "Default: on", "on,off"),
+            ("ui.main_menu", "Default: base", "base,expansion"),
+            ("ui.names", "Default: on", "off,on,heroes"),
+            ("ui.player_list", "Default: details", "off,players,details"),
+            ("ui.scroll_speed", "Default: 32 (32 to 64)", ""),
+            ("ui.wasd_scroll", "Default: off", ""),
+            (
+                "ui.window",
+                "Default: windowed",
+                "windowed,full_screen,exclusive",
+            ),
+        ];
+
+        assert_eq!(
+            shown,
+            expected.map(|(k, h, c)| (k.to_owned(), h.to_owned(), c.to_owned()))
+        );
     }
 
     /// `MX18`'s SET ALL and list.
