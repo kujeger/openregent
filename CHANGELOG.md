@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+## [0.7.0] - 2026-11-20
+
+### Changed
+
+- WASD scroll setting moved from `enhancements` to `settings`.
+- Better info text for settings
+- Fix text placement on some buttons (e.g. "HEROES")
+- Internally, settings system was redesigned
+
 ## [0.6.0] - 2026-11-20
 
 ### Added
