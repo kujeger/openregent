@@ -1,7 +1,8 @@
 # Future enhancements
 
 Departures from the original. Each switchable one is a key of `[enhancements]`,
-on the settings page's ENHANCEMENTS tab. The default is the Modern preset;
+on the settings page's ENHANCEMENTS tab, but for `[ui] wasd_scroll` on the
+SETTINGS tab, off by default, which the presets do not set. The default is the Modern preset;
 Classic sets every switch off and every mode to the closest to the original
 (`shadows = "blend"`: it has no off). The preset is not stored: it is read from
 the values, and anything else shows as Custom (`config::Preset`). Experimental
@@ -31,7 +32,7 @@ unless asked, so captures still compare with the original's.
 | Smooth zoom | The wheel steps quarter octaves, 0.5 to 4, and 3; the gold amounts show at every zoom; a middle click or 0 goes back to 1:1 (`[enhancements] smooth_zoom`, on in Modern) | The original has two zooms, 1:1 and 2:1 out (`view::map::zoom`), and draws the amount at 1:1 alone | Done: openregent's `zoom`, `words::shown_at` |
 | Far tax steps | Shift (either) with a tax collector's return or pickup button moves it by 100 (`taxman::TAX_STRIDE` × `#Taxman_Increment`), or as many whole steps as fit: 50 under the maximum raises to it. It sends the single step that many times, so `World::tax_sent`, orders and replays stay valid. The buttons' tooltips say so | User's request. The original's press moves 25 | Done: `World::tax_presses`, `taxman::tax_far` |
 | Smooth arrows | A held arrow key scrolls as the window's edge does: `ScrollSpeed` × 20 px a second, ramped over 500 ms, each drawn frame (`[enhancements] smooth_arrows`, on in Modern) | The original jumps `ScrollSpeed` pixels each key event, so a held key moves at the keyboard's repeat rate, after its delay (`view::map::pan`) | Done: openregent's `pan` |
-| WASD scrolling | W, A, S and D, by place on the keyboard, scroll as the arrows do, smoothly with `smooth_arrows`; a hot key on them never fires; none while typing (`[enhancements] wasd_scroll`, off by default, kept by a preset pick) | The original scrolls with the arrows alone; its letters are hot keys | Done: openregent's `hotkey::wasd`, `pan`, `map_keys` |
+| WASD scrolling | W, A, S and D, by place on the keyboard, scroll as the arrows do, smoothly with `smooth_arrows`; a hot key on them never fires; none while typing (`[ui] wasd_scroll`, off by default) | The original scrolls with the arrows alone; its letters are hot keys | Done: openregent's `hotkey::wasd`, `pan`, `map_keys` |
 | Smooth position | Pieces (a flier's height too), what hangs on them, their selection rings, speed-trail clones, missiles and particles slide between game frames (`[enhancements] smooth_position`, on in Modern) | The original draws a unit at its stored position, so it moves a game frame at a time | Done: openregent's `game::clock::Motion` |
 | Spell range on the map | While a reach spell (`REACH_SPELLS`) is aimed, the wizards' guilds' and towers' reach shows on the ground as well as the minimap: the same circles (`World::aimed_reach`), a white fill and rim (`[enhancements] show_wizards_guild_spell_range`, on in Modern). While a Wizards' Guild or Tower is placed, the same setting shows those circles and the preview's own, on the minimap and the ground (`World::placing_reach`) | The original draws the reach on the minimap alone, and only while a reach spell is aimed | Done: openregent's `reach` |
 | xBRZ interface art | The menus' and panels' pictures upscaled with xBRZ, cached on disk (`[enhancements] ui_upscale = "xbrz"`, on in Modern) | The original draws its interface at 800 × 600 | Done: openregent's `upscale` ([game.md](game.md)) |

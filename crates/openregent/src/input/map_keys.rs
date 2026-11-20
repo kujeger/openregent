@@ -10,7 +10,7 @@
 //!  Delete     the mode left
 //!  arrows     the view scrolled, each press and repeat; held, with
 //!             `[enhancements] smooth_arrows`, by `pan`. W A S D too,
-//!             with `[enhancements] wasd_scroll`
+//!             with `[ui] wasd_scroll`
 //!  0-9        a bound spell aimed; Ctrl binds the aimed one
 //!  F2-F8      a bound piece selected (Shift: and centred, Alt: and
 //!             followed by the tracking window) or point looked at; Ctrl

@@ -85,6 +85,9 @@ pub struct Ui {
     /// `players` each player's colour and name, `details` also its round
     /// trip and the lockstep delay in force. This game's.
     pub player_list: PlayerList,
+    /// W, A, S and D (by place on the keyboard) scroll as the arrows do,
+    /// over any hot key on them. Off by default. This game's.
+    pub wasd_scroll: bool,
 }
 
 impl Default for Ui {
@@ -98,6 +101,7 @@ impl Default for Ui {
             window: WindowMode::default(),
             font: Typeface::default(),
             player_list: PlayerList::default(),
+            wasd_scroll: false,
         }
     }
 }
@@ -417,9 +421,6 @@ pub struct Enhancements {
     /// A held arrow key scrolls smoothly, ramping up as the window's
     /// edge does, not a step each time the key repeats.
     pub smooth_arrows: bool,
-    /// W, A, S and D (by place on the keyboard) scroll as the arrows do,
-    /// over any hot key on them. Off by default: no preset sets it.
-    pub wasd_scroll: bool,
     /// The experimental keys ([`EXPERIMENTAL_KEYS`]) take effect: off, each
     /// plays as if off, its value kept.
     pub experimental: bool,
@@ -510,7 +511,6 @@ impl Enhancements {
             rings: Rings::Modern,
             side_ring: true,
             smooth_arrows: true,
-            wasd_scroll: false,
             experimental: false,
             wind: false,
             wind_amplitude: 2.0,
@@ -545,11 +545,10 @@ impl Enhancements {
     }
 
     /// `self` with the keys no preset sets taken from `from`: the debug
-    /// keys, WASD scrolling, and the experimental ones but their switch.
+    /// keys and the experimental ones but their switch.
     const fn keeping(self, from: &Enhancements) -> Enhancements {
         Enhancements {
             debug_keys: from.debug_keys,
-            wasd_scroll: from.wasd_scroll,
             wind: from.wind,
             wind_amplitude: from.wind_amplitude,
             cast: from.cast,
@@ -1042,17 +1041,13 @@ mod tests {
         assert!(Settings::default().enhancements.smooth_arrows);
     }
 
-    /// WASD scrolling off by default, in both presets; a pick keeps it.
+    /// WASD scrolling off by default; on read.
     #[test]
-    fn wasd_scroll_is_off_by_default_and_outlives_a_pick() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nwasd_scroll = true\n").expect("parses");
-        let on = &settings.enhancements;
+    fn wasd_scroll_is_off_by_default() {
+        let settings = lenient("[ui]\nwasd_scroll = true\n").expect("parses");
 
-        assert!(!Settings::default().enhancements.wasd_scroll);
-        assert!(!Enhancements::classic().wasd_scroll);
-        assert_eq!(on.preset(), Preset::Modern);
-        assert!(on.picked(Preset::Classic).wasd_scroll);
+        assert!(!Settings::default().ui.wasd_scroll);
+        assert!(settings.ui.wasd_scroll);
     }
 
     /// Out of range in the file: the default, the keys in range read.

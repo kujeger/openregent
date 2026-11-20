@@ -10,7 +10,7 @@
 //! ```
 //!
 //! The chat line empties the keys before `press` reads them, so typing
-//! presses nothing. With `[enhancements] wasd_scroll`, W, A, S and D
+//! presses nothing. With `[ui] wasd_scroll`, W, A, S and D
 //! are the scroll's: never a control's.
 
 use bevy::input::keyboard::{Key, KeyboardInput};
@@ -73,13 +73,13 @@ const FUNCTION: [Key; 15] = [
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scrolling {
     Arrows,
-    /// `[enhancements] wasd_scroll`.
+    /// `[ui] wasd_scroll`.
     ArrowsAndWasd,
 }
 
 impl Scrolling {
     pub const fn of(settings: &Settings) -> Scrolling {
-        if settings.enhancements.wasd_scroll {
+        if settings.ui.wasd_scroll {
             Scrolling::ArrowsAndWasd
         } else {
             Scrolling::Arrows

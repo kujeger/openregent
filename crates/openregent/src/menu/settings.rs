@@ -271,7 +271,7 @@ impl Group {
 }
 
 /// The enhancements by topic; [`EXPERIMENTAL_KEYS`] apart.
-const GROUPED: [(&str, Group); 14] = [
+const GROUPED: [(&str, Group); 13] = [
     ("view_upscale", Group::Display),
     ("video_upscale", Group::Display),
     ("ui_upscale", Group::Display),
@@ -283,7 +283,6 @@ const GROUPED: [(&str, Group); 14] = [
     ("show_wizards_guild_spell_range", Group::Game),
     ("smooth_zoom", Group::Interface),
     ("smooth_arrows", Group::Interface),
-    ("wasd_scroll", Group::Interface),
     ("message_links", Group::Interface),
     ("rage_on_spell_bar", Group::Interface),
 ];
