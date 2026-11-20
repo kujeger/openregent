@@ -443,6 +443,7 @@ pub(super) mod tests {
             state: 0,
             spread: super::super::missile::Spread::default(),
             sight: super::super::Sight::Everyone,
+            sounds: vec![],
         }
     }
 

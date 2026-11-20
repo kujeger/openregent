@@ -511,7 +511,12 @@ impl World {
             (Found::Unsure, _) | (_, Some(Found::Unsure)) => Ok(Answer::Unknown),
             (Found::Piece(_), _) => {
                 let left = self.leave(id, None);
-                let act = self.descriptors.named().actions.get(&folded).copied();
+                let act = self
+                    .descriptors
+                    .named()
+                    .actions
+                    .get(&folded)
+                    .map(|a| self.act_sound(id, &folded, *a));
                 let modifier = self
                     .any_piece(id)
                     .and_then(|p| p.get(ACTION_RATE))
@@ -582,6 +587,25 @@ impl World {
                 Ok(left)
             }
         }
+    }
+
+    /// Action `act`, named `folded`, as actor `id` sounds it: the actor's
+    /// `SoundOverride` for it in place of the action's own `Sound`, as
+    /// the engine looks it up at the begin and the peak. A peasant's
+    /// `Basic_build` hammers.
+    fn act_sound(&self, id: u32, folded: &str, act: Act) -> Act {
+        let codes = &self.descriptors.named().codes;
+        let sound = self
+            .any_piece(id)
+            .and_then(|p| self.descriptors.body(p.code))
+            .and_then(|b| {
+                b.sounds
+                    .iter()
+                    .find(|(action, _)| codes.get(action).is_some_and(|n| n == folded))
+            })
+            .map_or(act.sound, |(_, s)| Some(*s));
+
+        Act { sound, ..act }
     }
 
     /// `AgentNumber(n)`, gpl agent number: the agent

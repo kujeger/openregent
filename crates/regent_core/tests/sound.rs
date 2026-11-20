@@ -7,6 +7,7 @@ mod common;
 
 use std::collections::BTreeMap;
 
+use regent_core::content::unit::Unit;
 use regent_core::data::catalogue::Catalogue;
 use regent_core::data::desc::{self, SoundGroup};
 use regent_core::data::fourcc::FourCc;
@@ -212,4 +213,41 @@ fn the_voice_key_plays_a_warriors_eg01() {
             .play(&catalogue, &voice, &phase, Some(warrior), 0.0)
             .is_some()
     );
+}
+
+/// A peasant's `Basic_build` sounds its `SoundOverride`: the man's
+/// `Hammering` at the peak, the woman's `Sawing` at the begin. The
+/// action names no sound, and the peasants' own records hold neither
+/// phase.
+#[test]
+#[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+fn a_peasant_hammers_and_a_peasant_woman_saws() {
+    let library = common::library();
+    let catalogue = library.catalogue().expect("a catalogue");
+    let sounds = Sounds::of(&catalogue).expect("a sound index");
+    let basic_build = FourCc(*b"A008");
+    let at = catalogue.find(b"DACT", basic_build).expect("Basic_build");
+    let record = catalogue.record(b"DACT", at).expect("a record");
+    let part = desc::Part::parse(record.data).expect("a tree");
+    let action = desc::Action::parse(&part).expect("an action");
+    let [begin, peak, _] = action.sound_phases();
+
+    assert_eq!(action.sound(), None);
+
+    for (peasant, sound, phase) in [
+        (*b"AVj1", *b"MI03", peak.expect("a peak")),
+        (*b"AVj2", *b"MI04", begin.expect("a begin")),
+    ] {
+        let unit = Unit::find(&catalogue, FourCc(peasant))
+            .expect("the peasant")
+            .expect("it reads");
+        let overrides: Vec<_> = unit.overrides.iter().map(|(a, s)| (a.id, s.id)).collect();
+        let own = unit.sound.as_ref().expect("its own").id;
+        let phase = world::sound::Phase::Id(phase);
+        let plays = |voice: Voice| sounds.play(&catalogue, &voice, &phase, None, 0.0);
+
+        assert_eq!(overrides, [(basic_build, FourCc(sound))]);
+        assert!(plays(Voice::Sound(FourCc(sound))).is_some());
+        assert!(plays(Voice::Sound(own)).is_none());
+    }
 }

@@ -159,6 +159,11 @@ pub struct Body {
     pub spread: super::missile::Spread,
     /// Who may see it: `Info` `NotVisibleToOpponent` its owner alone.
     pub sight: super::Sight,
+    /// Its `SoundOverride`s, `(DACT, DSND)`: the sound its action plays
+    /// in place of the action's own (`World::act_sound`). HD's peasants
+    /// build so: `Basic_build` names none, `Peasant` hammers, `Peasant_female`
+    /// saws.
+    pub sounds: Vec<(FourCc, FourCc)>,
 }
 
 impl Body {

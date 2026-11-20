@@ -485,6 +485,7 @@ fn body(
         state: made_state(unit),
         spread: Missile::of(code, engine.info().unwrap_or_default()).spread,
         sight: sight(unit),
+        sounds: unit.overrides.iter().map(|(a, s)| (a.id, s.id)).collect(),
     }
 }
 

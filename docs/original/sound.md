@@ -16,7 +16,7 @@ record is its `PRIM` `DefaultSound`.
 | `PlaySound(agent, phase[, float])` | the unit's own | at the unit; no unit, nothing |
 | `PlaySound(agent, sound, phase[, float])` | named | at the unit; no unit, unplaced |
 | `PlaySound(sound, phase[, player])` | named | unplaced, distance 10,000; another player's skipped |
-| an `InitAction` pushed | the action's `Sound`, else the actor's own; `SoundPhase begin` | at the actor |
+| an `InitAction` pushed | the actor's `SoundOverride` for the action, else the action's `Sound`, else the actor's own; `SoundPhase begin` | at the actor |
 | an `InitAction`'s peak | same; `peak` | at the actor |
 | an effector made | its own; `EEB0 Effector Begin` | at it |
 | a player's spell unit made | its own; `EEB0` | at it |
@@ -31,7 +31,15 @@ record is its `PRIM` `DefaultSound`.
 | a unit shows a set | its own, looped: `Special-n` `AMI`, `Build-n` `AMB`, `Die-n` `AMD`, `Active-n` `AMA`, `Inactive-n` `AMN`, with the stage digit; other sets stop it | at it |
 | a unit dies and is deleted | its own; `EDH0 Death` | unplaced |
 
+A `SoundOverride` wins over the action's own `Sound`. HD has five: a
+peasant's, a dwarf's and a gnome's `Basic_build` hammers (`MI03
+Hammering`, `Peak`), a peasant woman's saws (`MI04 Sawing`, `Begin`);
+`treasure_chest1`'s `chest_open` plays `Chestopen`. `Basic_build` names
+no sound, and the peasants' own records hold neither phase.
+
 Tests: `an_actions_sound_phases_are_the_sdks`,
+`an_actors_sound_override_wins_over_the_actions_sound`,
+`a_peasant_hammers_and_a_peasant_woman_saws`,
 `a_refused_click_sounds_the_error_alert`,
 `the_voice_key_plays_a_warriors_eg01`,
 **Measured**.

@@ -96,7 +96,8 @@ pub struct Act {
     /// (init action peak, `desc::Script::c_proc`); 0 none.
     pub proc: u32,
     /// `Sound`, and `SoundPhase` begin and peak,
-    /// (`desc::Action::sound_phases`): action sound's.
+    /// (`desc::Action::sound_phases`): action sound's. As an order
+    /// holds it, `sound` is the actor's `SoundOverride` where it has one.
     pub sound: Option<FourCc>,
     pub begin: Option<FourCc>,
     pub peak: Option<FourCc>,

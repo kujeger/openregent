@@ -6,7 +6,8 @@
 //!  PlaySound(agent, sound, phase[, float])   DefaultSound, or
 //!  PlaySound(sound, phase[, player])         a DSND by name
 //!  InitAction pushed, and at its peak
-//!    the action's Sound, else the actor's; SoundPhase begin, then peak
+//!    the actor's SoundOverride for the action, else the action's Sound,
+//!    else the actor's own; SoundPhase begin, then peak
 //!  an effector made                          GenUnit
 //!    its own DefaultSound, phase EEB0 Effector Begin
 //!  a player's spell unit made
