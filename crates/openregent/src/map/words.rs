@@ -232,7 +232,7 @@ fn draw(painter: &Painter, view: &View, at: Vec2, words: &Words) {
 /// original's, in steps of 1 / [`STEPS_PER_POINT`].
 ///
 /// ```text
-///  fnt7 at zoom 1, egui's font: 7 / 0.73 = 9.6, drawn 9.5 points; at 2: 19
+///  fnt7 at zoom 1, in Inknut: 7 / 0.90 = 7.8, drawn 8 points; at 2: 15.5
 /// ```
 pub fn points(look: Look, zoom: f32) -> f32 {
     #[allow(clippy::cast_precision_loss, reason = "a few pixels")]
@@ -320,9 +320,9 @@ mod tests {
     /// half points.
     #[test]
     fn the_size_and_shadow_grow_with_the_zoom() {
-        assert!((points(FLAG, 1.0) - 9.5).abs() < f32::EPSILON);
-        assert!((points(FLAG, 2.0) - 19.0).abs() < f32::EPSILON);
-        assert!((points(GOLD, 1.3) - 12.5).abs() < f32::EPSILON);
+        assert!((points(FLAG, 1.0) - 8.0).abs() < f32::EPSILON);
+        assert!((points(FLAG, 2.0) - 15.5).abs() < f32::EPSILON);
+        assert!((points(GOLD, 1.3) - 10.0).abs() < f32::EPSILON);
         assert!((points(FLAG, 1.07) * STEPS_PER_POINT).fract().abs() < f32::EPSILON);
         assert_eq!(step(1.0), vec2(1.0, 1.0));
         assert_eq!(step(2.5), vec2(2.5, 2.5));

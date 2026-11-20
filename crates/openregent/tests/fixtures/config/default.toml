@@ -5,7 +5,6 @@ main_menu = "base"
 intro = "on"
 scroll_speed = 32
 window = "windowed"
-font = "inknut"
 player_list = "details"
 wasd_scroll = false
 

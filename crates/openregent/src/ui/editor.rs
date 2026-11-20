@@ -393,7 +393,7 @@ mod tests {
             now("ui", "scroll_speed"),
             Some(Now::Number(32.0, Whole::Integer))
         );
-        assert!(matches!(now("ui", "font"), Some(Now::Choice(0, _))));
+        assert!(matches!(now("ui", "main_menu"), Some(Now::Choice(0, _))));
     }
 
     /// A row's name and text are its `#[setting(…)]`'s; without `name`,
@@ -409,7 +409,7 @@ mod tests {
 
         assert_eq!(text("ui", "bars").0, "Hit point bars");
         assert_eq!(text("ui", "wasd_scroll").0, "WASD scroll");
-        assert_eq!(text("ui", "font").0, "Font");
+        assert_eq!(text("ui", "scroll_speed").0, "Scroll speed");
         assert_eq!(
             text("audio", "muted"),
             ("Mute", "Silence all sound. The volumes are kept.")

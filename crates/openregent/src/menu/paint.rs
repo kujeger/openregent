@@ -2688,7 +2688,7 @@ mod tests {
 
     #[test]
     fn small_wheel_move_over_a_row_stays_small() {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let window = Rect::from_min_size(Pos2::ZERO, egui::vec2(100.0, 100.0));
         let list = Rect::from_min_size(pos2(10.0, 10.0), egui::vec2(80.0, 80.0));
         let row = Rect::from_min_size(list.min, egui::vec2(80.0, 20.0));
@@ -2785,7 +2785,7 @@ mod tests {
 
     /// The keys a pass with `events` reads.
     fn read(events: Vec<egui::Event>) -> Vec<i32> {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let input = egui::RawInput {
             events,
             ..egui::RawInput::default()

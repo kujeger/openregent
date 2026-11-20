@@ -90,10 +90,6 @@ pub struct Ui {
         group = Display
     )]
     pub window: WindowMode,
-    #[setting(
-        about = "The typeface of the text. Inknut Antiqua looks like the original game's lettering; Ubuntu Light is plainer."
-    )]
-    pub font: Typeface,
     /// This game's.
     #[setting(
         about = "In a LAN game, a list of the players in the map's top right corner. With timing, it also shows how long messages take to each player and back, and the delay in use."
@@ -154,15 +150,6 @@ pub enum MainMenu {
     #[default]
     Base,
     Expansion,
-}
-
-/// The typeface egui draws the text in (`typeface`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize, clap::ValueEnum)]
-#[serde(rename_all = "lowercase")]
-pub enum Typeface {
-    #[default]
-    Inknut,
-    Egui,
 }
 
 /// Which units show a hit point bar. The original has `always` while
@@ -366,7 +353,6 @@ choices! {
     MainMenu { Base => "Majesty", Expansion => "Northern Expansion" }
     Intro { On => "On", Off => "Off" }
     WindowMode { Windowed => "Windowed", FullScreen => "Full screen", Exclusive => "Exclusive full screen" }
-    Typeface { Inknut => "Inknut Antiqua", Egui => "Ubuntu Light" }
     PlayerList { Off => "Off", Players => "Players", Details => "Players and timing" }
     Autosave { Off => "Off", Day => "Every day", FiveDays => "Every 5 days", TenDays => "Every 10 days" }
     SpeedSlider {
@@ -1410,16 +1396,6 @@ mod tests {
         assert_eq!(Names::Off.toggled(Names::Heroes), Names::Heroes);
         assert_eq!(Names::Off.toggled(Names::On), Names::On);
         assert_eq!(Names::Off.toggled(Names::Off), Names::On);
-    }
-
-    /// Inknut by default; `egui` reads, anything else keeps the default.
-    #[test]
-    fn the_font_is_inknut_by_default() {
-        let font = |text: &str| lenient(text).map(|s| s.ui.font);
-
-        assert_eq!(Settings::default().ui.font, Typeface::Inknut);
-        assert_eq!(font("[ui]\nfont = \"egui\"\n"), Ok(Typeface::Egui));
-        assert_eq!(font("[ui]\nfont = \"comic\"\n"), Ok(Typeface::Inknut));
     }
 
     #[test]

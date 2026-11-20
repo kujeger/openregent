@@ -1218,7 +1218,7 @@ mod tests {
 
         static WAVE: [u8; 4] = *b"RIFF";
 
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let window = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0));
         let panel = smnu::Rect {
             x: -1,

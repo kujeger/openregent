@@ -11,7 +11,6 @@ window = "full_screen"
 bar_width = 260.0        # an old key, kept
 main_menu = "base"
 intro = "on"
-font = "inknut"
 player_list = "details"
 wasd_scroll = false
 

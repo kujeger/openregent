@@ -1,17 +1,17 @@
 //! The typeface egui draws the game's text in: Inknut Antiqua (SIL Open
-//! Font License 1.1, `assets/fonts/inknut-antiqua/`), embedded, or
-//! egui's own (Ubuntu Light). `[ui] font` picks it; a change shows from
-//! the next frame.
+//! Font License 1.1, `assets/fonts/inknut-antiqua/`), embedded. Sizes are
+//! given in egui's own font (Ubuntu Light) and drawn as tall in Inknut.
 //!
 //! ```text
-//!  [ui] font ──follow──> ctx.set_fonts ──next pass──> fonts loaded
+//!  first pass ──follow──> ctx.set_fonts ──next pass──> Inknut loaded
 //!                                                      │
 //!  metrics() <── which one is loaded ──────────────────┘
 //!  proportional family:  Inknut latin ─> Inknut latin-ext ─> egui's fonts
 //! ```
 //!
 //! Text sized to the original's fonts asks [`metrics`] for the loaded
-//! face's proportions, so either fills the same room.
+//! face's proportions: egui's until Inknut loads, on the first pass.
+//! Tests draw in Inknut ([`context`]).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,8 +19,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use bevy::prelude::*;
 use bevy_egui::egui::{self, FontData, FontDefinitions, FontFamily};
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass};
-
-use crate::files::config::{Settings, Typeface};
 
 /// Inknut Antiqua, weight 400: Basic Latin, Latin-1 and a few more
 /// (æ ø å é ß œ €).
@@ -83,36 +81,25 @@ pub const INKNUT: Metrics = Metrics {
 /// Whether Inknut is loaded: what [`metrics`] answers by.
 static INKNUT_LOADED: AtomicBool = AtomicBool::new(false);
 
-#[cfg(test)]
-thread_local! {
-    /// A test's face ([`in_face`]): tests share [`INKNUT_LOADED`].
-    static TEST_FACE: std::cell::Cell<Option<Typeface>> = const { std::cell::Cell::new(None) };
-}
-
-/// The loaded face's proportions.
+/// The loaded face's proportions. A test's are Inknut's: its context
+/// has Inknut loaded ([`context`]).
 #[must_use]
 pub fn metrics() -> Metrics {
-    #[cfg(test)]
-    let inknut = TEST_FACE
-        .get()
-        .map_or(INKNUT_LOADED.load(Ordering::Relaxed), |f| {
-            f == Typeface::Inknut
-        });
-    #[cfg(not(test))]
-    let inknut = INKNUT_LOADED.load(Ordering::Relaxed);
-
-    if inknut { INKNUT } else { EGUI }
+    if cfg!(test) || INKNUT_LOADED.load(Ordering::Relaxed) {
+        INKNUT
+    } else {
+        EGUI
+    }
 }
 
-/// `run` with [`metrics`] `face`'s on this thread.
+/// A context with Inknut loaded from its first pass, as a test draws in.
 #[cfg(test)]
-pub fn in_face<T>(face: Typeface, run: impl FnOnce() -> T) -> T {
-    TEST_FACE.set(Some(face));
+#[must_use]
+pub fn context() -> egui::Context {
+    let ctx = egui::Context::default();
 
-    let out = run();
-
-    TEST_FACE.set(None);
-    out
+    ctx.set_fonts(definitions());
+    ctx
 }
 
 /// `size` in egui's font as the loaded face draws as tall: 15 points
@@ -146,57 +133,41 @@ pub fn edit_room(ctx: &egui::Context, font: &egui::FontId, rect: egui::Rect) -> 
     rect.expand2(egui::vec2(0.0, ((row - rect.height()) / 2.0).max(0.0)))
 }
 
-/// egui's definitions for `face`: Inknut first in the proportional
-/// family, egui's own after it for what Inknut lacks.
+/// egui's definitions with Inknut first in the proportional family,
+/// egui's own after it for what Inknut lacks.
 #[must_use]
-pub fn definitions(face: Typeface) -> FontDefinitions {
+pub fn definitions() -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
 
-    if face == Typeface::Inknut {
-        for (name, bytes) in [(LATIN, INKNUT_LATIN), (LATIN_EXT, INKNUT_LATIN_EXT)] {
-            fonts
-                .font_data
-                .insert(name.to_owned(), Arc::new(FontData::from_static(bytes)));
-        }
-
+    for (name, bytes) in [(LATIN, INKNUT_LATIN), (LATIN_EXT, INKNUT_LATIN_EXT)] {
         fonts
-            .families
-            .entry(FontFamily::Proportional)
-            .or_default()
-            .splice(0..0, [LATIN.to_owned(), LATIN_EXT.to_owned()]);
+            .font_data
+            .insert(name.to_owned(), Arc::new(FontData::from_static(bytes)));
     }
+
+    fonts
+        .families
+        .entry(FontFamily::Proportional)
+        .or_default()
+        .splice(0..0, [LATIN.to_owned(), LATIN_EXT.to_owned()]);
 
     fonts
 }
 
-/// The face `fonts` load.
-fn loaded(fonts: &FontDefinitions) -> Typeface {
-    if fonts.font_data.contains_key(LATIN) {
-        Typeface::Inknut
-    } else {
-        Typeface::Egui
-    }
+/// Whether `fonts` hold Inknut.
+fn loaded(fonts: &FontDefinitions) -> bool {
+    fonts.font_data.contains_key(LATIN)
 }
 
-/// The face the settings ask for loaded, and [`metrics`] set by the one
-/// loaded now.
-#[allow(
-    clippy::needless_pass_by_value,
-    reason = "a Bevy system takes its parameters by value"
-)]
-fn follow(mut contexts: EguiContexts, settings: Res<Settings>) -> Result {
+/// Inknut loaded, and [`metrics`] set by whether it is now.
+fn follow(mut contexts: EguiContexts) -> Result {
     let ctx = contexts.ctx_mut()?;
     let now = ctx.fonts(|f| loaded(f.definitions()));
-    let wanted = settings.ui.font;
 
-    // Tests share the process: one test's app must not move the sizes
-    // another measures, so there they stay egui's.
-    if cfg!(not(test)) {
-        INKNUT_LOADED.store(now == Typeface::Inknut, Ordering::Relaxed);
-    }
+    INKNUT_LOADED.store(now, Ordering::Relaxed);
 
-    if now != wanted {
-        ctx.set_fonts(definitions(wanted));
+    if !now {
+        ctx.set_fonts(definitions());
     }
 
     Ok(())
@@ -252,8 +223,8 @@ mod tests {
     fn the_metrics_hold() {
         const SIZE: f32 = 100.0;
 
-        let measured = |face| {
-            with_fonts(definitions(face), |ctx| {
+        let measured = |fonts| {
+            with_fonts(fonts, |ctx| {
                 let id = FontId::proportional(SIZE);
 
                 ctx.fonts_mut(|f| {
@@ -274,7 +245,7 @@ mod tests {
         };
         let near = |got: f32, want: f32| (got / SIZE - want).abs() < 0.02 * want;
 
-        let (sample, row, egui_span, cap, ascent, digit) = measured(Typeface::Egui);
+        let (sample, row, egui_span, cap, ascent, digit) = measured(FontDefinitions::default());
         let all = format!("{sample} {row} {egui_span} {cap} {ascent} {digit}");
 
         assert!(near(sample, EGUI.sample), "{all}");
@@ -283,7 +254,7 @@ mod tests {
         assert!(near(ascent, EGUI.ascent), "{all}");
         assert!(near(digit, EGUI.digit), "{all}");
 
-        let (sample, _, span, cap, ascent, digit) = measured(Typeface::Inknut);
+        let (sample, _, span, cap, ascent, digit) = measured(definitions());
         let all = format!("{sample} {span} {cap} {ascent} {digit}");
 
         assert!(near(sample, INKNUT.sample), "{all}");
@@ -313,10 +284,9 @@ mod tests {
     }
 
     #[test]
-    fn the_definitions_load_the_face_asked_for() {
-        assert_eq!(loaded(&definitions(Typeface::Inknut)), Typeface::Inknut);
-        assert_eq!(loaded(&definitions(Typeface::Egui)), Typeface::Egui);
-        assert_eq!(definitions(Typeface::Egui), FontDefinitions::default());
+    fn the_definitions_load_inknut() {
+        assert!(loaded(&definitions()));
+        assert!(!loaded(&FontDefinitions::default()));
     }
 
     /// A chat line's letters all come from Inknut, the latin file or the
@@ -327,7 +297,7 @@ mod tests {
         const LINE: &str = "æøå é ß ł ő €";
         const SIZE: f32 = 20.0;
 
-        let faces = with_fonts(definitions(Typeface::Inknut), |ctx| {
+        let faces = with_fonts(definitions(), |ctx| {
             ctx.fonts_mut(|f| {
                 let id = FontId::proportional(SIZE);
                 let galley = f.layout_no_wrap(format!("{LINE}★"), id, Color32::WHITE);

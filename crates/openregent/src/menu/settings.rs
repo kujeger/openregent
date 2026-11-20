@@ -1476,7 +1476,6 @@ mod tests {
                 "heading display",
                 "key ui.window",
                 "heading interface",
-                "key ui.font",
                 "key ui.bars",
                 "key ui.intro",
                 "key ui.main_menu",
@@ -1529,7 +1528,7 @@ mod tests {
     }
 
     /// Each key, its hint and its choices.
-    const HINTS: [(&str, &str, &str); 36] = [
+    const HINTS: [(&str, &str, &str); 35] = [
         (
             "game.autosave",
             "Default: Every 5 days",
@@ -1543,11 +1542,6 @@ mod tests {
         ("enhancements.debug_keys", "Default: Off", ""),
         ("audio.effects", "Default: 1 (0 to 1)", ""),
         ("enhancements.experimental", "Default: Off", ""),
-        (
-            "ui.font",
-            "Default: Inknut Antiqua",
-            "Inknut Antiqua,Ubuntu Light",
-        ),
         (
             "game.speed",
             "Default: 5 (normal)",
@@ -1737,7 +1731,7 @@ mod tests {
     #[test]
     #[allow(clippy::float_cmp, reason = "the list scrolls whole rows")]
     fn the_wheel_scrolls_the_list_in_a_game() {
-        let ctx = egui::Context::default();
+        let ctx = crate::ui::typeface::context();
         let mut look = Look::default();
 
         // A pass to lay the page out, as the game's last frame did.

@@ -910,12 +910,12 @@ pipelined, as played:
 
 The menus' and panels' text is drawn by egui at the window's pixels, in
 a proportional font, not the `IMAG` fonts scaled (`menu::font`): Inknut
-Antiqua, built in (`typeface`, `[ui] font = "inknut"`, the default;
-`the_font_is_inknut_by_default`), or egui's own Ubuntu Light (`"egui"`).
+Antiqua, built in (`typeface`), the only face. Sizes are given in egui's
+own font, Ubuntu Light, and drawn as tall in Inknut (`the_metrics_hold`);
+tests draw in Inknut too (`typeface::context`).
 Inknut is the `latin` file, then `latin-ext`, then egui's fonts for what
-neither holds (`inknut_draws_nordic_and_central_european_letters`). A
-change shows from the next frame; a screenshot takes the default unless
-`--font`. Inknut's figures are old style (a 1 reads as a small capital
+neither holds (`inknut_draws_nordic_and_central_european_letters`).
+Inknut's figures are old style (a 1 reads as a small capital
 I).
 
 Sizing asks the loaded face's proportions (`typeface::metrics`,
