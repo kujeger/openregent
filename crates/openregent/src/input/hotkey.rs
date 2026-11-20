@@ -10,13 +10,15 @@
 //! ```
 //!
 //! The chat line empties the keys before `press` reads them, so typing
-//! presses nothing.
+//! presses nothing. With `[enhancements] wasd_scroll`, W, A, S and D
+//! are the scroll's: never a control's.
 
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use regent_core::view::menu::hotkey;
 
+use crate::files::config::Settings;
 use crate::input::orders::{Mode, Orders};
 use crate::panel::sheet::Able;
 
@@ -67,8 +69,45 @@ const FUNCTION: [Key; 15] = [
     Key::F15,
 ];
 
+/// Which keys scroll the map, besides the edge.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scrolling {
+    Arrows,
+    /// `[enhancements] wasd_scroll`.
+    ArrowsAndWasd,
+}
+
+impl Scrolling {
+    pub const fn of(settings: &Settings) -> Scrolling {
+        if settings.enhancements.wasd_scroll {
+            Scrolling::ArrowsAndWasd
+        } else {
+            Scrolling::Arrows
+        }
+    }
+}
+
+/// W, A, S and D, by place on the keyboard (Z, Q, S, D on AZERTY), and
+/// the cursor keys they stand for.
+const WASD: [(KeyCode, i32); 4] = [
+    (KeyCode::KeyW, hotkey::UP),
+    (KeyCode::KeyA, hotkey::LEFT),
+    (KeyCode::KeyS, hotkey::DOWN),
+    (KeyCode::KeyD, hotkey::RIGHT),
+];
+
+/// The cursor key `key` stands for under `scrolling`, as the engine
+/// codes it: a WASD key's with WASD on.
+pub(crate) fn wasd(key: KeyCode, scrolling: Scrolling) -> Option<i32> {
+    WASD.iter()
+        .filter(|_| scrolling == Scrolling::ArrowsAndWasd)
+        .find(|(k, _)| *k == key)
+        .map(|(_, c)| *c)
+}
+
 /// Claims this frame's key where a control offered it last frame.
-/// Escape stays the game's while a mode is on: it cancels the mode.
+/// Escape stays the game's while a mode is on: it cancels the mode; a
+/// WASD key the scroll's while it scrolls.
 #[allow(
     clippy::needless_pass_by_value,
     reason = "a Bevy system takes its parameters by value"
@@ -76,13 +115,15 @@ const FUNCTION: [Key; 15] = [
 pub fn press(
     mut events: MessageReader<KeyboardInput>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
-    orders: Res<Orders>,
+    (orders, settings): (Res<Orders>, Res<Settings>),
     mut contexts: EguiContexts,
 ) {
     let held = held(&keys);
+    let scrolling = Scrolling::of(&settings);
     let presses: Vec<(KeyCode, i32)> = events
         .read()
         .filter(|e| e.state.is_pressed() && keys.just_pressed(e.key_code))
+        .filter(|e| wasd(e.key_code, scrolling).is_none())
         .filter_map(|e| code(&e.logical_key).map(|c| (e.key_code, c | held)))
         .filter(|(_, c)| c & hotkey::CODE != hotkey::ESCAPE || orders.mode == Mode::Idle)
         .collect();
@@ -210,6 +251,20 @@ mod tests {
         assert_eq!(code(&Key::F12), Some(hotkey::F1 + 11));
         assert_eq!(code(&Key::ArrowLeft), Some(hotkey::LEFT));
         assert_eq!(code(&Key::Shift), None);
+    }
+
+    #[test]
+    fn wasd_keys_stand_for_the_cursor_keys_only_when_on() {
+        assert_eq!(
+            wasd(KeyCode::KeyA, Scrolling::ArrowsAndWasd),
+            Some(hotkey::LEFT)
+        );
+        assert_eq!(
+            wasd(KeyCode::KeyW, Scrolling::ArrowsAndWasd),
+            Some(hotkey::UP)
+        );
+        assert_eq!(wasd(KeyCode::KeyQ, Scrolling::ArrowsAndWasd), None);
+        assert_eq!(wasd(KeyCode::KeyA, Scrolling::Arrows), None);
     }
 
     #[test]

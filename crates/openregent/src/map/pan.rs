@@ -1,7 +1,8 @@
 //! The view scrolled each drawn frame by the window's edge, as the
 //! original's (`regent_core::view::map::pan`), and, with
 //! `[enhancements] smooth_arrows`, by held arrow keys through the same
-//! ramp. Else the arrows step once a key event (`map_keys`).
+//! ramp (W, A, S and D too with `[enhancements] wasd_scroll`). Else the
+//! arrows step once a key event (`map_keys`).
 //!
 //! ```text
 //!  cursor in the window, within pan::EDGE of its edge ─┐
@@ -19,11 +20,13 @@ use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
 
+use regent_core::view::map::map_keys::{self, Key};
 use regent_core::view::map::pan::{self, Reach};
 use regent_draw::stage::View;
 
 use crate::files::config::Settings;
 use crate::game::seen::Watch;
+use crate::input::hotkey::{self, Scrolling};
 use crate::panel::Panels;
 
 /// The ramp's state, a game's.
@@ -38,12 +41,22 @@ const ARROWS: [(KeyCode, (i32, i32)); 4] = [
     (KeyCode::ArrowDown, (0, 1)),
 ];
 
-/// The held arrows' delta: `speed` toward each axis's net direction.
-fn held(keys: &ButtonInput<KeyCode>, speed: i32) -> (i32, i32) {
+/// The held arrows' delta, WASD's too under `scrolling`: `speed` toward
+/// each axis's net direction.
+fn held(keys: &ButtonInput<KeyCode>, scrolling: Scrolling, speed: i32) -> (i32, i32) {
+    let wasd = keys
+        .get_pressed()
+        .filter_map(|key| hotkey::wasd(*key, scrolling))
+        .filter_map(|code| match map_keys::of(code) {
+            Some(Key::Scroll(x, y)) => Some((x, y)),
+            _ => None,
+        });
     let (x, y) = ARROWS
         .iter()
         .filter(|(key, _)| keys.pressed(*key))
-        .fold((0, 0), |(x, y), (_, (dx, dy))| (x + dx, y + dy));
+        .map(|(_, way)| *way)
+        .chain(wasd)
+        .fold((0, 0), |(x, y), (dx, dy)| (x + dx, y + dy));
 
     (x.signum() * speed, y.signum() * speed)
 }
@@ -85,7 +98,7 @@ pub fn scroll(
         pan::edge((at.x as i32, at.y as i32), size, Reach::Near, speed)
     });
     let arrows = if settings.enhancements.smooth_arrows && !typing {
-        held(&keys, speed)
+        held(&keys, Scrolling::of(&settings), speed)
     } else {
         (0, 0)
     };
@@ -117,14 +130,27 @@ mod tests {
     fn held_arrows_point_the_net_way() {
         let mut keys = ButtonInput::<KeyCode>::default();
 
-        assert_eq!(held(&keys, 32), (0, 0));
+        assert_eq!(held(&keys, Scrolling::Arrows, 32), (0, 0));
 
         keys.press(KeyCode::ArrowLeft);
         keys.press(KeyCode::ArrowDown);
-        assert_eq!(held(&keys, 32), (-32, 32));
+        assert_eq!(held(&keys, Scrolling::Arrows, 32), (-32, 32));
 
         keys.press(KeyCode::ArrowRight);
-        assert_eq!(held(&keys, 48), (0, 48));
+        assert_eq!(held(&keys, Scrolling::Arrows, 48), (0, 48));
+    }
+
+    #[test]
+    fn held_wasd_scrolls_only_when_on() {
+        let mut keys = ButtonInput::<KeyCode>::default();
+
+        keys.press(KeyCode::KeyA);
+        keys.press(KeyCode::KeyW);
+        assert_eq!(held(&keys, Scrolling::Arrows, 32), (0, 0));
+        assert_eq!(held(&keys, Scrolling::ArrowsAndWasd, 32), (-32, -32));
+
+        keys.press(KeyCode::ArrowRight);
+        assert_eq!(held(&keys, Scrolling::ArrowsAndWasd, 32), (0, -32));
     }
 
     #[test]

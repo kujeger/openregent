@@ -9,7 +9,8 @@
 //!  ` ~        the selected message scroll read, as its CLOSE
 //!  Delete     the mode left
 //!  arrows     the view scrolled, each press and repeat; held, with
-//!             `[enhancements] smooth_arrows`, by `pan`
+//!             `[enhancements] smooth_arrows`, by `pan`. W A S D too,
+//!             with `[enhancements] wasd_scroll`
 //!  0-9        a bound spell aimed; Ctrl binds the aimed one
 //!  F2-F8      a bound piece selected (Shift: and centred, Alt: and
 //!             followed by the tracking window) or point looked at; Ctrl
@@ -51,11 +52,12 @@ pub struct Bound(Bindings);
 const SPEED_DIGITS: [u8; 3] = *b"123";
 const ZOOM_DIGIT: u8 = b'0';
 
-/// This frame's map keys, each as the engine codes it.
+/// This frame's map keys, each as the engine codes it; a WASD key as
+/// its cursor key under `scrolling`.
 fn pressed(
     events: &mut MessageReader<KeyboardInput>,
     keys: &ButtonInput<KeyCode>,
-    held: i32,
+    (held, scrolling): (i32, hotkey::Scrolling),
 ) -> Vec<i32> {
     events
         .read()
@@ -63,7 +65,9 @@ fn pressed(
         // A repeat counts while the key is the game's: the chat empties
         // the keys, a hot key takes its press.
         .filter(|e| keys.just_pressed(e.key_code) || (e.repeat && keys.pressed(e.key_code)))
-        .filter_map(|e| hotkey::code(&e.logical_key))
+        .filter_map(|e| {
+            hotkey::wasd(e.key_code, scrolling).or_else(|| hotkey::code(&e.logical_key))
+        })
         .map(|c| c | held)
         .collect()
 }
@@ -127,7 +131,8 @@ pub fn keys(
     (mut view, mut speed, mut interface): (ResMut<View>, ResMut<Speedup>, ResMut<Interface>),
     (mut tracking, mut voices): (ResMut<crate::ui::tracking::Tracking>, ResMut<Voices>),
 ) {
-    let pressed = pressed(&mut events, &keys, hotkey::held(&keys));
+    let scrolling = hotkey::Scrolling::of(&settings);
+    let pressed = pressed(&mut events, &keys, (hotkey::held(&keys), scrolling));
 
     if !live.keys() {
         return;
