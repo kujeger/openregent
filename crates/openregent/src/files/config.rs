@@ -48,8 +48,7 @@ const OPTIONAL: &str = "\
 # mods = [\"/path/to/mods\"]\n\n";
 
 /// Every setting.
-#[derive(Resource, Clone, Debug, Default, PartialEq, Deserialize, Serialize, Sections)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Resource, Clone, Debug, Default, PartialEq, Sections)]
 pub struct Settings {
     pub ui: Ui,
     pub audio: Audio,
@@ -59,8 +58,7 @@ pub struct Settings {
 }
 
 /// The interface.
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Section)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Section)]
 #[section(group = Interface)]
 pub struct Ui {
     #[setting(about = "Which units show a hit point bar on the map.")]
@@ -217,8 +215,7 @@ impl Names {
 pub const LOUDNESS: RangeInclusive<f32> = 0.0..=1.0;
 
 /// Loudness, each 0 (mute) to 1 (as the engine plays it).
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Section)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Section)]
 #[section(group = Sound)]
 pub struct Audio {
     #[setting(about = "Sound effects and voices.", default = 1.0, range = LOUDNESS)]
@@ -250,8 +247,7 @@ impl Audio {
 }
 
 /// Play.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, Section)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Eq, Section)]
 #[section(group = Game)]
 pub struct Game {
     /// The original offers 5, 10 and 20 days and keeps one.
@@ -392,8 +388,7 @@ choices! {
     clippy::struct_excessive_bools,
     reason = "independent switches, each a TOML key"
 )]
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, Section)]
-#[serde(default, deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Section)]
 #[section(presets)]
 pub struct Enhancements {
     #[setting(
@@ -555,20 +550,6 @@ pub struct Enhancements {
     )]
     pub self_shadows: bool,
 }
-
-/// The master switch of the experimental keys.
-pub const EXPERIMENTAL_SWITCH: &str = "experimental";
-
-/// The keys [`Enhancements::experimental`] gates. No preset sets them.
-pub const EXPERIMENTAL_KEYS: [&str; 7] = [
-    "cast",
-    "sun_direction",
-    "sun_elevation",
-    "sun_size",
-    "self_shadows",
-    "wind",
-    "wind_amplitude",
-];
 
 /// A set of [`Enhancements`] picked at once. Not stored: read from the
 /// values ([`Enhancements::preset`]), so any change shows as `Custom`.
@@ -1043,18 +1024,14 @@ mod tests {
 
     #[test]
     fn the_defaults_survive_a_round_trip() {
-        let text = toml::to_string(&Settings::default()).expect("writes");
+        let text = merged("", &Settings::default()).expect("writes");
 
-        assert_eq!(
-            toml::from_str::<Settings>(&text).ok(),
-            Some(Settings::default())
-        );
+        assert_eq!(lenient(&text).ok(), Some(Settings::default()));
     }
 
     #[test]
     fn a_missing_key_takes_its_default() {
-        let settings: Settings =
-            toml::from_str("[ui]\nmain_menu = \"expansion\"\n").expect("parses");
+        let settings = lenient("[ui]\nmain_menu = \"expansion\"\n").expect("parses");
 
         assert_eq!(
             settings,
@@ -1125,7 +1102,7 @@ mod tests {
 
     #[test]
     fn the_scroll_speed_is_the_originals_and_held_to_its_slider() {
-        let fast: Settings = toml::from_str("[ui]\nscroll_speed = 64\n").expect("parses");
+        let fast = lenient("[ui]\nscroll_speed = 64\n").expect("parses");
 
         assert_eq!(Settings::default().ui.scroll(), 32);
         assert_eq!(fast.ui.scroll(), 64);
@@ -1139,7 +1116,7 @@ mod tests {
     /// WASD scrolling off by default; on read.
     #[test]
     fn wasd_scroll_is_off_by_default() {
-        let settings: Settings = toml::from_str("[ui]\nwasd_scroll = true\n").expect("parses");
+        let settings = lenient("[ui]\nwasd_scroll = true\n").expect("parses");
 
         assert!(!Settings::default().ui.wasd_scroll);
         assert!(settings.ui.wasd_scroll);
@@ -1166,8 +1143,7 @@ mod tests {
 
     #[test]
     fn the_speed_keys_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nspeed_keys = true\n").expect("parses");
+        let settings = lenient("[enhancements]\nspeed_keys = true\n").expect("parses");
 
         assert!(settings.enhancements.speed_keys);
     }
@@ -1179,8 +1155,7 @@ mod tests {
 
     #[test]
     fn the_debug_keys_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\ndebug_keys = true\n").expect("parses");
+        let settings = lenient("[enhancements]\ndebug_keys = true\n").expect("parses");
 
         assert!(settings.enhancements.debug_keys);
     }
@@ -1192,8 +1167,7 @@ mod tests {
 
     #[test]
     fn the_smooth_zoom_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nsmooth_zoom = true\n").expect("parses");
+        let settings = lenient("[enhancements]\nsmooth_zoom = true\n").expect("parses");
 
         assert!(settings.enhancements.smooth_zoom);
     }
@@ -1251,8 +1225,7 @@ mod tests {
 
     #[test]
     fn the_smooth_position_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nsmooth_position = true\n").expect("parses");
+        let settings = lenient("[enhancements]\nsmooth_position = true\n").expect("parses");
 
         assert!(settings.enhancements.smooth_position);
     }
@@ -1284,17 +1257,15 @@ mod tests {
 
     #[test]
     fn the_spell_range_setting_is_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nshow_wizards_guild_spell_range = false\n")
-                .expect("parses");
+        let settings =
+            lenient("[enhancements]\nshow_wizards_guild_spell_range = false\n").expect("parses");
 
         assert!(!settings.enhancements.show_wizards_guild_spell_range);
     }
 
     #[test]
     fn the_ui_upscale_is_xbrz_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nui_upscale = \"none\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nui_upscale = \"none\"\n").expect("parses");
 
         assert_eq!(Settings::default().enhancements.ui_upscale, Upscale::Xbrz);
         assert_eq!(settings.enhancements.ui_upscale, Upscale::None);
@@ -1302,8 +1273,7 @@ mod tests {
 
     #[test]
     fn the_view_upscale_is_sharp_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nview_upscale = \"fsr\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nview_upscale = \"fsr\"\n").expect("parses");
 
         assert_eq!(
             Settings::default().enhancements.view_upscale,
@@ -1315,9 +1285,8 @@ mod tests {
             ("sharp-sprite", ViewUpscale::SharpSprite),
             ("fsr-sprite", ViewUpscale::FsrSprite),
         ] {
-            let settings: Settings =
-                toml::from_str(&format!("[enhancements]\nview_upscale = \"{name}\"\n"))
-                    .expect("parses");
+            let settings =
+                lenient(&format!("[enhancements]\nview_upscale = \"{name}\"\n")).expect("parses");
 
             assert_eq!(settings.enhancements.view_upscale, mode);
         }
@@ -1325,8 +1294,7 @@ mod tests {
 
     #[test]
     fn the_video_upscale_is_fsr_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nvideo_upscale = \"linear\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nvideo_upscale = \"linear\"\n").expect("parses");
 
         assert_eq!(
             Settings::default().enhancements.video_upscale,
@@ -1337,8 +1305,7 @@ mod tests {
 
     #[test]
     fn the_shadows_are_soft_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nshadows = \"blend\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nshadows = \"blend\"\n").expect("parses");
 
         assert_eq!(Settings::default().enhancements.shadows, Shadows::Soft);
         assert_eq!(settings.enhancements.shadows, Shadows::Blend);
@@ -1357,8 +1324,7 @@ mod tests {
 
     #[test]
     fn the_message_links_are_on_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nmessage_links = false\n").expect("parses");
+        let settings = lenient("[enhancements]\nmessage_links = false\n").expect("parses");
 
         assert!(Settings::default().enhancements.message_links);
         assert!(!settings.enhancements.message_links);
@@ -1367,8 +1333,7 @@ mod tests {
     /// The modern rings by default; a bad value takes the default.
     #[test]
     fn the_rings_are_modern_by_default_and_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nrings = \"art\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nrings = \"art\"\n").expect("parses");
         let bad = lenient("[enhancements]\nrings = \"square\"\n");
 
         assert_eq!(Settings::default().enhancements.rings, Rings::Modern);
@@ -1379,8 +1344,7 @@ mod tests {
     /// The side ring on by default; off read.
     #[test]
     fn the_side_ring_is_on_by_default() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nside_ring = false\n").expect("parses");
+        let settings = lenient("[enhancements]\nside_ring = false\n").expect("parses");
 
         assert!(Settings::default().enhancements.side_ring);
         assert!(!settings.enhancements.side_ring);
@@ -1388,8 +1352,7 @@ mod tests {
 
     #[test]
     fn the_native_rings_read() {
-        let settings: Settings =
-            toml::from_str("[enhancements]\nrings = \"native\"\n").expect("parses");
+        let settings = lenient("[enhancements]\nrings = \"native\"\n").expect("parses");
 
         assert_eq!(settings.enhancements.rings, Rings::Native);
     }
@@ -1401,7 +1364,7 @@ mod tests {
 
     #[test]
     fn the_bars_setting_is_read() {
-        let settings: Settings = toml::from_str("[ui]\nbars = \"always\"\n").expect("parses");
+        let settings = lenient("[ui]\nbars = \"always\"\n").expect("parses");
 
         assert_eq!(settings.ui.bars, HpBars::Always);
     }
@@ -1417,7 +1380,7 @@ mod tests {
     /// On by default, as the original's `DisplayFlagNames`.
     #[test]
     fn the_names_show_by_default_and_are_read() {
-        let settings: Settings = toml::from_str("[ui]\nnames = \"heroes\"\n").expect("parses");
+        let settings = lenient("[ui]\nnames = \"heroes\"\n").expect("parses");
 
         assert_eq!(Settings::default().ui.names, Names::On);
         assert_eq!(settings.ui.names, Names::Heroes);
@@ -1445,12 +1408,7 @@ mod tests {
 
     #[test]
     fn the_main_menu_is_the_base_games_by_default() {
-        let read = |text| {
-            toml::from_str::<Settings>(text)
-                .expect("parses")
-                .ui
-                .main_menu
-        };
+        let read = |text| lenient(text).expect("parses").ui.main_menu;
 
         assert_eq!(Settings::default().ui.main_menu, MainMenu::Base);
         assert_eq!(
@@ -1684,7 +1642,7 @@ mod tests {
     #[test]
     fn a_save_keeps_the_files_comments() {
         let old = "# mine\n[ui]\nbars = \"never\" # hidden\n\n[audio]\nmusic = 0.5\n";
-        let mut settings: Settings = toml::from_str(old).expect("parses");
+        let mut settings = lenient(old).expect("parses");
 
         settings.ui.bars = HpBars::Always;
 
@@ -1693,17 +1651,14 @@ mod tests {
         assert!(text.starts_with("# mine\n[ui]\n"), "{text}");
         assert!(text.contains("bars = \"always\" # hidden"), "{text}");
         assert!(text.contains("music = 0.5"), "{text}");
-        assert_eq!(toml::from_str::<Settings>(&text).ok(), Some(settings));
+        assert_eq!(lenient(&text).ok(), Some(settings));
     }
 
     #[test]
     fn a_save_over_nothing_writes_every_key() {
         let text = merged("", &Settings::default()).expect("merges");
 
-        assert_eq!(
-            toml::from_str::<Settings>(&text).ok(),
-            Some(Settings::default())
-        );
+        assert_eq!(lenient(&text).ok(), Some(Settings::default()));
         assert!(text.contains("[enhancements]"), "{text}");
     }
 

@@ -810,8 +810,8 @@ Mini view 1 (`tracking`;
 
 `$XDG_CONFIG_HOME/openregent/config.toml`, written with the defaults when
 absent (`config`). Every key, its default and its range are in the
-settings editor, whose text comes from the keys' doc comments
-(`the_docs_come_from_the_doc_comments`). Sections: `[ui]`, `[audio]`,
+settings editor, whose names and text come from the keys'
+`#[setting(…)]` (`regent_derive`, `the_rows_take_their_settings_text`). Sections: `[ui]`, `[audio]`,
 `[game]`, `[enhancements]`, `[paths]`.
 
 - Read key by key (`config::lenient`): an unknown key or section is

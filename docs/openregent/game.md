@@ -231,29 +231,31 @@ bar's slots joined (`settings::BANDS`).
   lit, its text the normal colour (SET ALL's lit white does not read
   there).
 - SETTINGS groups its keys under GAME, SOUND, DISPLAY (`window`) and
-  INTERFACE (`settings::Group::setting`; `the_settings_are_grouped`).
+  INTERFACE; each key's group is its `#[setting(group)]`, else its
+  section's (`each_tab_lists_its_rows_in_order`).
 - ENHANCEMENTS opens with the preset list (Modern, Classic, Custom), then
-  keys under DISPLAY, GAME and INTERFACE (`settings::GROUPED`), then the
-  Experimental row: `MX18`'s + or - folds its keys, its check box
-  switches them, and off they show disabled
-  (`the_enhancements_are_grouped_under_the_preset`,
-  `the_switch_decides_whether_its_keys_are_live`).
+  keys under DISPLAY, GAME and INTERFACE, then the Experimental row (the
+  `gate = Switch` key): `MX18`'s + or - folds its keys (`gate =
+  Experimental`), its check box switches them, and off they show disabled
+  (`the_switch_decides_whether_its_keys_are_live`). A `show = Hidden` key
+  (`debug_keys`) is the file's alone.
 - 25 px rows, so the setup page's combo box fits; every other key of a
   section on a translucent dark band
   (`every_other_key_of_a_section_is_shaded`); a scroll bar and the wheel.
 - Under the list: the hovered key's name (else the tab's first) with
   RESET, then its doc and default in a box
-  (`the_hint_gives_the_default_and_range`). Docs come from `config.rs`'s
-  source.
-- The keys are the file's as written, so a new key shows unasked. A bool
-  is `MX18`'s check box; a number its + and - (a twentieth of its range,
-  `config::RANGES`) and value box, dragged across the range; a string
-  `MX17`'s combo box when the settings refuse unknown names (an enum:
-  serde's error lists the names), else a text field.
-- An edit applies at once; every key is read each frame. SAVE writes the
-  file (a refusal shows red in the doc box); CANCEL or Escape restores the
-  settings as opened; DEFAULTS resets every key. Buttons use SET ALL's
-  picture.
+  (`the_hint_gives_the_default_and_range`). Its name and text are its
+  `#[setting(name, about)]` (`files::setting`, `regent_derive`); without a
+  name, the key in words.
+- The keys are the settings' own (`Settings::visit`), so a new key shows
+  unasked. A bool is `MX18`'s check box; a number its + and - (a
+  twentieth of its `#[setting(range)]`) and value box, dragged across the
+  range; an enum `MX17`'s combo box of its `choices!` labels.
+- The draft is typed `Settings`, edited through each key's visitor, so it
+  is never invalid. An edit applies at once. SAVE writes the file (a
+  refusal shows red in the doc box until the next edit or DEFAULTS); CANCEL or Escape
+  restores the settings as opened; DEFAULTS resets every key. Buttons use
+  SET ALL's picture.
 
 In game, the Options menu's ADJUST LEVELS opens the same page, same size,
 over the paused game.

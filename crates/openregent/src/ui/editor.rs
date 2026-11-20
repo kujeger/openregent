@@ -1,75 +1,41 @@
-//! The settings editor: every key of the settings file, a control by
-//! its value. From the main menu's Adjust Settings and the game's
-//! options; drawn in the original's art by `menu::settings`.
+//! The settings editor: every setting the page lists, a control by its
+//! kind. From the main menu's Adjust Settings and the game's options;
+//! drawn in the original's art by `menu::settings`.
 //!
 //! ```text
-//!  Settings ──as the file writes it──> Draft (toml table)
-//!     ^                                  │ an edit that reads as settings
-//!     └──────── applied at once ─────────┘
+//!  Settings ──cloned──> Draft (typed Settings)
+//!     ^                   │ an edit: Draft::set, through the key's visitor
+//!     └── applied at once ┘
 //!  Save: written (config::save)   Cancel, Escape: the opened settings back
 //! ```
 //!
-//! The keys are those the file writes, so a new one shows up unasked;
-//! `[[mod]]` is the mods page's (`menu::mods`). The page shows them on
-//! two tabs (`menu::settings::Tab`), by topic: `[enhancements]` on its own,
-//! under a preset list ([`Draft::pick`]); the rest on the other.
-//! Its control comes from its value: a bool a check box; a number its
-//! plus and minus buttons and a value dragged, in its range;
-//! a string a list of the names the settings take, when they refuse any
-//! other (an enum), else a text field. Its name and text are its
-//! section's `#[setting(…)]` (`config::Described`).
+//! The keys are the settings' own (`files::setting`), so a new one shows
+//! up unasked. The page shows them on two tabs (`menu::settings::Tab`), by
+//! topic: `[enhancements]` on its own, under a preset list
+//! ([`Draft::pick`]); the rest on the other. Its control comes from its
+//! kind: a bool a check box; a number its plus and minus buttons and a
+//! value dragged, in its range; an enum a list of its choices.
 
-use std::ops::{DerefMut, RangeInclusive};
+use std::ops::DerefMut;
 
 use bevy::prelude::Resource;
 use bevy_egui::egui;
-use toml::{Table, Value};
 
 use crate::files::config::{self, Preset, Settings};
-use crate::files::setting::{Meta, Part, Setting, Visit};
+use crate::files::setting::{Key, Meta, Now, Part, Setting, Visit, VisitMut};
 use crate::menu::Art;
 use crate::menu::settings::{self as page, Look, Tab};
 use regent_draw::art as service;
-
-/// A name no enum has: what a key's names are asked with.
-const PROBE: &str = "\u{1}";
-
-/// How a key is edited.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Kind {
-    Check,
-    /// In its range, where the code holds it to one.
-    Number(Option<RangeInclusive<f64>>),
-    /// One of an enum's names.
-    Choice(Vec<String>),
-    Text,
-    /// Shown, not edited: an array or table.
-    Fixed,
-}
-
-/// A key of the file.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Field {
-    pub section: String,
-    pub key: String,
-    /// Its row's name.
-    pub name: String,
-    /// What it does.
-    pub about: &'static str,
-    pub kind: Kind,
-}
 
 /// The settings being edited.
 #[derive(Clone, Debug)]
 pub struct Draft {
     /// As opened: Cancel's.
     opened: Settings,
-    /// Section to key to value, as the file writes them.
-    table: Table,
-    fields: Vec<Field>,
-    /// The defaults, as the file writes them.
-    defaults: Table,
-    /// Why the table does not read as settings, or will not save.
+    now: Settings,
+    /// Every key, sorted by section, then key.
+    keys: Vec<Key>,
+    /// Why the settings did not save.
     error: Option<String>,
 }
 
@@ -77,111 +43,119 @@ impl Draft {
     /// `settings` to edit; a number out of its range comes in clamped.
     #[must_use]
     pub fn new(settings: &Settings) -> Draft {
-        let defaults = table(&Settings::default());
-        let table = table(settings);
-        let fields = fields(&table);
-        let mut draft = Draft {
-            opened: settings.clone(),
-            table,
-            fields,
-            defaults,
-            error: None,
-        };
+        let mut now = settings.clone();
+        let mut keys = Keys::default();
 
-        draft.clamp();
-        draft
+        now.visit_mut(&mut Clamp);
+        now.visit(&mut keys);
+        keys.0.sort_by_key(|k| (k.part.name, k.meta.key));
+
+        Draft {
+            opened: settings.clone(),
+            now,
+            keys: keys.0,
+            error: None,
+        }
     }
 
     /// The keys, sorted by section, then key.
     #[must_use]
-    pub fn fields(&self) -> &[Field] {
-        &self.fields
+    pub fn keys(&self) -> &[Key] {
+        &self.keys
     }
 
-    /// The settings it holds, or why it does not read as settings.
-    ///
-    /// # Errors
-    ///
-    /// A value the settings do not take.
-    pub fn settings(&self) -> Result<Settings, String> {
-        read(&self.table)
+    /// The settings it holds.
+    #[must_use]
+    pub const fn settings(&self) -> &Settings {
+        &self.now
     }
 
     /// Every key back to its default.
     pub fn defaults(&mut self) {
-        self.table = self.defaults.clone();
+        self.now = Settings::default();
     }
 
-    /// The preset the enhancements are, while the draft reads.
+    /// The preset the enhancements are.
     #[must_use]
-    pub fn preset(&self) -> Option<Preset> {
-        self.settings().ok().map(|s| s.enhancements.preset())
+    pub fn preset(&self) -> Preset {
+        self.now.enhancements.preset()
     }
 
-    /// `preset` picked: its values in the table.
+    /// `preset` picked: its values set.
     pub fn pick(&mut self, preset: Preset) {
-        if let Ok(mut settings) = self.settings() {
-            settings.enhancements = settings.enhancements.picked(preset);
-            self.table = table(&settings);
-        }
+        self.now.enhancements = self.now.enhancements.picked(preset);
     }
 
     /// `key`'s value now.
     #[must_use]
-    pub fn value(&self, section: &str, key: &str) -> Option<&Value> {
-        self.table.get(section)?.get(key)
+    pub fn value(&self, key: Key) -> Option<Now> {
+        of(&self.now, key)
     }
 
     /// `key`'s value by default.
     #[must_use]
-    pub fn default_of(&self, section: &str, key: &str) -> Option<&Value> {
-        self.defaults.get(section)?.get(key)
+    pub fn default_of(key: Key) -> Option<Now> {
+        of(&Settings::default(), key)
     }
 
-    /// Why the draft does not read as settings, or did not save.
+    /// Why the settings did not save.
     #[must_use]
     pub fn error(&self) -> Option<&str> {
         self.error.as_deref()
     }
 
-    /// Number `key` set to `x`, whole where it was, held to its range.
-    pub fn set_number(&mut self, section: &str, key: &str, x: f64) {
-        if let Some(old) = self.value(section, key) {
-            let value = renumbered(old, x);
+    /// `key` set to `now`, a number held to its range.
+    pub fn set(&mut self, key: Key, now: Now) {
+        self.now.visit_mut(&mut Put(key, now));
+    }
+}
 
-            self.set(section, key, value);
+/// `key`'s value in `settings`.
+fn of(settings: &Settings, key: Key) -> Option<Now> {
+    let mut get = Get(key, None);
+
+    settings.visit(&mut get);
+    get.1
+}
+
+/// Every key, as the settings hand them over.
+#[derive(Default)]
+struct Keys(Vec<Key>);
+
+impl Visit for Keys {
+    fn field<T: Setting>(&mut self, part: &'static Part, meta: &'static Meta, _: &T) {
+        self.0.push(Key { part, meta });
+    }
+}
+
+/// Key `.0`'s value, once found.
+struct Get(Key, Option<Now>);
+
+impl Visit for Get {
+    fn field<T: Setting>(&mut self, part: &'static Part, meta: &'static Meta, value: &T) {
+        if self.0 == (Key { part, meta }) {
+            self.1 = Some(value.now());
         }
     }
+}
 
-    /// `key` set to `value`, a number clamped to its range.
-    pub fn set(&mut self, section: &str, key: &str, value: Value) {
-        let kind = self
-            .fields
-            .iter()
-            .find(|f| f.section == section && f.key == key)
-            .map(|f| &f.kind);
-        let value = match kind {
-            Some(Kind::Number(Some(range))) => clamped(&value, range),
-            _ => value,
-        };
+/// Key `.0` set to `.1`.
+struct Put(Key, Now);
 
-        put(&mut self.table, section, key, value);
-    }
-
-    /// Every number in its range.
-    fn clamp(&mut self) {
-        let ranged: Vec<(String, String)> = self
-            .fields
-            .iter()
-            .filter(|f| matches!(f.kind, Kind::Number(Some(_))))
-            .map(|f| (f.section.clone(), f.key.clone()))
-            .collect();
-
-        for (section, key) in ranged {
-            if let Some(value) = self.value(&section, &key).cloned() {
-                self.set(&section, &key, value);
-            }
+impl VisitMut for Put {
+    fn field<T: Setting>(&mut self, part: &'static Part, meta: &'static Meta, value: &mut T) {
+        if self.0 == (Key { part, meta }) {
+            value.set(&self.1, meta.range.as_ref());
         }
+    }
+}
+
+/// Every number held to its range.
+struct Clamp;
+
+impl VisitMut for Clamp {
+    fn field<T: Setting>(&mut self, _: &'static Part, meta: &'static Meta, value: &mut T) {
+        value.set(&value.now(), meta.range.as_ref());
     }
 }
 
@@ -234,15 +208,13 @@ impl Editor {
         settings: &mut impl DerefMut<Target = Settings>,
     ) -> Option<Pass> {
         let (draft, look) = self.0.as_mut()?;
-        let before = draft.table.clone();
+        let before = draft.now.clone();
         let pressed = page::page(ctx, art, (draft, look));
 
-        draft.error = draft.settings().err();
-
-        if draft.table != before
-            && let Ok(now) = draft.settings()
-        {
-            apply(settings, now);
+        // An edit: applied at once, and a save's refusal said no more.
+        if draft.now != before {
+            draft.error = None;
+            apply(settings, draft.now.clone());
         }
 
         let closed = match pressed {
@@ -258,6 +230,7 @@ impl Editor {
                 Some(Close::Cancelled)
             }
             Some(Press::Defaults) => {
+                draft.error = None;
                 draft.defaults();
                 apply(settings, Settings::default());
                 None
@@ -303,150 +276,18 @@ pub enum Press {
     Cancel,
 }
 
-/// `value` as the page shows it: a number to two places, its trailing
-/// zeros cut; a bool on or off.
-#[must_use]
-pub fn shown(value: &Value) -> String {
-    match value {
-        Value::Boolean(true) => "on".to_owned(),
-        Value::Boolean(false) => "off".to_owned(),
-        Value::String(s) => s.clone(),
-        Value::Float(x) => {
-            let text = format!("{x:.2}");
-
-            text.trim_end_matches('0').trim_end_matches('.').to_owned()
-        }
-        other => other.to_string(),
-    }
-}
-
-/// `settings` as the file writes them.
-fn table(settings: &Settings) -> Table {
-    Table::try_from(settings).unwrap_or_default()
-}
-
-/// `table` read as settings.
-fn read(table: &Table) -> Result<Settings, String> {
-    table
-        .clone()
-        .try_into()
-        .map_err(|e: toml::de::Error| e.message().to_owned())
-}
-
-/// `table`'s `key` in `section` set to `value`.
-fn put(table: &mut Table, section: &str, key: &str, value: Value) {
-    if let Some(Value::Table(keys)) = table.get_mut(section) {
-        keys.insert(key.to_owned(), value);
-    }
-}
-
-/// Each key of `table`'s sections, its text from its section's.
-fn fields(table: &Table) -> Vec<Field> {
-    table
-        .iter()
-        .filter_map(|(section, keys)| keys.as_table().map(|keys| (section, keys)))
-        .flat_map(|(section, keys)| keys.iter().map(move |(key, value)| (section, key, value)))
-        .map(|(section, key, value)| Field {
-            section: section.clone(),
-            key: key.clone(),
-            name: meta(section, key).map_or_else(|| key.clone(), |m| m.name.to_owned()),
-            about: meta(section, key).map_or("", |m| m.about),
-            kind: kind(table, section, key, value),
-        })
-        .collect()
-}
-
-/// `section`'s `key`'s setting.
-fn meta(section: &str, key: &str) -> Option<&'static Meta> {
-    struct Find<'a>(&'a str, &'a str, Option<&'static Meta>);
-
-    impl Visit for Find<'_> {
-        fn field<T: Setting>(&mut self, part: &'static Part, meta: &'static Meta, _: &T) {
-            if part.name == self.0 && meta.key == self.1 {
-                self.2 = Some(meta);
-            }
-        }
-    }
-
-    let mut find = Find(section, key, None);
-
-    Settings::default().visit(&mut find);
-    find.2
-}
-
-/// How `key`, holding `value`, is edited.
-fn kind(table: &Table, section: &str, key: &str, value: &Value) -> Kind {
-    match value {
-        Value::Boolean(_) => Kind::Check,
-        Value::Integer(_) | Value::Float(_) => Kind::Number(range(section, key)),
-        Value::String(_) => names(table, section, key).map_or(Kind::Text, Kind::Choice),
-        _ => Kind::Fixed,
-    }
-}
-
-/// `key`'s range.
-fn range(section: &str, key: &str) -> Option<RangeInclusive<f64>> {
-    meta(section, key).and_then(|m| m.range.clone())
-}
-
-/// An enum key's names, from serde's refusal of one it lacks: "unknown
-/// variant `x`, expected one of `a`, `b`" (or "expected `a` or `b`").
-/// `None` when the settings take any string.
-fn names(table: &Table, section: &str, key: &str) -> Option<Vec<String>> {
-    let mut probed = table.clone();
-
-    put(&mut probed, section, key, Value::String(PROBE.to_owned()));
-
-    let refused = read(&probed).err()?;
-    let (_, expected) = refused.split_once("expected")?;
-    let names: Vec<String> = expected
-        .split('`')
-        .skip(1)
-        .step_by(2)
-        .map(str::to_owned)
-        .collect();
-
-    (!names.is_empty()).then_some(names)
-}
-
-/// A number's value.
-#[allow(clippy::cast_precision_loss, reason = "a setting's number")]
-pub const fn number(value: &Value) -> Option<f64> {
-    match value {
-        Value::Float(x) => Some(*x),
-        Value::Integer(n) => Some(*n as f64),
-        _ => None,
-    }
-}
-
-/// `x` in `old`'s type: a whole number stays whole.
-#[allow(clippy::cast_possible_truncation, reason = "a setting's number")]
-const fn renumbered(old: &Value, x: f64) -> Value {
-    match old {
-        Value::Integer(_) => Value::Integer(x.round() as i64),
-        _ => Value::Float(x),
-    }
-}
-
-/// `value` in `range`; not a number, unchanged.
-fn clamped(value: &Value, range: &RangeInclusive<f64>) -> Value {
-    number(value).map_or_else(
-        || value.clone(),
-        |x| renumbered(value, x.clamp(*range.start(), *range.end())),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::files::config::HpBars;
+    use crate::files::setting::Whole;
 
-    fn kind_of(draft: &Draft, section: &str, key: &str) -> Option<Kind> {
-        draft
-            .fields()
+    fn key(draft: &Draft, section: &str, name: &str) -> Key {
+        *draft
+            .keys()
             .iter()
-            .find(|f| f.section == section && f.key == key)
-            .map(|f| f.kind.clone())
+            .find(|k| k.part.name == section && k.meta.key == name)
+            .expect("the key")
     }
 
     #[test]
@@ -457,7 +298,7 @@ mod tests {
         settings.audio.music = 0.25;
         settings.enhancements.smooth_zoom = true;
 
-        assert_eq!(Draft::new(&settings).settings(), Ok(settings));
+        assert_eq!(Draft::new(&settings).settings(), &settings);
     }
 
     #[test]
@@ -471,7 +312,7 @@ mod tests {
 
         draft.defaults();
 
-        assert_eq!(draft.settings(), Ok(Settings::default()));
+        assert_eq!(draft.settings(), &Settings::default());
     }
 
     /// Picking a preset writes its values, other sections untouched;
@@ -485,23 +326,26 @@ mod tests {
 
         let mut draft = Draft::new(&settings);
 
-        assert_eq!(draft.preset(), Some(Preset::Custom));
+        assert_eq!(draft.preset(), Preset::Custom);
 
         draft.pick(Preset::Classic);
 
-        assert_eq!(draft.preset(), Some(Preset::Classic));
-        assert_eq!(draft.value("audio", "muted"), Some(&Value::Boolean(true)));
+        assert_eq!(draft.preset(), Preset::Classic);
+        assert!(draft.settings().audio.muted);
         assert_eq!(
-            draft.value("enhancements", "rings"),
-            Some(&Value::String("art".to_owned()))
+            draft
+                .value(key(&draft, "enhancements", "rings"))
+                .map(|n| n.shown()),
+            Some("art".to_owned())
         );
 
-        draft.set("enhancements", "speed_keys", Value::Boolean(true));
+        draft.set(key(&draft, "enhancements", "speed_keys"), Now::Check(true));
 
-        assert_eq!(draft.preset(), Some(Preset::Custom));
+        assert_eq!(draft.preset(), Preset::Custom);
     }
 
     #[test]
+    #[allow(clippy::float_cmp, reason = "held exactly to its end")]
     fn a_loudness_is_held_from_0_to_1() {
         let mut settings = Settings::default();
 
@@ -509,68 +353,66 @@ mod tests {
 
         let mut draft = Draft::new(&settings);
 
-        assert_eq!(draft.value("audio", "music"), Some(&Value::Float(1.0)));
+        assert_eq!(draft.settings().audio.music, 1.0);
 
-        draft.set("audio", "effects", Value::Float(-2.0));
+        draft.set(
+            key(&draft, "audio", "effects"),
+            Now::Number(-2.0, Whole::Fraction),
+        );
 
-        assert_eq!(draft.settings().map(|s| s.audio.effects), Ok(0.0));
+        assert_eq!(draft.settings().audio.effects, 0.0);
+    }
+
+    /// A choice picked by its place in the list.
+    #[test]
+    fn a_choice_is_set_by_its_place() {
+        let mut draft = Draft::new(&Settings::default());
+        let bars = key(&draft, "ui", "bars");
+
+        assert_eq!(
+            draft.value(bars),
+            Some(Now::Choice(1, &["always", "damaged", "never"]))
+        );
+
+        draft.set(bars, Now::Choice(2, &[]));
+
+        assert_eq!(draft.settings().ui.bars, HpBars::Never);
     }
 
     #[test]
-    fn each_key_is_edited_by_its_type() {
+    fn each_key_is_edited_by_its_kind() {
         let draft = Draft::new(&Settings::default());
-        let choice = |names: &[&str]| {
-            Some(Kind::Choice(
-                names.iter().map(|n| (*n).to_owned()).collect(),
-            ))
+        let now = |section: &str, name: &str| draft.value(key(&draft, section, name));
+
+        assert_eq!(now("audio", "muted"), Some(Now::Check(false)));
+        assert_eq!(
+            now("audio", "music"),
+            Some(Now::Number(1.0, Whole::Fraction))
+        );
+        assert_eq!(
+            now("ui", "scroll_speed"),
+            Some(Now::Number(32.0, Whole::Integer))
+        );
+        assert!(matches!(now("ui", "font"), Some(Now::Choice(0, _))));
+    }
+
+    /// A row's name and text are its `#[setting(…)]`'s; without `name`,
+    /// the key in words.
+    #[test]
+    fn the_rows_take_their_settings_text() {
+        let draft = Draft::new(&Settings::default());
+        let text = |section: &str, name: &str| {
+            let k = key(&draft, section, name);
+
+            (k.meta.name, k.meta.about)
         };
 
         assert_eq!(
-            kind_of(&draft, "ui", "bars"),
-            choice(&["always", "damaged", "never"])
+            text("ui", "bars"),
+            ("Bars", "Which units show a hit point bar on the map.")
         );
-        assert_eq!(
-            kind_of(&draft, "ui", "names"),
-            choice(&["off", "on", "heroes"])
-        );
-        assert_eq!(
-            kind_of(&draft, "ui", "main_menu"),
-            choice(&["base", "expansion"])
-        );
-        assert_eq!(
-            kind_of(&draft, "ui", "player_list"),
-            choice(&["off", "players", "details"])
-        );
-        assert_eq!(kind_of(&draft, "ui", "intro"), choice(&["on", "off"]));
-        assert_eq!(kind_of(&draft, "ui", "font"), choice(&["inknut", "egui"]));
-        assert_eq!(
-            kind_of(&draft, "audio", "music"),
-            Some(Kind::Number(Some(0.0..=1.0)))
-        );
-        assert_eq!(kind_of(&draft, "audio", "muted"), Some(Kind::Check));
-        assert_eq!(
-            kind_of(&draft, "enhancements", "speed_keys"),
-            Some(Kind::Check)
-        );
-        assert_eq!(
-            kind_of(&draft, "enhancements", "ui_upscale"),
-            choice(&["none", "xbrz"])
-        );
-        assert_eq!(
-            kind_of(&draft, "enhancements", "rings"),
-            choice(&["art", "native", "modern"])
-        );
-    }
-
-    #[test]
-    fn every_key_the_file_writes_is_listed() {
-        let draft = Draft::new(&Settings::default());
-        let text = toml::to_string(&Settings::default()).expect("writes");
-        let written = text.lines().filter(|l| l.contains(" = ")).count();
-
-        // The mod list is not a setting: the mods page writes it.
-        assert_eq!(draft.fields().len(), written);
-        assert!(!text.contains("[mod"), "{text}");
+        assert_eq!(text("ui", "wasd_scroll").0, "WASD scroll");
+        assert_eq!(text("audio", "music"), ("Music", "Music."));
     }
 
     /// The HD install's path is the file's but never edited here: a bad
@@ -579,56 +421,6 @@ mod tests {
     fn the_install_path_is_not_listed() {
         let draft = Draft::new(&Settings::default());
 
-        assert!(
-            draft
-                .fields()
-                .iter()
-                .all(|f| f.section != config::PATHS && f.key != config::HD_KEY)
-        );
-    }
-
-    /// A row's name and text are its `#[setting(…)]`'s; without `name`,
-    /// the key in words.
-    #[test]
-    fn the_rows_take_their_settings_text() {
-        let draft = Draft::new(&Settings::default());
-        let field = |section: &str, key: &str| {
-            draft
-                .fields()
-                .iter()
-                .find(|f| f.section == section && f.key == key)
-                .map(|f| (f.name.as_str(), f.about))
-        };
-
-        assert_eq!(
-            field("ui", "bars"),
-            Some(("Bars", "Which units show a hit point bar on the map."))
-        );
-        assert_eq!(field("ui", "wasd_scroll").map(|f| f.0), Some("WASD scroll"));
-        assert_eq!(field("audio", "music"), Some(("Music", "Music.")));
-    }
-
-    /// Every key the file writes has its text.
-    #[test]
-    fn every_key_has_its_text() {
-        let draft = Draft::new(&Settings::default());
-
-        for f in draft.fields() {
-            assert!(
-                meta(&f.section, &f.key).is_some(),
-                "[{}] {}",
-                f.section,
-                f.key
-            );
-        }
-    }
-
-    #[test]
-    fn a_name_the_enum_lacks_does_not_read() {
-        let mut draft = Draft::new(&Settings::default());
-
-        draft.set("ui", "bars", Value::String("sometimes".to_owned()));
-
-        assert!(draft.settings().is_err());
+        assert!(draft.keys().iter().all(|k| k.part.name != config::PATHS));
     }
 }

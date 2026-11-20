@@ -5,9 +5,10 @@ on the settings page's ENHANCEMENTS tab, but for `[ui] wasd_scroll` on the
 SETTINGS tab, off by default, which the presets do not set. The default is the Modern preset;
 Classic sets every switch off and every mode to the closest to the original
 (`shadows = "blend"`: it has no off). The preset is not stored: it is read from
-the values, and anything else shows as Custom (`config::Preset`). Experimental
-keys (`config::EXPERIMENTAL_KEYS`) act only under `experimental`, off by default,
-and no preset sets them. Screenshots (`draw::shot::settings`) keep these off
+the values, and anything else shows as Custom (`config::Preset`); each key's
+Classic value is its `#[setting(classic)]`. Experimental keys
+(`gate = Experimental`) act only under `experimental`, off by default, and no
+preset sets them. Screenshots (`draw::shot::settings`) keep these off
 unless asked, so captures still compare with the original's.
 
 | Enhancement | What changes | Why it waits | Groundwork |
