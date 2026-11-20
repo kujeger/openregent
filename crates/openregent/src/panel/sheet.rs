@@ -137,6 +137,16 @@ pub fn rect(c: &ShownControl) -> Option<Rect> {
     c.rect.map(fit::rect)
 }
 
+/// Where a control's text goes: its text rectangle (key 42), from its
+/// corner, else the whole. HEROES' (22, 4) 68×18 lies right of its icon.
+#[must_use]
+pub fn words(c: &ShownControl) -> Option<Rect> {
+    rect(c).map(|r| {
+        c.text_rect
+            .map_or(r, |t| fit::rect(t).translate(r.min.to_vec2()))
+    })
+}
+
 /// Its text colour at rest ([`ink`]).
 #[must_use]
 pub fn colour(c: &ShownControl) -> Color32 {
@@ -368,7 +378,7 @@ pub fn hinted(c: &ShownControl, step: Step, amount: i32) -> ShownControl {
 }
 
 /// Control `c` as a button: its picture in its state, `text` (else its
-/// own label) centred with the hot key letter in its colour; whether it
+/// own label) centred in its text rectangle ([`words`]) with the hot key letter in its colour; whether it
 /// was pressed this frame, by click or hot key.
 pub fn button(canvas: &mut Canvas<'_>, c: &ShownControl, text: Option<&str>, able: Able) -> bool {
     stated(canvas, c, text, able).0
@@ -408,8 +418,8 @@ pub fn stated(
 
     // The text takes the state's colours, lit while held (SPIN white);
     // its line breaks kept (`AP36`'s QUIT MAJESTY in two).
-    if let (Some(text), Some(record)) = (text, c.font) {
-        wrapped(canvas, record, r, &marked(c, text, state), ink(c, state));
+    if let (Some(text), Some(record), Some(w)) = (text, c.font, words(c)) {
+        wrapped(canvas, record, w, &marked(c, text, state), ink(c, state));
     }
 
     Canvas::tip(&response, c.tooltip.as_deref());

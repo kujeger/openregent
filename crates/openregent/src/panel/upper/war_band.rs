@@ -140,13 +140,7 @@ fn third(layout: &Layout, n: usize, price: i32) -> WarPlace {
 /// its price control `price`, their pictures.
 fn half(layout: &Layout, c: &ShownControl, price: i32) -> Option<WarPlace> {
     let r = sheet::rect(c)?;
-    #[allow(clippy::cast_precision_loss, reason = "panel pixels")]
-    let words = c.text_rect.map_or(r, |t| {
-        Rect::from_min_size(
-            r.min + vec2(t.x as f32, t.y as f32),
-            vec2(t.width as f32, t.height as f32),
-        )
-    });
+    let words = sheet::words(c)?;
     let price = layout.control(price);
 
     Some(WarPlace {

@@ -840,9 +840,10 @@ fn crypt(
     let lit = panels.state.row.and_then(|n| ids.get(n)).copied();
     let raise = raised(game.crypt, lit);
 
-    // The price lies over the button's right end, so it draws after.
+    // The price lies over the button's right end, so it draws after; the
+    // label keeps to its text rectangle, left of it.
     if let Some(c) = layout.control(id::RESURRECT)
-        && labelled(canvas, c, resurrect_able(raise))
+        && sheet::button(canvas, c, None, resurrect_able(raise))
         && let Some(b) = raise
     {
         orders.orders.outbox.push(resurrect(chosen.agent, b));
@@ -928,36 +929,6 @@ const fn resurrect(mausoleum: u32, b: Button<u32>) -> Input {
         hero: b.what,
         price: b.price,
     })
-}
-
-/// Control `c` as a button, its label in its text rectangle (key 42),
-/// not the whole: RESURRECT's right end holds its price.
-fn labelled(canvas: &mut Canvas<'_>, c: &ShownControl, able: Able) -> bool {
-    let bare = ShownControl {
-        text: None,
-        ..c.clone()
-    };
-    let (pressed, state) = sheet::stated(canvas, &bare, None, able);
-    #[allow(clippy::cast_precision_loss, reason = "panel pixels")]
-    let words = sheet::rect(c).map(|r| {
-        c.text_rect.map_or(r, |t| {
-            Rect::from_min_size(
-                r.min + vec2(t.x as f32, t.y as f32),
-                vec2(t.width as f32, t.height as f32),
-            )
-        })
-    });
-
-    if let (Some(r), Some(t), Some(font)) = (words, c.text.as_deref(), c.font) {
-        canvas.text(
-            font,
-            r,
-            &sheet::marked(c, t.trim(), state),
-            (sheet::ink(c, state), Align::Centre),
-        );
-    }
-
-    pressed
 }
 
 /// A unit's list row: its icon, its level, "Name is doing (hp)".
@@ -1135,7 +1106,9 @@ fn research(
             canvas.picture(Pic::of(record, set), Tone::Plain, r.min);
         }
 
-        if research_row(canvas, button, Able::of(b.ready)) {
+        // Its panel label ("LVL 2 Weapons", "Teleportation\nAmulets") in
+        // its text rectangle, left of the price box, as the original.
+        if sheet::button(canvas, button, None, Able::of(b.ready)) {
             orders.orders.outbox.push(Input::Research(Research {
                 building: chosen.agent,
                 item: b.what.id,
@@ -1251,38 +1224,6 @@ fn casting(
 
 /// A research's price box while it cannot be pressed: a star.
 const RESEARCH_STAR: Pic = Pic::of(FourCc(*b"INBb"), 1015);
-
-/// Research button `c`: its picture, its panel label ("LVL 2 Weapons")
-/// in its own font with the hot key letter marked, set in its text
-/// rectangle (key 42) left of the price box; whether it was pressed, by
-/// click or hot key. Research button gives the button no text,
-/// so every row shows its panel's label, as the original does.
-fn research_row(canvas: &mut Canvas<'_>, c: &ShownControl, able: Able) -> bool {
-    let bare = ShownControl {
-        text: None,
-        ..c.clone()
-    };
-    let (pressed, state) = sheet::stated(canvas, &bare, None, able);
-    #[allow(clippy::cast_precision_loss, reason = "panel pixels")]
-    let words = sheet::rect(c).map(|r| {
-        c.text_rect.map_or(r, |t| {
-            Rect::from_min_size(
-                r.min + vec2(t.x as f32, t.y as f32),
-                vec2(t.width as f32, t.height as f32),
-            )
-        })
-    });
-
-    // "Teleportation\nAmulets" breaks where the panel does; a row being
-    // researched, disabled, is red.
-    if let (Some(r), Some(t), Some(font)) = (words, c.text.as_deref(), c.font) {
-        let markup = sheet::marked(c, t.trim(), state);
-
-        sheet::wrapped(canvas, font, r, &markup, sheet::ink(c, state));
-    }
-
-    pressed
-}
 
 /// The palace's rewards: each flag's setting, ± `#RewardDelta` within
 /// the treasury, and its button (`Reward1Controller`).
