@@ -816,7 +816,9 @@ fn verdict(
         canvas.paragraphs(font, r, text, (colour, Align::Centre, *scroll));
 
         // An arrow steps a line.
-        let arrowed = bar.map_or(0.0, |b| arrows(canvas, b, (*scroll, most, pitch.max(1.0))));
+        let arrowed = bar.map_or(0.0, |b| {
+            sheet::scroll_bar(canvas, b, (*scroll, most, pitch.max(1.0)), "end")
+        });
         let moved = canvas.wheel(r) + arrowed;
 
         *scroll = (*scroll + moved).clamp(0.0, most);
@@ -826,35 +828,6 @@ fn verdict(
         canvas.paragraphs(font, block, text, (colour, Align::Centre, 0.0));
         *scroll = 0.0;
     }
-}
-
-/// Scroll bar `bar`'s arrows and thumb over a text scrolled `by` of
-/// `most`, in its own art (`INDs` 1000: up, down, thumb); how far they
-/// move it, each arrow a `step`, the thumb dragged through the track.
-fn arrows(canvas: &mut Canvas<'_>, bar: &Control, (by, most, step): (f32, f32, f32)) -> f32 {
-    let (Some(rect), Some((record, set))) = (sheet::rect(bar), bar.art) else {
-        return 0.0;
-    };
-    let pic = |past: i32| Pic::of(record, set + past);
-    let (Some(arrow), Some(thumb)) = (
-        canvas.size(pic(0)),
-        canvas.size(pic(crate::ui::scroll::THUMB)),
-    ) else {
-        return 0.0;
-    };
-    let bar = crate::ui::scroll::Bar { rect, arrow, thumb };
-    let scale = canvas.fit.scale;
-
-    crate::ui::scroll::pass(
-        canvas,
-        (&bar, scale),
-        (by, most, step),
-        |c, r, past| c.press(r, ("end arrow", past)),
-        |c, at| c.drag(at, "end thumb"),
-        |c, past, slot, at| {
-            c.picture(pic(past).slot(slot), Tone::Plain, at);
-        },
-    )
 }
 
 /// The end's state, a game's.

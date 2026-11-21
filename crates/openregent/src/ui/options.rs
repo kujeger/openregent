@@ -366,8 +366,8 @@ fn split(layout: &Layout) -> Layout {
     out
 }
 
-/// `AP88`: the goals in their box, scrolled by the wheel, RESUME and
-/// OPTIONS.
+/// `AP88`: the goals in their box, scrolled by the wheel and its bar,
+/// RESUME and OPTIONS.
 fn goals_panel(
     canvas: &mut Canvas<'_>,
     layout: &Layout,
@@ -385,8 +385,19 @@ fn goals_panel(
         && let (Some(r), Some(font)) = (sheet::rect(c), c.font)
     {
         let tall = canvas.paragraphs(font, r, goals, (sheet::colour(c), Align::Left, *scroll));
+        let most = crate::ui::scroll::most(tall, r.height());
 
-        *scroll = (*scroll + canvas.wheel(r)).clamp(0.0, (tall - r.height()).max(0.0));
+        // The bar's arrows and thumb, on a text too long for its box: an
+        // arrow steps a line.
+        let step = canvas.pitch(font).max(1.0);
+        let arrowed = layout
+            .control(id::GOALS_SCROLL)
+            .filter(|_| most > 0.0)
+            .map_or(0.0, |b| {
+                sheet::scroll_bar(canvas, b, (*scroll, most, step), "goals")
+            });
+
+        *scroll = (*scroll + canvas.wheel(r) + arrowed).clamp(0.0, most);
     }
 
     pressed(canvas, layout, &buttons, &|_| Able::Enabled)
@@ -779,5 +790,70 @@ mod tests {
 
         hold.close(&mut paused);
         assert!(paused);
+    }
+
+    /// `AP88`'s goals, too long for their box, scroll a line down at a
+    /// click on its bar's down arrow.
+    #[test]
+    #[cfg_attr(not(feature = "install"), ignore = "needs the game's install")]
+    fn the_goals_bar_scrolls_a_text_too_long_for_its_box() {
+        use egui::PointerButton;
+
+        let catalogue = crate::testdata::hd();
+        let text = regent_core::data::text::Text::build(catalogue);
+        let layout = regent_core::view::menu::layout(catalogue, &text, GOALS)
+            .expect("AP88")
+            .expect("parses");
+        let bar = layout
+            .control(id::GOALS_SCROLL)
+            .and_then(sheet::rect)
+            .expect("the bar");
+        let ctx = crate::ui::typeface::context();
+        let mut ink = Ink::default();
+        let mut art = regent_draw::art::Art::default();
+        let goals = "Slay the dragon and gather gold. ".repeat(40);
+        let mut scroll = 0.0;
+
+        // The down arrow, at the bar's foot.
+        let at = egui::pos2(bar.center().x, bar.bottom() - 3.0);
+        let button = |pressed| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        };
+
+        for events in [
+            vec![],
+            vec![Event::PointerMoved(at)],
+            vec![button(true)],
+            vec![button(false)],
+        ] {
+            let input = RawInput {
+                events,
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, WINDOW)),
+                ..RawInput::default()
+            };
+            let mut output = ctx.run_ui(input, |ui| {
+                let mut canvas = Canvas {
+                    ui,
+                    ink: &mut ink,
+                    art: &mut art,
+                    source: regent_draw::art::ArtSource::of(&[]),
+                    catalogue,
+                    fit: Fit {
+                        scale: 1.0,
+                        origin: Pos2::ZERO,
+                    },
+                    salt: "goals",
+                };
+
+                goals_panel(&mut canvas, &layout, &goals, &mut scroll);
+            });
+
+            output.textures_delta.clear();
+        }
+
+        assert!(scroll > 0.0, "scrolled {scroll}");
     }
 }

@@ -494,6 +494,41 @@ const BAR_FILL: i32 = 4;
 const BAR_POISONED: i32 = 14;
 const BAR_TRACK: i32 = 3;
 
+/// Scroll bar `bar`'s arrows and thumb over a text scrolled `by` of
+/// `most`, in its own art (`INDs` 1000: up, down, thumb), told apart by
+/// `key`; how far they move it, each arrow a `step`, the thumb dragged
+/// through the track.
+pub fn scroll_bar(
+    canvas: &mut Canvas<'_>,
+    bar: &ShownControl,
+    (by, most, step): (f32, f32, f32),
+    key: &'static str,
+) -> f32 {
+    let (Some(rect), Some((record, set))) = (rect(bar), bar.art) else {
+        return 0.0;
+    };
+    let pic = |past: i32| Pic::of(record, set + past);
+    let (Some(arrow), Some(thumb)) = (
+        canvas.size(pic(0)),
+        canvas.size(pic(crate::ui::scroll::THUMB)),
+    ) else {
+        return 0.0;
+    };
+    let bar = crate::ui::scroll::Bar { rect, arrow, thumb };
+    let scale = canvas.fit.scale;
+
+    crate::ui::scroll::pass(
+        canvas,
+        (&bar, scale),
+        (by, most, step),
+        |c, r, past| c.press(r, (key, "arrow", past)),
+        |c, at| c.drag(at, (key, "thumb")),
+        |c, past, slot, at| {
+            c.picture(pic(past).slot(slot), Tone::Plain, at);
+        },
+    )
+}
+
 /// Bar control `c` filled `filled` of 1 with its own pictures, the fill
 /// as shapes ([`rows`](super::stripes::Stripes::rows)); else an egui bar
 /// in `colour`.
